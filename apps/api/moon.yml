@@ -1,0 +1,15 @@
+language: 'python'
+
+tasks:
+  dev:
+    command: 'pnpm dev'
+  build:
+    command: 'pnpm build'
+    outputs:
+      - 'dist'
+  test:
+    command: 'pnpm test'
+  lint:
+    command: 'pnpm lint'
+  format:
+    command: 'pnpm format'

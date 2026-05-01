@@ -1,0 +1,13 @@
+language: 'typescript'
+
+tasks:
+  build:
+    command: 'pnpm build'
+    outputs:
+      - 'dist'
+  test:
+    command: 'pnpm test'
+  lint:
+    command: 'pnpm lint'
+  format:
+    command: 'pnpm format'

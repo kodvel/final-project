@@ -1,0 +1,20 @@
+{
+  "name": "final-project",
+  "private": true,
+  "packageManager": "pnpm@10.10.0",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "dev": "node scripts/run-task.mjs dev",
+    "build": "node scripts/run-task.mjs build",
+    "test": "node scripts/run-task.mjs test",
+    "lint": "node scripts/run-task.mjs lint",
+    "format": "node scripts/run-task.mjs format",
+    "check": "node scripts/run-task.mjs check"
+  },
+  "devDependencies": {
+    "@moonrepo/cli": "^2.2.3",
+    "prettier": "^3.6.2"
+  }
+}

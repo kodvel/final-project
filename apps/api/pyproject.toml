@@ -1,0 +1,28 @@
+[project]
+name = "final-project-api"
+version = "0.0.0"
+description = "FastAPI backend for the final project foundation template."
+requires-python = "==3.14.*"
+dependencies = [
+  "fastapi>=0.116.0",
+  "uvicorn[standard]>=0.35.0",
+]
+
+[dependency-groups]
+dev = [
+  "httpx>=0.28.1",
+  "pytest>=8.4.1",
+  "ruff>=0.12.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 150
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+exclude = ["alembic"]

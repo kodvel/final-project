@@ -1,0 +1,12 @@
+projects:
+  - 'apps/*'
+  - 'packages/*'
+
+hasher:
+  walkStrategy: 'glob'
+
+constraints:
+  enforceLayerRelationships: false
+
+vcs:
+  defaultBranch: 'main'

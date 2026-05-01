@@ -1,0 +1,8 @@
+node:
+  version: '22'
+
+typescript:
+  packageManager: 'pnpm'
+
+python:
+  version: '3.14'

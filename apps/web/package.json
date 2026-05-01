@@ -1,0 +1,29 @@
+{
+  "name": "@final-project/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --host 0.0.0.0",
+    "build": "vite build",
+    "start": "node dist/server/server.js",
+    "test": "vitest run",
+    "lint": "biome check . && tsc -p tsconfig.json --noEmit",
+    "format": "biome format --write ."
+  },
+  "dependencies": {
+    "@tanstack/react-router": "^1.120.15",
+    "@tanstack/react-start": "^1.120.15",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.0",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0",
+    "vitest": "^3.2.4"
+  }
+}

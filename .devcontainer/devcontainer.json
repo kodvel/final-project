@@ -1,0 +1,26 @@
+{
+  "name": "Final Project",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "postCreateCommand": "corepack enable && pnpm install --frozen-lockfile && cd apps/api && uv sync --locked",
+  "forwardPorts": [3000, 8000],
+  "portsAttributes": {
+    "3000": {
+      "label": "web"
+    },
+    "8000": {
+      "label": "api"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "charliermarsh.ruff",
+        "esbenp.prettier-vscode",
+        "ms-python.python"
+      ]
+    }
+  }
+}
