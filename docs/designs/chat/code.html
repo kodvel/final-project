@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Company Intelligence - Strategic Chat</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary-container": "#a44100",
+                        "surface-tint": "#4d44e3",
+                        "surface-variant": "#e4e1ee",
+                        "status-positive": "#0F9F8F",
+                        "tertiary-fixed": "#ffdbcc",
+                        "raised-surface": "#FBFAFF",
+                        "primary": "#3525cd",
+                        "on-secondary-container": "#535c7f",
+                        "on-primary-container": "#dad7ff",
+                        "on-tertiary-container": "#ffd2be",
+                        "secondary-container": "#cdd5ff",
+                        "secondary": "#545d80",
+                        "tertiary": "#7e3000",
+                        "main-surface": "#FFFFFF",
+                        "inverse-surface": "#302f39",
+                        "app-bg": "#F8F7FC",
+                        "accent-indigo": "#4F46E5",
+                        "text-primary": "#151826",
+                        "secondary-fixed-dim": "#bcc5ee",
+                        "on-secondary-fixed": "#101939",
+                        "surface-container": "#f0ecf9",
+                        "outline-variant": "#c7c4d8",
+                        "inverse-on-surface": "#f3effc",
+                        "sidebar-surface": "#F4F2FA",
+                        "on-surface": "#1b1b24",
+                        "on-tertiary": "#ffffff",
+                        "accent-navy": "#111A3A",
+                        "status-warning": "#D97706",
+                        "on-surface-variant": "#464555",
+                        "on-secondary": "#ffffff",
+                        "surface-dim": "#dcd8e5",
+                        "primary-container": "#4f46e5",
+                        "on-primary": "#ffffff",
+                        "status-processing": "#0284C7",
+                        "on-primary-fixed-variant": "#3323cc",
+                        "error": "#ba1a1a",
+                        "surface": "#fcf8ff",
+                        "background": "#fcf8ff",
+                        "on-tertiary-fixed": "#351000",
+                        "on-tertiary-fixed-variant": "#7b2f00",
+                        "surface-bright": "#fcf8ff",
+                        "surface-container-lowest": "#ffffff",
+                        "outline": "#777587",
+                        "text-secondary": "#626A7C",
+                        "primary-fixed-dim": "#c3c0ff",
+                        "on-background": "#1b1b24",
+                        "on-primary-fixed": "#0f0069",
+                        "on-error": "#ffffff",
+                        "primary-fixed": "#e2dfff",
+                        "surface-container-highest": "#e4e1ee",
+                        "surface-container-low": "#f5f2ff",
+                        "status-critical": "#E11D48",
+                        "on-error-container": "#93000a",
+                        "secondary-fixed": "#dce1ff",
+                        "tertiary-fixed-dim": "#ffb695",
+                        "surface-container-high": "#eae6f4",
+                        "on-secondary-fixed-variant": "#3d4567",
+                        "inverse-primary": "#c3c0ff",
+                        "border-subtle": "#E5E2F0",
+                        "text-muted": "#8A91A3",
+                        "error-container": "#ffdad6"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "2xl": "1.5rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "card-padding": "24px",
+                        "page-padding": "32px",
+                        "base": "8px",
+                        "table-cell-y": "14px",
+                        "gutter": "24px"
+                    },
+                    "fontFamily": {
+                        "metadata": ["Inter"],
+                        "section-title": ["Inter"],
+                        "body": ["Inter"],
+                        "app-title": ["Inter"],
+                        "badge": ["Inter"],
+                        "card-title": ["Inter"]
+                    },
+                    "fontSize": {
+                        "metadata": ["13px", {"lineHeight": "1.4", "fontWeight": "500"}],
+                        "section-title": ["20px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                        "body": ["14px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                        "app-title": ["32px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                        "badge": ["12px", {"lineHeight": "1", "letterSpacing": "0.01em", "fontWeight": "500"}],
+                        "card-title": ["16px", {"lineHeight": "1.4", "fontWeight": "600"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.filled {
+            font-variation-settings: 'FILL' 1;
+        }
+    </style>
+</head>
+<body class="bg-app-bg text-text-primary font-body flex h-screen overflow-hidden">
+<!-- Global SideNavBar -->
+<nav class="w-64 h-screen border-r border-border-subtle bg-sidebar-surface flex flex-col sticky top-0 left-0 hidden md:flex shrink-0">
+<!-- Brand Header -->
+<div class="px-gutter py-6 border-b border-border-subtle">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-accent-indigo text-white flex items-center justify-center font-bold text-lg shadow-sm">
+                    I
+                </div>
+<div>
+<h1 class="text-card-title font-card-title text-text-primary tracking-tight">Intelligence</h1>
+<p class="text-badge font-badge text-text-secondary mt-1">Strategic Workspace</p>
+</div>
+</div>
+</div>
+<!-- Navigation Links -->
+<div class="flex-1 overflow-y-auto py-4 px-2 space-y-1">
+<a class="flex items-center gap-3 bg-surface-container text-primary-container font-semibold rounded-lg px-3 py-2 transition-all duration-200" href="#">
+<span class="material-symbols-outlined filled text-[20px]">chat</span>
+<span class="text-body font-body font-medium">Chat</span>
+</a>
+<a class="flex items-center gap-3 text-text-secondary hover:text-text-primary hover:bg-surface-container-high rounded-lg px-3 py-2 transition-all duration-200" href="#">
+<span class="material-symbols-outlined text-[20px]">monitoring</span>
+<span class="text-body font-body">Visualization Data</span>
+</a>
+<a class="flex items-center gap-3 text-text-secondary hover:text-text-primary hover:bg-surface-container-high rounded-lg px-3 py-2 transition-all duration-200" href="#">
+<span class="material-symbols-outlined text-[20px]">database</span>
+<span class="text-body font-body">Source Data</span>
+</a>
+</div>
+<!-- Footer Navigation -->
+<div class="px-2 py-4 border-t border-border-subtle space-y-1">
+<a class="flex items-center gap-3 text-text-secondary hover:text-text-primary hover:bg-surface-container-high rounded-lg px-3 py-2 transition-all duration-200" href="#">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+<span class="text-body font-body">Settings</span>
+</a>
+<a class="flex items-center gap-3 text-text-secondary hover:text-text-primary hover:bg-surface-container-high rounded-lg px-3 py-2 transition-all duration-200" href="#">
+<span class="material-symbols-outlined text-[20px]">contact_support</span>
+<span class="text-body font-body">Support</span>
+</a>
+</div>
+</nav>
+<!-- Main Workspace Area -->
+<div class="flex-1 flex flex-col min-w-0">
+<!-- TopAppBar -->
+<header class="h-16 bg-main-surface border-b border-border-subtle flex items-center justify-between px-6 sticky top-0 z-40 shrink-0">
+<!-- Mobile Brand (Visible only on sm/md) -->
+<div class="md:hidden flex items-center gap-2">
+<div class="w-8 h-8 rounded-lg bg-accent-indigo text-white flex items-center justify-center font-bold">I</div>
+<h1 class="text-card-title font-card-title text-text-primary">Company Intelligence</h1>
+</div>
+<div class="hidden md:block">
+<!-- Spacer for desktop to align right items -->
+</div>
+<!-- Actions -->
+<div class="flex items-center gap-4">
+<div class="relative hidden sm:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-[20px]">search</span>
+<input class="w-64 pl-9 pr-4 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body font-body text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent-indigo focus:border-accent-indigo transition-shadow" placeholder="Search knowledge base..." type="text"/>
+</div>
+<button class="w-9 h-9 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-container-low rounded-full transition-colors relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-status-critical rounded-full border border-main-surface"></span>
+</button>
+<button class="w-9 h-9 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-container-low rounded-full transition-colors">
+<span class="material-symbols-outlined">help</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-border-subtle shrink-0 cursor-pointer">
+<img alt="User Avatar" class="w-full h-full object-cover" data-alt="A professional headshot of an executive in a modern corporate setting. The lighting is soft and flattering, creating a premium, trustworthy aesthetic. The background is slightly blurred, showing a bright, contemporary office environment. The style aligns with a sophisticated corporate profile." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDW-NBrmCqFUAar5wfqB7AJhevarjlDF6i6I_1oAXXrRNuospjJwTQDOcdxNldY22lbGtjHdRFLtWqkYBMH6eHoFnNpVgcKYZIaWg3t2XAEUVdKCLKKlBTCFgY9vBlFAilu7FEwTuSA-1CJNrl72f_SiAwhHiQhlpG4HwR3VsQ_PSLsqXxXLrYq8iVvACbbdp-bsCPhwJqsiMxU0xU4mdZEukVDM_nNXyjyVrGtN0I_3irb83NLTlkQ5ht9IxRKeENxnYIotNbjPERD"/>
+</div>
+</div>
+</header>
+<!-- Content Split View -->
+<div class="flex-1 flex overflow-hidden">
+<!-- Conversation Thread (Center) -->
+<main class="flex-1 flex flex-col relative bg-app-bg">
+<!-- Scrollable Messages -->
+<div class="flex-1 overflow-y-auto px-6 py-8 pb-32 space-y-8">
+<!-- User Message -->
+<div class="max-w-4xl mx-auto w-full flex gap-4 justify-end">
+<div class="bg-main-surface border border-border-subtle px-5 py-4 rounded-2xl rounded-tr-sm shadow-sm max-w-2xl">
+<p class="text-body font-body text-text-primary">Analyze Q3 market penetration for the enterprise segment versus our mid-market performance. Identify key friction points driving the divergence.</p>
+</div>
+</div>
+<!-- Assistant Response Card (Strategic Memo) -->
+<div class="max-w-4xl mx-auto w-full flex gap-4">
+<div class="w-8 h-8 rounded-lg bg-accent-navy text-white flex items-center justify-center shrink-0 shadow-sm mt-1">
+<span class="material-symbols-outlined text-[18px]">psychology</span>
+</div>
+<div class="flex-1 bg-main-surface border border-border-subtle rounded-2xl shadow-sm overflow-hidden flex flex-col">
+<!-- Header / Badges -->
+<div class="px-card-padding py-4 border-b border-border-subtle flex items-center gap-3 bg-surface-container-lowest">
+<span class="bg-status-positive/10 text-status-positive border border-status-positive/20 px-2.5 py-1 rounded-md text-badge font-badge flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[14px]">check_circle</span>
+                                    High Confidence
+                                </span>
+<span class="bg-status-warning/10 text-status-warning border border-status-warning/20 px-2.5 py-1 rounded-md text-badge font-badge flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[14px]">info</span>
+                                    Data Gap in EMEA
+                                </span>
+</div>
+<!-- Document Content -->
+<div class="px-card-padding py-6 space-y-6">
+<!-- Direct Answer -->
+<div>
+<h3 class="text-card-title font-card-title text-text-primary mb-2">Executive Summary</h3>
+<p class="text-body font-body text-text-primary leading-relaxed">
+                                        Q3 Enterprise penetration grew by 14% quarter-over-quarter, significantly outpacing the mid-market segment which stagnated at 2% growth. The primary driver for this divergence is an extended implementation timeline in mid-market accounts, compounded by a lack of out-of-the-box integrations for legacy CRM systems <span class="inline-flex items-center justify-center w-5 h-5 rounded bg-surface-variant text-text-secondary text-[11px] font-medium ml-1 cursor-pointer hover:bg-secondary-container transition-colors" title="Source: Q3_Financial_Rollup.pdf">[1]</span>. Enterprise accounts bypassed these issues utilizing custom API deployments <span class="inline-flex items-center justify-center w-5 h-5 rounded bg-surface-variant text-text-secondary text-[11px] font-medium ml-1 cursor-pointer hover:bg-secondary-container transition-colors" title="Source: CRM_Pipeline_Extract_Oct.csv">[2]</span>.
+                                    </p>
+</div>
+<!-- Strategic Interpretation -->
+<div>
+<h3 class="text-card-title font-card-title text-text-primary mb-2">Strategic Interpretation</h3>
+<div class="border-l-2 border-accent-indigo pl-4 py-1">
+<p class="text-body font-body text-text-secondary leading-relaxed">
+                                            The data indicates a structural mismatch in our mid-market product offering. While enterprise clients have the technical resources to overcome integration friction, mid-market clients abandon the pipeline during the technical validation phase. This is not a top-of-funnel issue, but rather a late-stage conversion failure directly tied to deployment complexity.
+                                        </p>
+</div>
+</div>
+<!-- Recommendation Box -->
+<div class="bg-surface-container-low border border-accent-indigo/30 rounded-xl p-5">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-accent-indigo text-[20px]">lightbulb</span>
+<h4 class="text-metadata font-metadata text-accent-indigo font-semibold uppercase tracking-wider">Recommended Action</h4>
+</div>
+<p class="text-body font-body text-text-primary mb-3">
+                                        Accelerate the release of the native Salesforce/HubSpot connectors currently slated for Q1. Consider a short-term professional services subsidy to unblock stuck Q4 mid-market deals.
+                                    </p>
+</div>
+</div>
+<!-- Footer Actions -->
+<div class="px-card-padding py-3 bg-surface-container-lowest border-t border-border-subtle flex items-center justify-between">
+<div class="flex gap-2">
+<button class="text-metadata font-metadata flex items-center gap-1.5 px-3 py-1.5 rounded-md hover:bg-surface-container transition-colors text-text-secondary">
+<span class="material-symbols-outlined text-[16px]">library_books</span>
+                                        View Sources
+                                    </button>
+<button class="text-metadata font-metadata flex items-center gap-1.5 px-3 py-1.5 rounded-md hover:bg-surface-container transition-colors text-text-secondary">
+<span class="material-symbols-outlined text-[16px]">account_tree</span>
+                                        View Trace
+                                    </button>
+</div>
+<button class="text-metadata font-metadata flex items-center gap-1.5 px-4 py-1.5 rounded-md bg-accent-navy text-white hover:bg-accent-navy/90 transition-colors shadow-sm">
+<span class="material-symbols-outlined text-[16px]">description</span>
+                                    Generate Decision Brief
+                                </button>
+</div>
+</div>
+</div>
+</div>
+<!-- Composer (Bottom Sticky) -->
+<div class="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-app-bg via-app-bg to-transparent">
+<div class="max-w-4xl mx-auto">
+<div class="bg-main-surface border border-border-subtle rounded-2xl shadow-sm p-2 flex flex-col relative focus-within:ring-1 focus-within:ring-accent-indigo focus-within:border-accent-indigo transition-all">
+<!-- Input Area -->
+<textarea class="w-full resize-none border-0 bg-transparent text-body font-body text-text-primary placeholder:text-text-muted focus:ring-0 px-3 py-2" placeholder="Ask a strategic question or type / for commands..." rows="2" style="min-height: 60px;"></textarea>
+<!-- Bottom Action Row -->
+<div class="flex items-center justify-between px-2 pt-2 border-t border-border-subtle/50 mt-1">
+<!-- Command Hints -->
+<div class="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+<button class="text-[11px] font-badge text-text-secondary bg-surface-container px-2 py-1 rounded hover:bg-surface-variant transition-colors whitespace-nowrap">/decision-brief</button>
+<button class="text-[11px] font-badge text-text-secondary bg-surface-container px-2 py-1 rounded hover:bg-surface-variant transition-colors whitespace-nowrap">/sources</button>
+<button class="text-[11px] font-badge text-text-secondary bg-surface-container px-2 py-1 rounded hover:bg-surface-variant transition-colors whitespace-nowrap">/trace</button>
+</div>
+<button class="w-8 h-8 flex items-center justify-center rounded-lg bg-accent-indigo text-white hover:bg-accent-indigo/90 transition-colors shrink-0">
+<span class="material-symbols-outlined text-[18px]">arrow_upward</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Evidence Rail (Right Drawer) -->
+<aside class="w-80 h-full border-l border-border-subtle bg-sidebar-surface flex flex-col shrink-0 hidden lg:flex">
+<div class="px-6 py-5 border-b border-border-subtle bg-main-surface">
+<h2 class="text-section-title font-section-title text-text-primary flex items-center gap-2">
+<span class="material-symbols-outlined text-text-secondary">library_books</span>
+                        Sources Used
+                    </h2>
+</div>
+<div class="flex-1 overflow-y-auto p-4 space-y-4">
+<!-- Source Card 1 -->
+<div class="bg-main-surface border border-border-subtle rounded-xl p-4 shadow-sm hover:border-accent-indigo/50 transition-colors cursor-pointer group">
+<div class="flex items-start justify-between mb-3">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-status-critical text-[20px]">picture_as_pdf</span>
+<span class="text-metadata font-metadata text-text-primary font-semibold truncate max-w-[160px]" title="Q3_Financial_Rollup.pdf">Q3_Financial_Rollup.pdf</span>
+</div>
+<span class="text-[11px] font-badge text-text-secondary bg-surface-variant px-1.5 py-0.5 rounded">[1]</span>
+</div>
+<div class="flex items-center gap-2 mb-2">
+<span class="px-2 py-0.5 rounded text-[11px] font-metadata bg-surface-container text-text-secondary border border-border-subtle">Finance Team</span>
+<span class="px-2 py-0.5 rounded text-[11px] font-metadata bg-surface-container text-text-secondary border border-border-subtle">Q3 2023</span>
+</div>
+<p class="text-[12px] font-body text-text-muted line-clamp-2 mt-2">"Enterprise segment recognized revenue increased 14.2% driven by custom API deployments..."</p>
+</div>
+<!-- Source Card 2 -->
+<div class="bg-main-surface border border-border-subtle rounded-xl p-4 shadow-sm hover:border-accent-indigo/50 transition-colors cursor-pointer group">
+<div class="flex items-start justify-between mb-3">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-status-positive text-[20px]">table</span>
+<span class="text-metadata font-metadata text-text-primary font-semibold truncate max-w-[160px]" title="CRM_Pipeline_Extract_Oct.csv">CRM_Pipeline_Extract...</span>
+</div>
+<span class="text-[11px] font-badge text-text-secondary bg-surface-variant px-1.5 py-0.5 rounded">[2]</span>
+</div>
+<div class="flex items-center gap-2 mb-2">
+<span class="px-2 py-0.5 rounded text-[11px] font-metadata bg-surface-container text-text-secondary border border-border-subtle">Sales Ops</span>
+<span class="px-2 py-0.5 rounded text-[11px] font-metadata bg-surface-container text-text-secondary border border-border-subtle">Oct 2023</span>
+</div>
+<p class="text-[12px] font-body text-text-muted line-clamp-2 mt-2">Extract of all mid-market stalled deals citing 'integration capabilities' as primary churn reason.</p>
+</div>
+</div>
+<!-- Auxiliary Panels links -->
+<div class="px-4 py-4 border-t border-border-subtle bg-main-surface space-y-1">
+<button class="w-full flex items-center justify-between text-body font-body text-text-secondary hover:text-text-primary hover:bg-surface-container-low px-3 py-2 rounded-lg transition-colors">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">account_tree</span>
+                            Trace Reference
+                        </div>
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+<button class="w-full flex items-center justify-between text-body font-body text-text-secondary hover:text-text-primary hover:bg-surface-container-low px-3 py-2 rounded-lg transition-colors">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">description</span>
+                            Drafted Briefs
+                        </div>
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</aside>
+</div>
+</div>
+</body></html>

@@ -111,7 +111,8 @@ The backend uses FastAPI as the API layer, Python for AI/RAG/data processing, SQ
 - The AI role is Company Strategy Consultant, not a generic chatbot.
 - The main navigation is limited to Chat, Visualization Data, and Source Data.
 - Real authentication is out of scope for MVP. The app supports basic multi-workspaces without user accounts, so the team can create separate workspaces for Developer 1, Developer 2, Developer 3, and Demo.
-- Workspace management is intentionally lightweight: users can create and switch workspaces from the app header/dashboard area, but Workspace is not a dedicated sidebar menu.
+- Workspace management is intentionally lightweight: users can create and switch the client-selected active workspace from the app header/dashboard area, but Workspace is not a dedicated sidebar menu.
+- The active workspace is client UI state, not a server-global `is_active` flag. Workspace-scoped API requests send an explicit `workspace_id`.
 - Supported file types for MVP are CSV and PDF.
 - Excel is not directly supported in MVP; users can export spreadsheets to CSV before upload.
 - Source data is labeled by team, category, and period.
@@ -133,12 +134,12 @@ The backend uses FastAPI as the API layer, Python for AI/RAG/data processing, SQ
 - Chat responses should expose View Sources and View Trace actions.
 - View Trace links to or references Langfuse trace information.
 - Decision Briefs are generated as formatted chat responses, not as a separate MVP page.
-- Decision Brief format includes Decision Title, Context / Problem, Source Evidence, Strategic Interpretation, Recommendation, Alternatives Considered, Risks & Assumptions, Success Metrics, Next Steps, and Decision Status.
-- Decision Status values are Go, No-Go, and Validate First.
+- Decision Brief format includes Decision Title, Context / Problem, Source Evidence, Strategic Interpretation, Recommendation, Alternatives Considered, Risks & Assumptions, Success Metrics, Next Steps, and Recommendation Status.
+- Recommendation Status values are Go, No-Go, and Validate First. Approval Status values are Draft, Reviewed, Approved, and Rejected; these are independent from Recommendation Status.
 - The frontend uses the existing TanStack Start, TanStack Router, React, and TypeScript foundation.
 - The backend uses the existing FastAPI foundation.
 - Python remains the primary place for RAG, AI Agent work, and data analysis, consistent with the accepted foundation ADR.
-- Shared contracts should define stable API and domain boundaries for source data, visualizations, chat messages, source citations, and decision briefs.
+- Backend FastAPI/Pydantic/SQLModel schemas are the validation source of truth. Frontend TypeScript types live locally under `apps/web/src/types`, and `/openapi.json` is the contract reference for source data, visualizations, chat messages, source citations, and decision briefs.
 - SQLModel and Alembic should be used for relational app data such as sources, metadata labels, periods, processing jobs, chat sessions, chat messages, generated artifacts, and trace references.
 - ChromaDB should be used as the vector database for PDF chunks, document insight retrieval, and company knowledge retrieval.
 - Redis and Celery should be used for background source processing.
@@ -148,16 +149,16 @@ The backend uses FastAPI as the API layer, Python for AI/RAG/data processing, SQ
 
 Major modules to build or modify:
 
-- Workspace Management: handles lightweight workspace creation and switching without authentication.
+- Workspace Management: handles lightweight workspace creation and client-side workspace switching without authentication.
 - Source Data Management: handles upload metadata, team labels, category labels, period, source table listing, status display, and source deletion.
-- Source Processing Pipeline: handles background transition from Uploaded to Processing to Ready or Failed.
+- Source Processing Pipeline: handles background transition from Uploaded to Processing to Ready or Failed, and supports retrying Failed Sources.
 - CSV Profiler and Visualization Generator: deep module that accepts structured rows and returns visualization-ready metadata, chart specs, summary stats, anomalies, and insight text.
 - PDF Ingestion and Knowledge Indexer: deep module that extracts text, chunks content, creates embeddings, stores vectors, and returns document insight board data.
 - Company Knowledge Retrieval: deep module that selects relevant structured summaries and document chunks based on user chat intent, labels, categories, and period.
 - AI Consultant Orchestrator: deep module that routes user questions to tools, retrieves sources, formats grounded responses, and records observability traces.
 - Decision Brief Generator: deep module that turns chat context and source evidence into a formatted decision brief.
 - Langfuse Observability Integration: captures prompts, source retrieval, tool calls, model output, latency, errors, and trace IDs.
-- Shared Contracts: defines data structures exchanged between frontend and backend for source data, processing status, visualizations, chat responses, citations, traces, and decision briefs.
+- API Contract Alignment: keeps backend schemas, frontend local TypeScript types, and `/openapi.json` aligned for source data, processing status, visualizations, chat responses, citations, traces, and decision briefs.
 - Frontend Shell and Navigation: implements the three-page layout with Chat, Visualization Data, and Source Data.
 - Chat Interface: implements GPT-like conversation, source and trace display, and formatted Decision Brief rendering.
 - Visualization Data Interface: implements auto visualization cards for CSV and PDF Insight Board cards for documents.
@@ -169,8 +170,9 @@ This schema is PRD-level and should guide implementation. It is not intended to 
 
 ### Domain Model
 
-- Workspace: a lightweight company/developer context. The MVP supports creating and switching basic workspaces without authentication, primarily for Developer 1, Developer 2, Developer 3, and Demo environments.
-- Source Data: an uploaded CSV or PDF file plus metadata, labels, period, storage path, and processing status.
+- Workspace: a lightweight company/developer context. The MVP supports creating basic workspaces and selecting one in the client UI without authentication, primarily for Developer 1, Developer 2, Developer 3, and Demo environments.
+- Source: an uploaded CSV or PDF file plus metadata, labels, period, storage path, processing status, and generated artifacts.
+- Source Data: the product page/menu where users manage Sources.
 - Source Category: join table for multi-select category labels on a source.
 - Source Artifact: generated output from source processing, such as CSV profiles, chart specs, insight cards, PDF summaries, and PDF insight boards.
 - Chat Session: a GPT-like conversation thread inside the workspace.
@@ -188,7 +190,6 @@ Stores lightweight workspaces. Workspaces are selectable from the dashboard/head
 - `id`
 - `name`
 - `description`
-- `is_active`
 - `created_at`
 - `updated_at`
 
@@ -199,7 +200,7 @@ MVP seed workspaces should include:
 - Developer 3
 - Demo
 
-Only one workspace is active in the UI at a time. All Source Data, Visualization Data, Chat Sessions, and Decision Brief Drafts are scoped to the active workspace.
+Only one workspace is active in a client UI at a time. All Source Data, Visualization Data, Chat Sessions, and Decision Brief Drafts are scoped by the explicit `workspace_id` sent from that client-selected active workspace.
 
 #### `source_data`
 
@@ -219,6 +220,7 @@ Stores uploaded file metadata. Original uploaded files are stored in local stora
 - `processing_error`
 - `uploaded_at`
 - `processed_at`
+- `deleted_at`
 - `created_at`
 - `updated_at`
 
@@ -391,27 +393,28 @@ The PRD expects high-level API contracts, not final OpenAPI definitions.
   - Lists available workspaces.
 - `GET /workspaces/{workspace_id}`
   - Returns one workspace.
-- `PATCH /workspaces/{workspace_id}/activate`
-  - Sets the active workspace for the current app session/context.
+- Workspace selection is client UI state. There is no server-global activate endpoint for MVP.
 
 #### Source Data
 
 - `POST /sources`
-  - Creates a source record in the active workspace, uploads a CSV/PDF file to local storage, stores team label, category labels, and period, then starts background processing.
+  - Creates a source record for the explicit `workspace_id`, uploads a CSV/PDF file to local storage, stores team label, category labels, and period, then starts background processing.
   - Returns source metadata and initial processing status.
 - `GET /sources`
   - Lists sources.
-  - Supports filters for team label, category label, period, file type, and processing status.
+  - Requires `workspace_id` and supports filters for team label, category label, period, file type, and processing status.
 - `GET /sources/{source_id}`
   - Returns one source with categories, processing status, and generated artifacts.
 - `DELETE /sources/{source_id}`
-  - Deletes source metadata and local uploaded file for MVP.
+  - Soft-deletes the Source so it is hidden from future analysis while past citations and Decision Brief Drafts remain auditable.
+- `POST /sources/{source_id}/retry-processing`
+  - Requeues processing for a Failed Source and moves it back toward Processing.
 
 #### Visualization Data
 
 - `GET /visualizations`
   - Returns visualization-ready artifacts from ready sources.
-  - Supports filters for team label, category label, and period.
+  - Requires `workspace_id` and supports filters for team label, category label, and period. Period filters use range overlap.
 - `GET /visualizations/{source_id}`
   - Returns artifacts for a single source.
 
@@ -419,13 +422,16 @@ The PRD expects high-level API contracts, not final OpenAPI definitions.
 
 - `POST /chat/sessions`
   - Creates a chat session.
+  - Requires `workspace_id`; the session remains scoped to that Workspace.
 - `GET /chat/sessions/{session_id}`
   - Returns chat messages, tool call summaries, source citations, and trace references.
 - `POST /chat/sessions/{session_id}/messages`
   - Sends a user message and returns an assistant response.
-  - The assistant response includes content, sources, tool call summaries, and trace ID.
+  - The assistant response includes content, sources, tool call summaries, and optional trace ID.
 - `POST /chat/sessions/{session_id}/commands`
   - Executes slash commands such as `/decision-brief`, `/sources`, `/trace`, and `/brief-status`.
+
+Chat auto-selects relevant Sources by default. User messages may narrow Source Scope by mentioning team, category, period, or source constraints in natural language; this scope is evaluated per message and is not a persistent chat filter in MVP.
 
 #### Decision Briefs
 
@@ -522,7 +528,7 @@ Good tests should verify external behavior, not implementation details. Tests sh
 Modules to test:
 
 - Source Data Management should be tested with API-level tests for creating sources, listing sources, filtering by labels and period, and status visibility.
-- Source Processing Pipeline should be tested with service-level tests for status transitions and failure handling.
+- Source Processing Pipeline should be tested with service-level tests for status transitions, failure handling, and retry behavior.
 - CSV Profiler and Visualization Generator should be tested as a deep module with sample CSV inputs and expected visualization metadata outputs.
 - PDF Ingestion and Knowledge Indexer should be tested as a deep module with small sample PDFs or extracted text fixtures and expected summary/retrieval outputs.
 - Company Knowledge Retrieval should be tested with mixed source metadata to ensure relevant sources are selected by question, team, category, and period.

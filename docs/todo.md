@@ -296,13 +296,13 @@ Do not add charting or UI component libraries yet. Decide those during Visualiza
 
 ### Acceptance criteria
 
-- [ ] Backend folder skeleton exists with clear homes for routes, models, schemas, services, jobs, knowledge, agents, and storage.
-- [ ] Alembic is initialized under `apps/api/alembic/`.
-- [ ] Scalar API docs are available at `/scalar`.
-- [ ] Frontend folder skeleton exists as real files are introduced.
-- [ ] TanStack Query provider is configured at the root.
-- [ ] `packages/contracts` no longer appears as an active required package.
-- [ ] Repo scripts still run without referencing retired contracts.
+- [x] Backend folder skeleton exists with clear homes for routes, models, schemas, services, jobs, knowledge, agents, and storage.
+- [x] Alembic is initialized under `apps/api/alembic/`.
+- [x] Scalar API docs are available at `/scalar`.
+- [x] Frontend folder skeleton exists as real files are introduced.
+- [x] TanStack Query provider is configured at the root.
+- [x] `packages/contracts` no longer appears as an active required package.
+- [x] Repo scripts still run without referencing retired contracts.
 
 ---
 
@@ -332,7 +332,7 @@ Workspace supports:
 
 - list workspaces
 - add workspace
-- switch active workspace
+- switch the client-selected active workspace in the UI
 
 Workspace does **not** support authentication, authorization, member management, or role permissions in MVP.
 
@@ -351,7 +351,7 @@ Workspace does **not** support authentication, authorization, member management,
   - `POST /workspaces`
   - `GET /workspaces`
   - `GET /workspaces/{workspace_id}`
-  - `PATCH /workspaces/{workspace_id}/activate`
+- Do not implement a server-global activate endpoint. Workspace selection is client UI state.
 - Implement fixed enum values:
   - team labels: Marketing, Product, Data Analysis, Business
   - category labels: Analytics / Metrics, Market Research, Product / Feature, Customer Insight, Business Model, Competitor Analysis, Revenue / Sales
@@ -369,19 +369,25 @@ storage/uploads/{workspace_id}/{source_id}/original.{ext}
   - `GET /sources`
   - `GET /sources/{source_id}`
   - `DELETE /sources/{source_id}`
-- Scope Source Data endpoints to the active workspace or explicit `workspace_id`.
+  - `POST /sources/{source_id}/retry-processing`
+- Scope Source Data endpoints to the explicit `workspace_id` sent by the client-selected active workspace.
 - On upload:
-  - resolve active workspace
+  - resolve explicit `workspace_id`
   - validate file type
   - create `source_data`
   - save file locally
   - create `source_category` rows
   - set `processing_status`
+  - enqueue background processing through Celery/Redis
+  - if enqueue fails after upload, keep the Source visible with Failed status and a processing error
 - On delete:
-  - delete source metadata
-  - delete category rows
-  - delete local uploaded folder/file
-  - delete related artifacts if they exist
+  - soft-delete the Source
+  - hide it from normal Source Data lists and future analysis
+  - retain metadata, artifacts, and citations needed for audit history
+  - remove local uploaded file only if no past citation or Decision Brief Draft depends on it
+- On retry processing:
+  - allow Failed Sources to move back toward Processing
+  - enqueue background processing again
 
 ### Frontend work
 
@@ -393,7 +399,7 @@ storage/uploads/{workspace_id}/{source_id}/original.{ext}
 - Workspace UI supports:
   - list workspace options
   - create workspace
-  - switch active workspace
+  - switch client-selected active workspace
 - Build Source Data page.
 - Build source table with columns:
   - title
@@ -421,11 +427,13 @@ storage/uploads/{workspace_id}/{source_id}/original.{ext}
 - Backend test: create source with PDF.
 - Backend test: create workspace.
 - Backend test: list workspaces.
-- Backend test: switch active workspace.
+- Frontend test: switch client-selected active workspace.
 - Backend test: sources are scoped by workspace.
 - Backend test: reject unsupported file type.
 - Backend test: list sources.
-- Backend test: delete source also deletes metadata and local file.
+- Backend test: delete source soft-deletes and hides it from normal lists.
+- Backend test: cited source remains auditable after delete.
+- Backend test: retry processing moves Failed Source back toward Processing.
 - Frontend test: Source Data table renders sources.
 - Frontend test: workspace selector renders and can switch workspace.
 - Frontend test: Add New Data dialog has required fields.
@@ -441,7 +449,10 @@ storage/uploads/{workspace_id}/{source_id}/original.{ext}
 - [ ] Source appears in Source Data table.
 - [ ] User can delete source.
 - [ ] Deleted source disappears from table.
-- [ ] Deleted source file is removed from local storage.
+- [ ] Deleted source is excluded from future analysis.
+- [ ] Past citations and Decision Brief Drafts remain explainable after source deletion.
+- [ ] Deleted source file is removed from local storage only when no citation or Decision Brief Draft needs it for audit.
+- [ ] User can retry processing for a Failed Source.
 - [ ] No edit or replace-file UI exists in MVP.
 
 ---
@@ -468,13 +479,13 @@ User uploads a CSV in Source Data. After processing, user opens **Visualization 
   - date/time
   - text
 - Generate artifacts:
-  - `csv_profile`
-  - `chart_spec`
-  - `insight_card`
+  - `csv_profile` as the required minimum artifact
+  - `chart_spec` when the data supports useful charts
+  - `insight_card` when the profiler can identify useful insights
 - Store artifacts in `source_artifact.content_json`.
 - Update source status:
   - Processing while parsing
-  - Ready after artifacts are created
+  - Ready after the required CSV profile artifact is created
   - Failed if parsing fails
 - Implement or extend:
   - `GET /visualizations`
@@ -508,8 +519,8 @@ User uploads a CSV in Source Data. After processing, user opens **Visualization 
 
 - [ ] Uploaded CSV is processed from local storage.
 - [ ] CSV profile artifact is saved.
-- [ ] Chart spec artifact is saved when possible.
-- [ ] Insight card artifact is saved when possible.
+- [ ] Chart spec artifact is saved when useful chart inputs exist.
+- [ ] Insight card artifact is saved when useful insight inputs exist.
 - [ ] Visualization Data page displays CSV artifacts.
 - [ ] Visualization Data filters work for team/category/period.
 
@@ -532,8 +543,8 @@ User uploads a PDF in Source Data. After processing, user opens **Visualization 
 - Read PDF from local storage.
 - Extract text and page references where possible.
 - Generate artifacts:
-  - `pdf_summary`
-  - `pdf_insight_board`
+  - `pdf_summary` as the required minimum artifact
+  - `pdf_insight_board` when enough text is extracted for useful structured sections
 - PDF Insight Board should include:
   - document summary
   - key findings
@@ -544,7 +555,7 @@ User uploads a PDF in Source Data. After processing, user opens **Visualization 
 - Store artifacts in `source_artifact.content_json`.
 - Update source status:
   - Processing while extracting
-  - Ready after artifacts are created
+  - Ready after the PDF summary, insight board, and ChromaDB indexing are ready
   - Failed if extraction fails
 
 ### Frontend work
@@ -569,7 +580,8 @@ User uploads a PDF in Source Data. After processing, user opens **Visualization 
 
 - [ ] Uploaded PDF is processed from local storage.
 - [ ] PDF summary artifact is saved.
-- [ ] PDF Insight Board artifact is saved.
+- [ ] PDF Insight Board artifact is saved when enough useful text is extracted.
+- [ ] PDF Source is not Ready until ChromaDB indexing is ready.
 - [ ] Visualization Data page displays PDF Insight Board.
 - [ ] PDF is not forced into chart format.
 
@@ -585,6 +597,8 @@ User uploads a PDF in Source Data. After processing, user opens **Visualization 
 ### Product flow
 
 User asks Chat a question that needs context from uploaded PDFs. The AI can retrieve relevant PDF chunks from ChromaDB and cite the source.
+
+CSV Sources are not indexed into ChromaDB for MVP. Chat uses CSV Source Artifacts from SQL instead.
 
 ### Backend work
 
@@ -676,6 +690,7 @@ User opens **Chat**, sees a GPT-like interface, sends a message, receives a basi
   - created_at
 - For this task, assistant response can be simple/dummy.
 - Real AI Consultant comes in Task 6.
+- Chat sessions are permanently scoped to the Workspace used at creation time.
 
 ### Frontend work
 
@@ -752,6 +767,11 @@ User asks a strategic question in Chat. The Company Strategy Consultant searches
   - Recommendation / Next Step
   - Confidence + Gaps
 - Store assistant response, tool summaries, and citations.
+- Auto-select relevant Sources by default.
+- Narrow Source Scope per message when the user mentions team, category, period, or Source constraints in natural language.
+- For CSV evidence, cite Source Artifacts such as profile, chart spec, or insight card.
+- For PDF evidence, cite quote and page number where available.
+- If evidence is insufficient, respond with explicit gaps instead of unsupported certainty.
 
 ### Frontend work
 
@@ -771,6 +791,8 @@ User asks a strategic question in Chat. The Company Strategy Consultant searches
 ### Acceptance criteria
 
 - [ ] Chat response uses relevant source artifacts and/or Chroma retrieval.
+- [ ] Chat auto-selects relevant Sources by default.
+- [ ] Natural-language Source Scope constraints work per message.
 - [ ] Response follows semi-structured consultant format.
 - [ ] Response includes citations.
 - [ ] Response can say data is insufficient.
@@ -848,6 +870,7 @@ After strategic discussion, user types `/decision-brief`. The app generates a fo
   - go
   - no_go
   - validate_first
+- If generated with weak or missing citations, prefer `validate_first` and list evidence gaps.
 - Set default `approval_status`:
   - draft
 - Save assistant message with `message_type = decision_brief`.
@@ -873,6 +896,7 @@ After strategic discussion, user types `/decision-brief`. The app generates a fo
 - [ ] Brief is saved in database.
 - [ ] Brief appears as formatted assistant response.
 - [ ] Brief status defaults to Draft.
+- [ ] Brief can be generated with weak evidence only when gaps are explicit and recommendation defaults toward Validate First.
 
 ---
 
@@ -1019,6 +1043,7 @@ Langfuse is implemented last. Core chat and AI Consultant must work without Lang
   - AI response
   - Decision Brief generation
 - Store `trace_id` on assistant chat messages.
+- Treat trace references as optional observability, not evidence.
 - Add `/trace` command.
 - Ensure graceful fallback if Langfuse is disabled or unavailable.
 
