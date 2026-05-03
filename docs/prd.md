@@ -110,7 +110,8 @@ The backend uses FastAPI as the API layer, Python for AI/RAG/data processing, SQ
 - The app is chat-first. The Chat page is the primary interaction surface.
 - The AI role is Company Strategy Consultant, not a generic chatbot.
 - The main navigation is limited to Chat, Visualization Data, and Source Data.
-- Real authentication is out of scope for MVP. The app uses a single demo workspace and demo user.
+- Real authentication is out of scope for MVP. The app supports basic multi-workspaces without user accounts, so the team can create separate workspaces for Developer 1, Developer 2, Developer 3, and Demo.
+- Workspace management is intentionally lightweight: users can create and switch workspaces from the app header/dashboard area, but Workspace is not a dedicated sidebar menu.
 - Supported file types for MVP are CSV and PDF.
 - Excel is not directly supported in MVP; users can export spreadsheets to CSV before upload.
 - Source data is labeled by team, category, and period.
@@ -147,7 +148,8 @@ The backend uses FastAPI as the API layer, Python for AI/RAG/data processing, SQ
 
 Major modules to build or modify:
 
-- Source Data Management: handles upload metadata, team labels, category labels, period, source table listing, status display, and source deletion or replacement.
+- Workspace Management: handles lightweight workspace creation and switching without authentication.
+- Source Data Management: handles upload metadata, team labels, category labels, period, source table listing, status display, and source deletion.
 - Source Processing Pipeline: handles background transition from Uploaded to Processing to Ready or Failed.
 - CSV Profiler and Visualization Generator: deep module that accepts structured rows and returns visualization-ready metadata, chart specs, summary stats, anomalies, and insight text.
 - PDF Ingestion and Knowledge Indexer: deep module that extracts text, chunks content, creates embeddings, stores vectors, and returns document insight board data.
@@ -167,7 +169,7 @@ This schema is PRD-level and should guide implementation. It is not intended to 
 
 ### Domain Model
 
-- Workspace: the single default company context for the MVP. The schema still includes `workspace_id` so future multi-company support does not require a full redesign.
+- Workspace: a lightweight company/developer context. The MVP supports creating and switching basic workspaces without authentication, primarily for Developer 1, Developer 2, Developer 3, and Demo environments.
 - Source Data: an uploaded CSV or PDF file plus metadata, labels, period, storage path, and processing status.
 - Source Category: join table for multi-select category labels on a source.
 - Source Artifact: generated output from source processing, such as CSV profiles, chart specs, insight cards, PDF summaries, and PDF insight boards.
@@ -181,12 +183,23 @@ This schema is PRD-level and should guide implementation. It is not intended to 
 
 #### `workspace`
 
-Stores the single default MVP workspace.
+Stores lightweight workspaces. Workspaces are selectable from the dashboard/header area and are not shown as a dedicated sidebar menu.
 
 - `id`
 - `name`
+- `description`
+- `is_active`
 - `created_at`
 - `updated_at`
+
+MVP seed workspaces should include:
+
+- Developer 1
+- Developer 2
+- Developer 3
+- Demo
+
+Only one workspace is active in the UI at a time. All Source Data, Visualization Data, Chat Sessions, and Decision Brief Drafts are scoped to the active workspace.
 
 #### `source_data`
 
@@ -369,8 +382,22 @@ The PRD expects high-level API contracts, not final OpenAPI definitions.
 
 #### Source Data
 
+#### Workspaces
+
+- `POST /workspaces`
+  - Creates a lightweight workspace with name and optional description.
+  - Used for Developer 1, Developer 2, Developer 3, and Demo contexts.
+- `GET /workspaces`
+  - Lists available workspaces.
+- `GET /workspaces/{workspace_id}`
+  - Returns one workspace.
+- `PATCH /workspaces/{workspace_id}/activate`
+  - Sets the active workspace for the current app session/context.
+
+#### Source Data
+
 - `POST /sources`
-  - Creates a source record, uploads a CSV/PDF file to local storage, stores team label, category labels, and period, then starts background processing.
+  - Creates a source record in the active workspace, uploads a CSV/PDF file to local storage, stores team label, category labels, and period, then starts background processing.
   - Returns source metadata and initial processing status.
 - `GET /sources`
   - Lists sources.
@@ -509,11 +536,12 @@ Prior art in the current codebase:
 
 - The API already has a health endpoint smoke test using FastAPI TestClient. New backend API tests should follow that simple external-behavior style.
 - The web app already has a test setup with Vitest. New frontend tests should follow the existing web testing setup and focus on rendered behavior.
-- The contracts package is currently a placeholder for future API, RAG, and AI Agent boundaries. It should become the shared source of stable domain contracts where helpful.
+- The original contracts package placeholder has been retired for the MVP. Backend FastAPI/Pydantic/SQLModel schemas are the validation source of truth, frontend TypeScript types live locally in `apps/web/src/types`, and `/openapi.json` is the API contract reference.
 
 ## Out of Scope
 
-- Real authentication, authorization, teams, or multi-company workspace support.
+- Real authentication, authorization, or role-based teams.
+- Production-grade multi-company workspace support with permissions. MVP only supports lightweight workspace create/switch without auth.
 - Direct Excel upload. Users can convert Excel files to CSV for MVP.
 - Direct integrations with Mixpanel, Amplitude, GA4, BigQuery, warehouse APIs, CRM tools, or support tools.
 - Automatic monthly sync from external systems.

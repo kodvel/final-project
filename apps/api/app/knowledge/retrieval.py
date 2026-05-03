@@ -1,0 +1,1 @@
+"""Company knowledge retrieval interface."""

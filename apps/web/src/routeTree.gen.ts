@@ -9,8 +9,26 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as VisualizationDataRouteImport } from './routes/visualization-data'
+import { Route as SourceDataRouteImport } from './routes/source-data'
+import { Route as ChatRouteImport } from './routes/chat'
 import { Route as IndexRouteImport } from './routes/index'
 
+const VisualizationDataRoute = VisualizationDataRouteImport.update({
+  id: '/visualization-data',
+  path: '/visualization-data',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SourceDataRoute = SourceDataRouteImport.update({
+  id: '/source-data',
+  path: '/source-data',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatRoute = ChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -19,28 +37,61 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/chat': typeof ChatRoute
+  '/source-data': typeof SourceDataRoute
+  '/visualization-data': typeof VisualizationDataRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/chat': typeof ChatRoute
+  '/source-data': typeof SourceDataRoute
+  '/visualization-data': typeof VisualizationDataRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/chat': typeof ChatRoute
+  '/source-data': typeof SourceDataRoute
+  '/visualization-data': typeof VisualizationDataRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/chat' | '/source-data' | '/visualization-data'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/chat' | '/source-data' | '/visualization-data'
+  id: '__root__' | '/' | '/chat' | '/source-data' | '/visualization-data'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ChatRoute: typeof ChatRoute
+  SourceDataRoute: typeof SourceDataRoute
+  VisualizationDataRoute: typeof VisualizationDataRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/visualization-data': {
+      id: '/visualization-data'
+      path: '/visualization-data'
+      fullPath: '/visualization-data'
+      preLoaderRoute: typeof VisualizationDataRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/source-data': {
+      id: '/source-data'
+      path: '/source-data'
+      fullPath: '/source-data'
+      preLoaderRoute: typeof SourceDataRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chat': {
+      id: '/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof ChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -53,6 +104,9 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ChatRoute: ChatRoute,
+  SourceDataRoute: SourceDataRoute,
+  VisualizationDataRoute: VisualizationDataRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

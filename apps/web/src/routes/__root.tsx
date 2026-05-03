@@ -1,5 +1,6 @@
 import { createRootRoute, HeadContent, Outlet, Scripts } from '@tanstack/react-router'
 
+import { QueryProvider } from '../components/providers/query-provider'
 import '../app.css'
 
 export const Route = createRootRoute({
@@ -17,7 +18,9 @@ function RootDocument() {
         <HeadContent />
       </head>
       <body>
-        <Outlet />
+        <QueryProvider>
+          <Outlet />
+        </QueryProvider>
         <Scripts />
       </body>
     </html>

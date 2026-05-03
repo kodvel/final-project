@@ -51,7 +51,7 @@ function runFallback() {
     return
   }
 
-  const projects = ['@final-project/web', '@final-project/api', '@final-project/contracts']
+  const projects = ['@final-project/web', '@final-project/api']
 
   for (const item of tasks) {
     for (const project of projects) {

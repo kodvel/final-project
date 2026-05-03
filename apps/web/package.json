@@ -12,6 +12,7 @@
     "format": "biome format --write ."
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.100.8",
     "@tanstack/react-router": "^1.120.15",
     "@tanstack/react-start": "^1.120.15",
     "react": "^19.1.0",

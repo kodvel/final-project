@@ -4,9 +4,8 @@ Foundation template for a monorepo web app with:
 
 - `apps/web`: TanStack Start frontend
 - `apps/api`: FastAPI backend
-- `packages/contracts`: placeholder contracts for future API, RAG, and AI Agent boundaries
 
-Infrastructure choices are intentionally deferred.
+Backend API validation lives in FastAPI/Pydantic/SQLModel. Frontend TypeScript types live in `apps/web/src/types`.
 
 ## Requirements
 
@@ -30,6 +29,8 @@ Services:
 
 - Web: <http://localhost:3000>
 - API health: <http://localhost:8000/health>
+- API docs: <http://localhost:8000/docs>
+- Scalar API reference: <http://localhost:8000/scalar>
 
 ## Common commands
 
@@ -47,17 +48,15 @@ pnpm check    # lint + test + build
 apps/
   web/        # TanStack Start
   api/        # FastAPI
-packages/
-  contracts/  # shared contracts placeholder
 docs/
   adr/        # architecture decision records
 ```
 
-## Current non-decisions
+## Current architecture
 
-- Database
-- Vector store
-- Cache/queue
-- LLM provider
-- Agent framework
+- Local development database defaults to SQLite at `apps/api/storage/app.db`.
+- API documentation is available through FastAPI docs and Scalar.
+- Future vector retrieval code belongs in `apps/api/app/knowledge`.
+- Future OpenAI Agent SDK orchestration belongs in `apps/api/app/agents`.
+- Runtime files under `apps/api/storage` are local-only.
 - Deployment target
