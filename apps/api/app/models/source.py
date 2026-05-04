@@ -22,6 +22,7 @@ class SourceData(SQLModel, table=True):
     period_label: str | None = None
     processing_status: ProcessingStatus = ProcessingStatus.UPLOADED
     processing_error: str | None = None
+    deleted_at: datetime | None = Field(default=None, index=True)
     uploaded_at: datetime = Field(default_factory=datetime.utcnow)
     processed_at: datetime | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)

@@ -7,3 +7,18 @@ export type Workspace = {
   createdAt: IsoDateTime
   updatedAt: IsoDateTime
 }
+
+export type CreateWorkspaceInput = {
+  name: string
+  description?: string
+}
+
+export type WorkspaceListItem = Pick<Workspace, 'id' | 'name' | 'description'>
+
+export type WorkspaceApi = {
+  id: number
+  name: string
+  description?: string | null
+  created_at: IsoDateTime
+  updated_at?: IsoDateTime
+}

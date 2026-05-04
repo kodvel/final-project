@@ -1,12 +1,26 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from scalar_fastapi import get_scalar_api_reference
+from sqlmodel import Session
 
 from app.core.config import get_settings
+from app.db.session import engine, init_db
 from app.routes import chat, decision_briefs, sources, visualizations, workspaces
+from app.services.workspaces import seed_default_workspaces
 
 settings = get_settings()
 
-app = FastAPI(title=settings.app_name)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    with Session(engine) as session:
+        seed_default_workspaces(session)
+    yield
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.include_router(workspaces.router)
 app.include_router(sources.router)

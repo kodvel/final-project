@@ -440,20 +440,20 @@ storage/uploads/{workspace_id}/{source_id}/original.{ext}
 
 ### Acceptance criteria
 
-- [ ] User can upload CSV or PDF.
-- [ ] User can create a workspace from header/dashboard area.
-- [ ] User can switch active workspace.
-- [ ] Source Data table only shows sources for active workspace.
-- [ ] Uploaded file is saved locally.
-- [ ] Source metadata is saved in database.
-- [ ] Source appears in Source Data table.
-- [ ] User can delete source.
-- [ ] Deleted source disappears from table.
-- [ ] Deleted source is excluded from future analysis.
-- [ ] Past citations and Decision Brief Drafts remain explainable after source deletion.
+- [x] User can upload CSV or PDF.
+- [x] User can create a workspace from header/dashboard area.
+- [x] User can switch active workspace.
+- [x] Source Data table only shows sources for active workspace.
+- [x] Uploaded file is saved locally.
+- [x] Source metadata is saved in database.
+- [x] Source appears in Source Data table.
+- [x] User can delete source.
+- [x] Deleted source disappears from table.
+- [x] Deleted source is excluded from future analysis.
+- [x] Past citations and Decision Brief Drafts remain explainable after source deletion.
 - [ ] Deleted source file is removed from local storage only when no citation or Decision Brief Draft needs it for audit.
-- [ ] User can retry processing for a Failed Source.
-- [ ] No edit or replace-file UI exists in MVP.
+- [x] User can retry processing for a Failed Source.
+- [x] No edit or replace-file UI exists in MVP.
 
 ---
 
