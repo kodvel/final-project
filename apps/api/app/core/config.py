@@ -6,6 +6,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "Company Intelligence Copilot API"
     database_url: str = "sqlite:///./storage/app.db"
+    cors_allowed_origins: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
     openai_api_key: str | None = None
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
