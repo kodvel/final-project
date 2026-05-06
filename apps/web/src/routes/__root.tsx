@@ -24,7 +24,7 @@ function RootDocument() {
         <QueryProvider>
           <WorkspaceProvider>
             <TooltipProvider>
-              <div className="flex h-screen overflow-hidden bg-[#12151C] font-[family-name:var(--font-body)] text-[var(--foreground)]">
+              <div className="flex h-screen overflow-hidden bg-sidebar font-body text-foreground">
                 <Sidebar />
                 <main className="m-6 ml-0 flex-1 overflow-hidden rounded-3xl bg-white shadow-[0_8px_40px_rgba(0,0,0,0.25)]">
                   <Outlet />

@@ -1,5 +1,5 @@
 import { Link, useLocation } from '@tanstack/react-router'
-import { BarChart3, ChevronLeft, ChevronsUpDown, FolderOpen, HelpCircle, MessageSquare, Plus, Settings } from 'lucide-react'
+import { BarChart3, ChevronLeft, ChevronsUpDown, FolderOpen, MessageSquare, Plus } from 'lucide-react'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useCreateWorkspace, useWorkspaces } from '../../features/workspaces/hooks'
@@ -17,16 +17,16 @@ export function Sidebar() {
   const location = useLocation()
 
   return (
-    <aside className={cn('flex h-screen flex-col bg-[#12151C] transition-[width] duration-200', collapsed ? 'w-[72px]' : 'w-[260px]')}>
+    <aside className={cn('flex h-screen flex-col bg-sidebar transition-[width] duration-200', collapsed ? 'w-[72px]' : 'w-[260px]')}>
       {/* Brand */}
       <div className={cn('flex items-center gap-3 px-5 pt-6 pb-4', collapsed && 'justify-center px-3')}>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#4F46E5]">
-          <span className="text-xs font-bold text-white">IC</span>
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary">
+          <span className="text-xs font-bold text-primary-foreground">IC</span>
         </div>
         {!collapsed && (
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-white leading-tight">Intelligence</p>
-            <p className="truncate text-xs text-[#8B95A8] leading-tight">Copilot</p>
+            <p className="truncate text-xs text-sidebar-foreground leading-tight">Copilot</p>
           </div>
         )}
       </div>
@@ -43,7 +43,7 @@ export function Sidebar() {
                   to={item.to}
                   className={cn(
                     'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                    isActive ? 'bg-white/10 text-white' : 'text-[#8B95A8] hover:bg-white/5 hover:text-white',
+                    isActive ? 'bg-white/10 text-white' : 'text-sidebar-foreground hover:bg-white/5 hover:text-white',
                     collapsed && 'justify-center px-2',
                   )}
                 >
@@ -56,36 +56,6 @@ export function Sidebar() {
         </ul>
       </nav>
 
-      {/* Secondary */}
-      <div className="border-t border-white/10 px-3 py-3">
-        <ul className="space-y-1">
-          <li>
-            <button
-              type="button"
-              className={cn(
-                'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-[#8B95A8] transition-colors hover:bg-white/5 hover:text-white',
-                collapsed && 'justify-center px-2',
-              )}
-            >
-              <Settings className="h-5 w-5 shrink-0" />
-              {!collapsed && <span>Settings</span>}
-            </button>
-          </li>
-          <li>
-            <button
-              type="button"
-              className={cn(
-                'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-[#8B95A8] transition-colors hover:bg-white/5 hover:text-white',
-                collapsed && 'justify-center px-2',
-              )}
-            >
-              <HelpCircle className="h-5 w-5 shrink-0" />
-              {!collapsed && <span>Support</span>}
-            </button>
-          </li>
-        </ul>
-      </div>
-
       {/* Workspace switcher */}
       <div className="border-t border-white/10 px-3 py-3">
         <WorkspaceSwitcher collapsed={collapsed} />
@@ -97,7 +67,7 @@ export function Sidebar() {
           type="button"
           onClick={() => setCollapsed((v) => !v)}
           className={cn(
-            'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-[#8B95A8] transition-colors hover:bg-white/5 hover:text-white',
+            'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-white/5 hover:text-white',
             collapsed && 'justify-center px-2',
           )}
         >
@@ -167,12 +137,12 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
         )}
       >
         <div className="grid h-7 w-7 shrink-0 place-items-center rounded bg-white/10">
-          <ChevronsUpDown className="h-4 w-4 text-[#8B95A8]" />
+          <ChevronsUpDown className="h-4 w-4 text-sidebar-foreground" />
         </div>
         {!collapsed && (
           <div className="min-w-0 text-left">
             <p className="truncate text-sm text-white leading-tight">{activeWorkspace?.name ?? 'Select workspace'}</p>
-            <p className="text-xs text-[#8B95A8] leading-tight">Switch workspace</p>
+            <p className="text-xs text-sidebar-foreground leading-tight">Switch workspace</p>
           </div>
         )}
       </button>
@@ -181,16 +151,16 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
       {open && (
         <div
           className={cn(
-            'absolute z-50 overflow-hidden rounded-xl bg-[#1f1f28] shadow-xl border border-white/10',
+            'absolute z-50 overflow-hidden rounded-xl bg-sidebar-accent shadow-xl border border-white/10',
             collapsed ? 'bottom-0 left-full ml-2 w-56' : 'bottom-0 left-0 right-0',
           )}
         >
           <div className="px-3 py-2 border-b border-white/10">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#8B95A8]">Switch Workspace</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground">Switch Workspace</span>
           </div>
 
-          {isLoading && <p className="px-4 py-3 text-sm text-[#8B95A8]">Loading...</p>}
-          {!isLoading && workspaces?.length === 0 && <p className="px-4 py-3 text-sm text-[#8B95A8]">No workspaces yet.</p>}
+          {isLoading && <p className="px-4 py-3 text-sm text-sidebar-foreground">Loading...</p>}
+          {!isLoading && workspaces?.length === 0 && <p className="px-4 py-3 text-sm text-sidebar-foreground">No workspaces yet.</p>}
 
           {workspaces && workspaces.length > 0 && (
             <ul className="max-h-48 overflow-y-auto py-1">
@@ -201,7 +171,7 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
                     onClick={() => handleSelect(ws)}
                     className={cn(
                       'w-full text-left px-4 py-2 text-sm transition-colors hover:bg-white/5',
-                      activeWorkspace?.id === ws.id ? 'bg-white/10 text-white font-semibold' : 'text-[#c7c4d8]',
+                      activeWorkspace?.id === ws.id ? 'bg-white/10 text-white font-semibold' : 'text-sidebar-foreground',
                     )}
                   >
                     {ws.name}
@@ -220,20 +190,20 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="Workspace name"
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white placeholder:text-[#8B95A8] focus:outline-none focus:ring-1 focus:ring-[#4F46E5]"
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white placeholder:text-sidebar-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                 />
                 <div className="flex gap-2">
                   <button
                     type="submit"
                     disabled={createWorkspace.isPending}
-                    className="flex-1 rounded-lg bg-[#4F46E5] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#3525cd] disabled:opacity-50"
+                    className="flex-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
                   >
                     {createWorkspace.isPending ? 'Creating...' : 'Create'}
                   </button>
                   <button
                     type="button"
                     onClick={() => setIsCreating(false)}
-                    className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-[#8B95A8] transition-colors hover:bg-white/5"
+                    className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-white/5"
                   >
                     Cancel
                   </button>
@@ -243,7 +213,7 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
               <button
                 type="button"
                 onClick={() => setIsCreating(true)}
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium text-[#4F46E5] transition-colors hover:bg-white/5"
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium text-primary transition-colors hover:bg-white/5"
               >
                 <Plus className="h-4 w-4" />
                 New Workspace

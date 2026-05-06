@@ -8,11 +8,11 @@ export const Route = createFileRoute('/visualization-data')({
 
 function VisualizationDataPage() {
   return (
-    <div className="h-full overflow-auto p-8 text-[#111827]">
+    <div className="h-full overflow-auto p-8 text-foreground">
       <header className="mb-8 flex items-start justify-between gap-6">
         <div>
-          <h1 className="font-[family-name:var(--font-heading)] text-2xl font-semibold tracking-tight text-[#111827]">AI-Curated Insight Board</h1>
-          <p className="mt-1 text-sm text-[#6B7280]">Synthesized intelligence from connected CSV and PDF data sources.</p>
+          <h1 className="font-heading text-2xl font-semibold tracking-tight text-foreground">AI-Curated Insight Board</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Synthesized intelligence from connected CSV and PDF data sources.</p>
         </div>
         <div className="flex items-center gap-3">
           <FilterButton label="Team: Executive" />
@@ -48,11 +48,11 @@ function VisualizationDataPage() {
         />
       </section>
 
-      <section className="mb-8 rounded-2xl border border-[#E8EAEF] bg-white p-6 shadow-sm">
+      <section className="mb-8 rounded-2xl border border-border bg-background p-6 shadow-sm">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <h2 className="font-[family-name:var(--font-heading)] text-lg font-semibold text-[#111827]">Revenue Growth Trajectory</h2>
-            <p className="mt-1 text-sm text-[#6B7280]">Monthly actuals vs projected baseline</p>
+            <h2 className="font-heading text-lg font-semibold text-foreground">Revenue Growth Trajectory</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Monthly actuals vs projected baseline</p>
           </div>
           <div className="flex items-center gap-2">
             <IconButton label="Download">
@@ -66,54 +66,54 @@ function VisualizationDataPage() {
 
         <MockChart />
 
-        <div className="mt-6 flex items-center justify-between rounded-xl border border-[#DAD7FF] bg-[#EEF2FF] p-4">
+        <div className="mt-6 flex items-center justify-between rounded-xl border border-accent bg-accent p-4">
           <div className="flex items-start gap-3">
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white text-[#4F46E5]">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-background text-primary">
               <Lightbulb className="h-4 w-4" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-[#111827]">Key Insight</p>
-              <p className="mt-1 text-sm leading-6 text-[#6B7280]">
+              <p className="text-sm font-semibold text-foreground">Key Insight</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
                 Revenue growth accelerated in Q3, driven by enterprise segment expansion, but onboarding complexity remains the main retention risk.
               </p>
             </div>
           </div>
-          <button type="button" className="ml-6 inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-[#4F46E5] hover:text-[#3525cd]">
+          <button type="button" className="ml-6 inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-primary hover:text-primary-hover">
             Ask in Chat <ArrowRight className="h-4 w-4" />
           </button>
         </div>
       </section>
 
-      <section className="rounded-2xl border border-[#E8EAEF] border-l-[3px] border-l-[#4F46E5] bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-border border-l-[3px] border-l-primary bg-background p-6 shadow-sm">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-lg bg-[#EEF2FF] text-[#4F46E5]">
+            <div className="grid h-10 w-10 place-items-center rounded-lg bg-accent text-primary">
               <FileText className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="font-[family-name:var(--font-heading)] text-lg font-semibold text-[#111827]">Strategic Analysis Summary</h2>
-              <p className="mt-1 text-sm text-[#6B7280]">PDF Insight Board</p>
+              <h2 className="font-heading text-lg font-semibold text-foreground">Strategic Analysis Summary</h2>
+              <p className="mt-1 text-sm text-muted-foreground">PDF Insight Board</p>
             </div>
           </div>
-          <span className="rounded-full bg-[#F3F4F6] px-3 py-1 font-[family-name:var(--font-mono)] text-[11px] font-medium uppercase tracking-wide text-[#6B7280]">
+          <span className="rounded-full bg-muted px-3 py-1 font-mono text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             Source: Strategic_Analysis.pdf
           </span>
         </div>
 
         <div className="grid grid-cols-[1.2fr_1fr] gap-6">
           <div>
-            <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-[#6B7280]">Key Findings</p>
-            <ul className="space-y-3 text-sm leading-6 text-[#111827]">
+            <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Key Findings</p>
+            <ul className="space-y-3 text-sm leading-6 text-foreground">
               <li className="flex gap-3">
-                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#4F46E5]" />
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
                 Enterprise demand is growing fastest where onboarding support is bundled with rollout planning.
               </li>
               <li className="flex gap-3">
-                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#4F46E5]" />
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
                 Renewal risk clusters around legacy workflows affected by the new interface.
               </li>
               <li className="flex gap-3">
-                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#4F46E5]" />
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
                 Decision quality improves when product, revenue, and support Sources are reviewed together.
               </li>
             </ul>
@@ -137,10 +137,10 @@ function FilterButton({ label }: { label: string }) {
   return (
     <button
       type="button"
-      className="inline-flex items-center gap-2 rounded-lg border border-[#E8EAEF] bg-white px-3 py-2 text-sm font-medium text-[#111827] shadow-sm hover:bg-[#F9FAFB]"
+      className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-surface-subtle"
     >
       {label}
-      <ChevronDown className="h-4 w-4 text-[#9CA3AF]" />
+      <ChevronDown className="h-4 w-4 text-text-hint" />
     </button>
   )
 }
@@ -161,21 +161,21 @@ function KpiCard({
   source: string
 }) {
   const TrendIcon = trend === 'up' ? TrendingUp : TrendingDown
-  const trendClass = trend === 'up' ? 'text-[#16A34A]' : 'text-[#DC2626]'
+  const trendClass = trend === 'up' ? 'text-status-ready-foreground' : 'text-status-failed-foreground'
   return (
-    <article className="rounded-2xl border border-[#E8EAEF] bg-white p-5 shadow-sm">
-      <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-[#6B7280]">{label}</p>
+    <article className="rounded-2xl border border-border bg-background p-5 shadow-sm">
+      <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
       <div className="mb-4 flex items-end gap-3">
-        <p className="font-[family-name:var(--font-heading)] text-3xl font-semibold tracking-tight text-[#111827]">{value}</p>
+        <p className="font-heading text-3xl font-semibold tracking-tight text-foreground">{value}</p>
         <span className={`mb-1 inline-flex items-center gap-1 text-sm font-semibold ${trendClass}`}>
           <TrendIcon className="h-4 w-4" />
           {delta}
         </span>
       </div>
-      <p className="min-h-[48px] text-sm leading-6 text-[#6B7280]">{description}</p>
+      <p className="min-h-[48px] text-sm leading-6 text-muted-foreground">{description}</p>
       <div className="mt-5 flex items-center justify-between text-xs">
-        <span className="font-[family-name:var(--font-mono)] text-[#9CA3AF]">{source}</span>
-        <button type="button" className="font-semibold text-[#4F46E5] hover:text-[#3525cd]">
+        <span className="font-mono text-text-hint">{source}</span>
+        <button type="button" className="font-semibold text-primary hover:text-primary-hover">
           Ask Chat
         </button>
       </div>
@@ -199,20 +199,17 @@ function MockChart() {
     { label: 'M12', height: 98 },
   ]
   return (
-    <div className="relative h-72 overflow-hidden rounded-xl border border-[#E8EAEF] bg-[linear-gradient(180deg,#FFFFFF_0%,#F9FAFB_100%)] p-6">
+    <div className="relative h-72 overflow-hidden rounded-xl border border-border bg-surface-subtle p-6">
       <div className="absolute inset-x-6 top-6 bottom-12 flex flex-col justify-between">
         {['top', 'upper', 'middle', 'lower'].map((line) => (
-          <div key={line} className="border-t border-dashed border-[#E8EAEF]" />
+          <div key={line} className="border-t border-dashed border-border" />
         ))}
       </div>
       <div className="relative z-10 flex h-full items-end gap-4 pb-8">
         {bars.map((bar) => (
           <div key={bar.label} className="flex flex-1 flex-col items-center gap-2">
-            <div
-              className="w-full max-w-10 rounded-t-lg bg-gradient-to-t from-[#4F46E5] to-[#C3C0FF] shadow-sm"
-              style={{ height: `${bar.height}%` }}
-            />
-            <span className="font-[family-name:var(--font-mono)] text-[10px] text-[#9CA3AF]">{bar.label}</span>
+            <div className="w-full max-w-10 rounded-t-lg bg-gradient-to-t from-primary to-highlight shadow-sm" style={{ height: `${bar.height}%` }} />
+            <span className="font-mono text-[10px] text-text-hint">{bar.label}</span>
           </div>
         ))}
       </div>
@@ -225,7 +222,7 @@ function MockChart() {
         <path
           d="M0 70 C10 64 18 66 27 58 C38 48 45 52 55 42 C66 30 75 37 84 26 C91 18 95 20 100 12"
           fill="none"
-          stroke="#111827"
+          stroke="foreground"
           strokeDasharray="4 4"
           strokeWidth="1.5"
         />
@@ -239,7 +236,7 @@ function IconButton({ label, children }: { label: string; children: ReactNode })
     <button
       type="button"
       aria-label={label}
-      className="grid h-9 w-9 place-items-center rounded-lg border border-[#E8EAEF] bg-white text-[#6B7280] hover:bg-[#F9FAFB] hover:text-[#4F46E5]"
+      className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-background text-muted-foreground hover:bg-surface-subtle hover:text-primary"
     >
       {children}
     </button>
@@ -247,11 +244,11 @@ function IconButton({ label, children }: { label: string; children: ReactNode })
 }
 
 function InsightBox({ tone, title, children }: { tone: 'risk' | 'opportunity'; title: string; children: ReactNode }) {
-  const styles = tone === 'risk' ? 'bg-[#FEE2E2] text-[#DC2626]' : 'bg-[#DCFCE7] text-[#16A34A]'
+  const styles = tone === 'risk' ? 'bg-status-failed text-status-failed-foreground' : 'bg-status-ready text-status-ready-foreground'
   return (
     <div className={`rounded-xl p-4 ${styles}`}>
       <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em]">{title}</p>
-      <p className="text-sm leading-6 text-[#111827]">{children}</p>
+      <p className="text-sm leading-6 text-foreground">{children}</p>
     </div>
   )
 }

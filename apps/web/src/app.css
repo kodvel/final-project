@@ -40,9 +40,12 @@
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
+  --color-on-secondary: var(--on-secondary);
+  --color-border-subtle: var(--border-subtle);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
@@ -68,6 +71,21 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
+  --color-status-ready: var(--status-ready-bg);
+  --color-status-ready-foreground: var(--status-ready-fg);
+  --color-status-processing: var(--status-processing-bg);
+  --color-status-processing-foreground: var(--status-processing-fg);
+  --color-status-info: var(--status-info-bg);
+  --color-status-info-foreground: var(--status-info-fg);
+  --color-status-failed: var(--status-failed-bg);
+  --color-status-failed-foreground: var(--status-failed-fg);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-text-hint: var(--text-hint);
+  --color-highlight: var(--highlight);
+  --color-highlight-soft: var(--highlight-soft);
+  --color-user-bubble: var(--user-bubble);
+  --color-chip-gray: var(--chip-gray);
+
   --font-heading: "DM Sans", system-ui, sans-serif;
   --font-body: "Inter", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
@@ -84,9 +102,12 @@
   --popover: #ffffff;
   --popover-foreground: #111827;
   --primary: #4F46E5;
+  --primary-hover: #3525cd;
   --primary-foreground: #ffffff;
   --secondary: #f4f2fa;
   --secondary-foreground: #151826;
+  --on-secondary: #626A7C;
+  --border-subtle: #E5E2F0;
   --muted: #f4f2fa;
   --muted-foreground: #6B7280;
   --accent: #EEF2FF;
@@ -111,4 +132,20 @@
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: transparent;
   --sidebar-ring: #4F46E5;
+
+  /* ─── Status badge tokens ─── */
+  --status-ready-bg: #DCFCE7;
+  --status-ready-fg: #16A34A;
+  --status-processing-bg: #FEF3C7;
+  --status-processing-fg: #D97706;
+  --status-info-bg: #DBEAFE;
+  --status-info-fg: #2563EB;
+  --status-failed-bg: #FEE2E2;
+  --status-failed-fg: #DC2626;
+  --surface-subtle: #F9FAFB;
+  --text-hint: #9CA3AF;
+  --highlight: #C3C0FF;
+  --highlight-soft: #DAD7FF;
+  --user-bubble: #E8E8F8;
+  --chip-gray: #F3F4F6;
 }

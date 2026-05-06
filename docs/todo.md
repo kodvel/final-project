@@ -755,7 +755,7 @@ User opens **Chat**, sees a GPT-like interface, sends a message, receives a basi
 - Send message to backend.
 - Render user and assistant messages.
 - Render command result message type if available.
-- Current implementation: Chat is design-faithful with local mock messages and local submit behavior. It does not call the backend or persist messages yet.
+- Current implementation: Chat is design-faithful and wired to backend Chat Sessions/messages with a Task 5 dummy assistant response. Real source-grounded AI responses, citations, slash commands, Decision Brief generation, and traces are still later tasks.
 
 ### Tests
 
@@ -766,14 +766,14 @@ User opens **Chat**, sees a GPT-like interface, sends a message, receives a basi
 
 ### Acceptance criteria
 
-- [ ] User can open Chat page.
-- [ ] User can send message.
+- [x] User can open Chat page.
+- [x] User can send message.
 - [x] User can open the design-aligned Chat page with local mock messages.
 - [x] User can submit a local mock message and receive a mock assistant response.
-- [ ] Message is persisted.
-- [ ] Assistant response is persisted.
-- [ ] Chat history reloads correctly.
-- [ ] No AI source-grounding required yet.
+- [x] Message is persisted.
+- [x] Assistant response is persisted.
+- [x] Chat history reloads correctly.
+- [x] No AI source-grounding required yet.
 
 ---
 
