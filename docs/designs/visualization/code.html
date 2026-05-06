@@ -1,453 +1,424 @@
-<!DOCTYPE html>
-
-<html class="light" lang="en"><head>
-<meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>Visualization Data - Company Intelligence</title>
+<!DOCTYPE html><html class="dark" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Visualization Data - Strategic Intelligence Copilot</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Plus+Jakarta+Sans:wght@600;700&amp;family=JetBrains+Mono:wght@400&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<style>
+        body { background-color: #12151C; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .sidebar { transition: width 0.3s ease; }
+        .main-content { transition: margin-left 0.3s ease; }
+        .is-collapsed .sidebar { width: 56px !important; }
+        .is-collapsed .main-content { margin-left: 56px !important; }
+        .is-collapsed .sidebar-text { display: none !important; }
+        .is-collapsed .sidebar-header { padding-left: 12px !important; padding-right: 12px !important; justify-content: center !important; }
+        .is-collapsed .nav-item-link { padding-left: 0 !important; justify-content: center !important; }
+        .is-collapsed .workspace-switcher { padding-left: 0 !important; justify-content: center !important; }
+        .is-collapsed .workspace-switcher-content { display: none !important; }
+    </style>
 <script id="tailwind-config">
         tailwind.config = {
-          darkMode: "class",
-          theme: {
-            extend: {
-              "colors": {
-                      "tertiary-container": "#a44100",
-                      "surface-tint": "#4d44e3",
-                      "surface-variant": "#e4e1ee",
-                      "status-positive": "#0F9F8F",
-                      "tertiary-fixed": "#ffdbcc",
-                      "raised-surface": "#FBFAFF",
-                      "primary": "#3525cd",
-                      "on-secondary-container": "#535c7f",
-                      "on-primary-container": "#dad7ff",
-                      "on-tertiary-container": "#ffd2be",
-                      "secondary-container": "#cdd5ff",
-                      "secondary": "#545d80",
-                      "tertiary": "#7e3000",
-                      "main-surface": "#FFFFFF",
-                      "inverse-surface": "#302f39",
-                      "app-bg": "#F8F7FC",
-                      "accent-indigo": "#4F46E5",
-                      "text-primary": "#151826",
-                      "secondary-fixed-dim": "#bcc5ee",
-                      "on-secondary-fixed": "#101939",
-                      "surface-container": "#f0ecf9",
-                      "outline-variant": "#c7c4d8",
-                      "inverse-on-surface": "#f3effc",
-                      "sidebar-surface": "#F4F2FA",
-                      "on-surface": "#1b1b24",
-                      "on-tertiary": "#ffffff",
-                      "accent-navy": "#111A3A",
-                      "status-warning": "#D97706",
-                      "on-surface-variant": "#464555",
-                      "on-secondary": "#ffffff",
-                      "surface-dim": "#dcd8e5",
-                      "primary-container": "#4f46e5",
-                      "on-primary": "#ffffff",
-                      "status-processing": "#0284C7",
-                      "on-primary-fixed-variant": "#3323cc",
-                      "error": "#ba1a1a",
-                      "surface": "#fcf8ff",
-                      "background": "#fcf8ff",
-                      "on-tertiary-fixed": "#351000",
-                      "on-tertiary-fixed-variant": "#7b2f00",
-                      "surface-bright": "#fcf8ff",
-                      "surface-container-lowest": "#ffffff",
-                      "outline": "#777587",
-                      "text-secondary": "#626A7C",
-                      "primary-fixed-dim": "#c3c0ff",
-                      "on-background": "#1b1b24",
-                      "on-primary-fixed": "#0f0069",
-                      "on-error": "#ffffff",
-                      "primary-fixed": "#e2dfff",
-                      "surface-container-highest": "#e4e1ee",
-                      "surface-container-low": "#f5f2ff",
-                      "status-critical": "#E11D48",
-                      "on-error-container": "#93000a",
-                      "secondary-fixed": "#dce1ff",
-                      "tertiary-fixed-dim": "#ffb695",
-                      "surface-container-high": "#eae6f4",
-                      "on-secondary-fixed-variant": "#3d4567",
-                      "inverse-primary": "#c3c0ff",
-                      "border-subtle": "#E5E2F0",
-                      "text-muted": "#8A91A3",
-                      "error-container": "#ffdad6"
-              },
-              "borderRadius": {
-                      "DEFAULT": "0.25rem",
-                      "lg": "0.5rem",
-                      "xl": "0.75rem",
-                      "full": "9999px"
-              },
-              "spacing": {
-                      "card-padding": "24px",
-                      "page-padding": "32px",
-                      "base": "8px",
-                      "table-cell-y": "14px",
-                      "gutter": "24px"
-              },
-              "fontFamily": {
-                      "metadata": ["Inter"],
-                      "section-title": ["Inter"],
-                      "body": ["Inter"],
-                      "app-title": ["Inter"],
-                      "badge": ["Inter"],
-                      "card-title": ["Inter"]
-              },
-              "fontSize": {
-                      "metadata": ["13px", {"lineHeight": "1.4", "fontWeight": "500"}],
-                      "section-title": ["20px", {"lineHeight": "1.4", "fontWeight": "600"}],
-                      "body": ["14px", {"lineHeight": "1.6", "fontWeight": "400"}],
-                      "app-title": ["32px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "600"}],
-                      "badge": ["12px", {"lineHeight": "1", "letterSpacing": "0.01em", "fontWeight": "500"}],
-                      "card-title": ["16px", {"lineHeight": "1.4", "fontWeight": "600"}]
-              }
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-secondary-fixed": "#191c23",
+                        "on-error-container": "#ffdad6",
+                        "surface-tint": "#c3c0ff",
+                        "nav-inactive": "#8B95A8",
+                        "surface-container": "#1f1f28",
+                        "on-tertiary-fixed": "#351000",
+                        "error": "#ffb4ab",
+                        "inverse-primary": "#4d44e3",
+                        "outline-variant": "#464555",
+                        "surface-container-high": "#2a2933",
+                        "primary-light": "#EEF2FF",
+                        "success": "#16A34A",
+                        "warning-light": "#FEF3C7",
+                        "on-error": "#690005",
+                        "text-main": "#111827",
+                        "danger": "#DC2626",
+                        "success-light": "#DCFCE7",
+                        "primary-container": "#4f46e5",
+                        "surface-container-low": "#1b1b24",
+                        "error-container": "#93000a",
+                        "on-tertiary-fixed-variant": "#7b2f00",
+                        "on-primary-container": "#dad7ff",
+                        "secondary-fixed": "#e0e2ec",
+                        "secondary": "#c4c6d0",
+                        "surface-canvas": "#FFFFFF",
+                        "secondary-fixed-dim": "#c4c6d0",
+                        "on-tertiary": "#571f00",
+                        "on-background": "#e4e1ee",
+                        "inverse-surface": "#e4e1ee",
+                        "primary-fixed": "#e2dfff",
+                        "text-hint": "#9CA3AF",
+                        "primary-fixed-dim": "#c3c0ff",
+                        "info": "#2563EB",
+                        "tertiary-fixed": "#ffdbcc",
+                        "primary": "#c3c0ff",
+                        "on-secondary": "#2d3038",
+                        "surface-container-highest": "#35343e",
+                        "tertiary-fixed-dim": "#ffb695",
+                        "surface-dim": "#13121b",
+                        "on-surface": "#e4e1ee",
+                        "info-light": "#DBEAFE",
+                        "inverse-on-surface": "#302f39",
+                        "nav-active": "#FFFFFF",
+                        "text-muted": "#6B7280",
+                        "secondary-container": "#464951",
+                        "border-subtle": "#E8EAEF",
+                        "surface-container-lowest": "#0e0d16",
+                        "on-primary-fixed": "#0f0069",
+                        "on-tertiary-container": "#ffd2be",
+                        "danger-light": "#FEE2E2",
+                        "on-secondary-fixed-variant": "#44474f",
+                        "on-primary-fixed-variant": "#3323cc",
+                        "bg-root": "#12151C",
+                        "surface-variant": "#35343e",
+                        "outline": "#918fa1",
+                        "surface": "#13121b",
+                        "on-primary": "#1d00a5",
+                        "tertiary-container": "#a44100",
+                        "on-surface-variant": "#c7c4d8",
+                        "background": "#13121b",
+                        "surface-bright": "#393842",
+                        "tertiary": "#ffb695",
+                        "on-secondary-container": "#b6b8c2",
+                        "warning": "#D97706"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "sidebar-panel": "300px",
+                        "nav-width": "260px",
+                        "widget-padding": "16px",
+                        "canvas-margin": "24px",
+                        "internal-gap": "24px"
+                    },
+                    "fontFamily": {
+                        "mono": ["JetBrains Mono"],
+                        "body-main": ["Inter"],
+                        "session-header": ["Inter"],
+                        "nav-item": ["Inter"],
+                        "heading-lg": ["Plus Jakarta Sans"],
+                        "ui-label": ["Inter"],
+                        "display": ["Plus Jakarta Sans"]
+                    },
+                    "fontSize": {
+                        "mono": ["12px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "body-main": ["14px", { "lineHeight": "1.6", "fontWeight": "400" }],
+                        "session-header": ["10px", { "lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "700" }],
+                        "nav-item": ["14px", { "lineHeight": "1.4", "fontWeight": "500" }],
+                        "heading-lg": ["20px", { "lineHeight": "1.4", "fontWeight": "600" }],
+                        "ui-label": ["13px", { "lineHeight": "1", "fontWeight": "500" }],
+                        "display": ["24px", { "lineHeight": "1.2", "fontWeight": "700" }]
+                    }
+                }
             }
-          }
         }
     </script>
-<style type="text/tailwindcss">
-        @layer utilities {
-            .no-scrollbar::-webkit-scrollbar {
-                display: none;
-            }
-            .no-scrollbar {
-                -ms-overflow-style: none;
-                scrollbar-width: none;
-            }
-        }
-    </style>
 </head>
-<body class="bg-app-bg text-text-primary font-body antialiased flex h-screen overflow-hidden">
+<body class="bg-bg-root text-on-surface h-screen flex overflow-hidden antialiased" id="app-body">
 <!-- SideNavBar -->
-<nav class="w-64 h-screen border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex flex-col h-full sticky top-0 left-0 flex-shrink-0 z-20">
-<div class="p-4 flex items-center gap-3 border-b border-transparent">
-<div class="w-8 h-8 rounded bg-primary flex items-center justify-center text-on-primary">
-<span class="material-symbols-outlined text-sm">view_in_ar</span>
-</div>
+<nav class="sidebar fixed left-0 top-0 h-full w-[260px] bg-bg-root flex flex-col justify-between py-[48px] z-50" id="sidebar">
+<button class="absolute right-2 top-5 w-6 h-6 bg-surface-container text-on-surface rounded-full flex items-center justify-center border border-border-subtle cursor-pointer hover:bg-surface-variant transition-colors z-50" onclick="toggleSidebar()">
+<span class="material-symbols-outlined text-[16px]" id="toggle-icon">chevron_left</span>
+</button>
 <div>
-<h1 class="text-lg font-bold tracking-tight text-slate-900 dark:text-white leading-tight">Intelligence</h1>
-<p class="font-metadata text-metadata text-text-muted">Strategic Workspace</p>
+<div class="sidebar-header px-6 mb-8 flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-on-primary text-sm" style="font-variation-settings: &quot;FILL&quot; 1;">smart_toy</span>
+</div>
+<div class="sidebar-text">
+<h1 class="font-display text-display font-bold text-on-surface leading-none text-lg">Intelligence Copilot</h1>
+<span class="text-nav-inactive text-xs block mt-1">Strategic Intelligence</span>
 </div>
 </div>
-<div class="flex-1 overflow-y-auto py-4 flex flex-col gap-1">
-<a class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 mx-2 px-3 py-2 flex items-center gap-3 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 scale-100 active:scale-95 transition-transform" href="#">
-<span class="material-symbols-outlined">chat</span>
-<span class="font-metadata text-metadata">Chat</span>
+<ul class="flex flex-col gap-2">
+<li class="">
+<a class="nav-item-link flex items-center gap-3 py-2 text-nav-inactive font-medium pl-4 hover:text-nav-active transition-all duration-200 scale-95 active:scale-90 border-l-2 border-transparent" href="#">
+<span class="material-symbols-outlined">chat_bubble</span>
+<span class="font-nav-item text-nav-item sidebar-text">Chat</span>
 </a>
-<a class="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-semibold rounded-lg mx-2 px-3 py-2 flex items-center gap-3 transition-all duration-200 scale-100 active:scale-95 transition-transform" href="#">
-<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">monitoring</span>
-<span class="font-metadata text-metadata">Visualization Data</span>
+</li>
+<li class="">
+<a aria-current="page" class="nav-item-link flex items-center gap-3 py-2 text-nav-active font-bold border-l-2 border-primary pl-4 hover:text-nav-active transition-all duration-200 scale-95 active:scale-90" href="#">
+<span class="material-symbols-outlined">monitoring</span>
+<span class="font-nav-item text-nav-item sidebar-text">Visualization Data</span>
 </a>
-<a class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 mx-2 px-3 py-2 flex items-center gap-3 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 scale-100 active:scale-95 transition-transform" href="#">
+</li>
+<li class="">
+<a class="nav-item-link flex items-center gap-3 py-2 text-nav-inactive font-medium pl-4 hover:text-nav-active transition-all duration-200 scale-95 active:scale-90 border-l-2 border-transparent" href="#">
 <span class="material-symbols-outlined">database</span>
-<span class="font-metadata text-metadata">Source Data</span>
+<span class="font-nav-item text-nav-item sidebar-text">Source Data</span>
 </a>
-</div>
-<div class="p-4 flex flex-col gap-1 border-t border-slate-200 dark:border-slate-800">
-<a class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 mx-2 px-3 py-2 flex items-center gap-3 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 scale-100 active:scale-95 transition-transform" href="#">
+</li>
+<li class="">
+<a class="nav-item-link flex items-center gap-3 py-2 text-nav-inactive font-medium pl-4 hover:text-nav-active transition-all duration-200 scale-95 active:scale-90 border-l-2 border-transparent mt-4" href="#">
 <span class="material-symbols-outlined">settings</span>
-<span class="font-metadata text-metadata">Settings</span>
+<span class="font-nav-item text-nav-item sidebar-text">Settings</span>
 </a>
-<a class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 mx-2 px-3 py-2 flex items-center gap-3 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 scale-100 active:scale-95 transition-transform" href="#">
-<span class="material-symbols-outlined">contact_support</span>
-<span class="font-metadata text-metadata">Support</span>
+</li>
+<li class="">
+<a class="nav-item-link flex items-center gap-3 py-2 text-nav-inactive font-medium pl-4 hover:text-nav-active transition-all duration-200 scale-95 active:scale-90 border-l-2 border-transparent" href="#">
+<span class="material-symbols-outlined">help</span>
+<span class="font-nav-item text-nav-item sidebar-text">Support</span>
 </a>
+</li>
+</ul>
+</div>
+<div class="px-4 py-2 mt-auto">
+<div class="flex flex-col gap-1 cursor-pointer hover:opacity-80 transition-opacity">
+<div class="workspace-switcher flex items-center gap-3 text-nav-active pl-2">
+<span class="material-symbols-outlined text-[20px]">grid_view</span>
+<span class="font-nav-item text-nav-item font-bold sidebar-text">Demo</span>
+</div>
+<div class="workspace-switcher-content flex items-center justify-between text-nav-inactive ml-[32px]">
+<span class="text-[12px] font-medium">Switch workspace</span>
+<span class="material-symbols-outlined text-[16px]">expand_more</span>
+</div>
+</div>
 </div>
 </nav>
-<!-- Main Workspace Area -->
-<div class="flex-1 flex flex-col min-w-0 overflow-hidden bg-app-bg">
-<!-- TopAppBar -->
-<header class="w-full h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between px-6 sticky top-0 z-40 flex-shrink-0">
+<!-- Main Content Canvas -->
+<main class="main-content ml-[260px] flex-1 h-screen flex flex-col pt-[48px] pr-[48px] pb-[48px] relative z-10" id="main-content">
+<!-- Canvas Shadow Card -->
+<div class="bg-surface-canvas w-full h-full rounded-[24px] shadow-[0_8px_40px_rgba(0,0,0,0.25)] flex flex-col overflow-hidden">
+<!-- TopAppBar Context -->
+<header class="flex justify-between items-center h-16 px-8 bg-transparent w-full border-b border-border-subtle shrink-0">
+<div class="font-heading-lg text-heading-lg text-text-main font-bold">
+                Strategic Intelligence Copilot
+            </div>
 <div class="flex items-center gap-4">
-<h2 class="text-xl font-bold tracking-tight text-slate-900 dark:text-white">Company Intelligence</h2>
-</div>
-<div class="flex items-center gap-4">
-<div class="relative w-64">
-<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">search</span>
-<input class="w-full pl-9 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 font-body text-slate-900 placeholder-slate-400 transition-opacity duration-200" placeholder="Search insights..." type="text"/>
-</div>
-<div class="flex items-center gap-2 border-l border-slate-200 pl-4 ml-2">
-<button class="p-1.5 text-slate-500 dark:text-slate-400 hover:text-indigo-500 transition-colors rounded-md hover:bg-slate-50">
-<span class="material-symbols-outlined text-xl">notifications</span>
+<button class="text-text-muted hover:text-primary transition-colors cursor-pointer opacity-80 hover:opacity-100">
+<span class="material-symbols-outlined">notifications</span>
 </button>
-<button class="p-1.5 text-slate-500 dark:text-slate-400 hover:text-indigo-500 transition-colors rounded-md hover:bg-slate-50">
-<span class="material-symbols-outlined text-xl">help</span>
+<button class="text-text-muted hover:text-primary transition-colors cursor-pointer opacity-80 hover:opacity-100">
+<span class="material-symbols-outlined">history</span>
 </button>
-<div class="w-8 h-8 rounded-full bg-indigo-100 border border-indigo-200 overflow-hidden ml-2 cursor-pointer">
-<img alt="User Avatar" class="w-full h-full object-cover" data-alt="A professional headshot of a corporate executive. Lighting is soft and natural, emphasizing a trustworthy and competent demeanor, suitable for a premium business application. The color palette is composed of natural skin tones and neutral office background colors." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAxyB3lntVp5d4JwdUWdWdjD-t7Qvon0JEe5PlwcMvuFDfyFBbQ4hp8kRUeCiXpftbrWV2lqFrJInxGNks0BOgbHPnRq4z7-Mn-YQ0Ky13V1NC3JUi9bN7PlvyP4VD_Dt4ft_9Zgzj8kRanpbTlRRJH6eWH_l48MSuqJxMnIQFiGNw1MCwdkOffa8hD1yJrkOXIiAxeZD8qCH-CSseZ3p_4A8EjtPjp0-iswKJwz5iiJ1g9rlFYDo50_a-6ikjhyJMKSk14wFYKhebo"/>
-</div>
+<div class="w-8 h-8 rounded-full bg-secondary-fixed overflow-hidden ml-2 border border-border-subtle">
+<img alt="User Profile Avatar" class="w-full h-full object-cover" data-alt="A professional headshot of a person, used as a user profile avatar. Clean, modern, high contrast lighting. Corporate tech aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB-iG_jjSzxFGx8Ds1PFr3kMguyQtoYaaw9XTkBZAmkNyZNZ-p9osPj8pBopzhU2OTJbFYZtH8CrmkAVO-yCmh5o1DdGOi1S_CUWN8Xx8rp70gQi5KEqCuFqNMFg-ieuYJ1FChtOhBsjtHFlXSeRGtp6_6wasQz2KeR-BsgFHuyoZPz0Rgvbx_oqrLt6ffA3gd63tQUlL4mcikb0l1QzBnbHXN6FH6yzEKQZs6nuM_nccTuCD1WYnmdzV35MKmyZP5NHnINb-VToEU">
 </div>
 </div>
 </header>
-<!-- Canvas -->
-<main class="flex-1 overflow-y-auto px-page-padding py-8 no-scrollbar bg-app-bg">
-<div class="max-w-6xl mx-auto flex flex-col gap-8">
+<!-- Scrollable Content Area inside Canvas -->
+<div class="flex-1 overflow-y-auto p-8">
 <!-- Page Header & Filters -->
-<div class="flex flex-col gap-4">
-<div class="flex justify-between items-end">
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
 <div>
-<h2 class="font-app-title text-app-title text-text-primary">AI-Curated Insight Board</h2>
-<p class="font-body text-body text-text-secondary mt-1">Synthesized intelligence from connected CSV and PDF data sources.</p>
+<h1 class="font-display text-display font-bold text-text-main mb-2">AI-Curated Insight Board</h1>
+<p class="text-text-muted font-body-main text-body-main">Synthesized intelligence from connected CSV and PDF data sources.</p>
 </div>
-<div class="flex items-center gap-3">
-<div class="flex items-center gap-2 bg-main-surface border border-border-subtle rounded-md px-3 py-1.5 shadow-sm">
-<span class="font-metadata text-metadata text-text-secondary">Team:</span>
-<span class="font-metadata text-metadata text-text-primary">Executive</span>
-<span class="material-symbols-outlined text-sm text-text-muted ml-1 cursor-pointer">arrow_drop_down</span>
-</div>
-<div class="flex items-center gap-2 bg-main-surface border border-border-subtle rounded-md px-3 py-1.5 shadow-sm">
-<span class="font-metadata text-metadata text-text-secondary">Category:</span>
-<span class="font-metadata text-metadata text-text-primary">Q3 Performance</span>
-<span class="material-symbols-outlined text-sm text-text-muted ml-1 cursor-pointer">arrow_drop_down</span>
-</div>
-<div class="flex items-center gap-2 bg-main-surface border border-border-subtle rounded-md px-3 py-1.5 shadow-sm">
-<span class="font-metadata text-metadata text-text-secondary">Period:</span>
-<span class="font-metadata text-metadata text-text-primary">YTD 2023</span>
-<span class="material-symbols-outlined text-sm text-text-muted ml-1 cursor-pointer">arrow_drop_down</span>
-</div>
+<div class="flex gap-3">
+<select class="bg-surface-canvas border border-border-subtle text-text-main text-sm rounded-lg focus:ring-primary-container focus:border-primary-container block p-2.5 shadow-sm font-ui-label text-ui-label cursor-pointer">
+<option>Team: Executive</option>
+<option>Team: Finance</option>
+<option>Team: Operations</option>
+</select>
+<select class="bg-surface-canvas border border-border-subtle text-text-main text-sm rounded-lg focus:ring-primary-container focus:border-primary-container block p-2.5 shadow-sm font-ui-label text-ui-label cursor-pointer">
+<option>Category: All</option>
+<option>Category: Revenue</option>
+</select>
+<select class="bg-surface-canvas border border-border-subtle text-text-main text-sm rounded-lg focus:ring-primary-container focus:border-primary-container block p-2.5 shadow-sm font-ui-label text-ui-label cursor-pointer">
+<option>Period: YTD 2023</option>
+<option>Period: Q3 2023</option>
+</select>
 </div>
 </div>
+<!-- KPI Row -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+<!-- KPI Card 1 -->
+<div class="bg-surface-canvas border border-border-subtle rounded-xl p-5 relative overflow-hidden flex flex-col justify-between">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-success"></div>
+<div class="pl-2">
+<div class="flex justify-between items-start mb-2">
+<span class="font-ui-label text-ui-label text-text-muted uppercase tracking-wider">Total Revenue</span>
+<span class="material-symbols-outlined text-text-muted text-lg">trending_up</span>
 </div>
-<!-- CSV Visual Story Section -->
-<section class="flex flex-col gap-4">
-<div class="flex items-center gap-2 border-b border-border-subtle pb-2">
-<span class="material-symbols-outlined text-accent-indigo">dataset</span>
-<h3 class="font-section-title text-section-title text-text-primary">Quantitative Analysis</h3>
-<span class="font-badge text-badge bg-surface-container-high text-on-surface-variant px-2 py-0.5 rounded ml-2">CSV Sourced</span>
+<div class="flex items-baseline gap-2 mb-1">
+<span class="font-mono text-2xl font-bold text-text-main">$42.8M</span>
+<span class="font-mono text-sm text-success font-medium">+12.4%</span>
 </div>
-<!-- Executive Summary Cards -->
-<div class="grid grid-cols-3 gap-6">
-<div class="bg-main-surface border border-border-subtle rounded-lg p-card-padding shadow-sm flex flex-col gap-2 relative overflow-hidden group hover:border-outline-variant transition-colors">
-<div class="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-transparent to-status-positive/10 rounded-bl-full"></div>
-<div class="flex justify-between items-start">
-<span class="font-metadata text-metadata text-text-secondary uppercase tracking-wider">Total Revenue</span>
-<span class="material-symbols-outlined text-text-muted text-sm cursor-pointer group-hover:text-primary transition-colors">open_in_new</span>
+<p class="font-body-main text-body-main text-text-muted text-sm mb-4">Exceeds Q3 projections driven by Enterprise segment.</p>
 </div>
-<div class="flex items-baseline gap-2">
-<span class="text-3xl font-bold tracking-tight text-text-primary">$42.8M</span>
-<div class="flex items-center text-status-positive font-badge text-badge bg-status-positive/10 px-1.5 py-0.5 rounded">
-<span class="material-symbols-outlined text-[10px] mr-0.5">trending_up</span>
-                                    +12.4%
-                                </div>
+<div class="flex justify-between items-center pl-2 pt-4 border-t border-border-subtle">
+<a class="text-xs text-info hover:underline flex items-center gap-1 font-ui-label" href="#"><span class="material-symbols-outlined text-[14px]">link</span> Q3_Financials.csv</a>
+<button class="text-xs bg-primary-light text-primary-container px-3 py-1.5 rounded-full hover:bg-primary-container hover:text-white transition-colors font-ui-label font-medium flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">chat_bubble</span> Ask Chat
+                        </button>
 </div>
-<p class="font-body text-body text-text-muted text-sm mt-1">Exceeds Q3 target by $2.1M primarily driven by Enterprise segment.</p>
-<div class="mt-4 pt-3 border-t border-border-subtle flex justify-between items-center">
-<div class="flex gap-1.5">
-<span class="font-badge text-badge bg-surface-container text-text-secondary px-2 py-0.5 rounded">Q3_Financials.csv</span>
 </div>
-<button class="font-metadata text-metadata text-primary hover:text-accent-indigo flex items-center gap-1 transition-colors">
-                                    Ask in Chat <span class="material-symbols-outlined text-[12px]">forum</span>
+<!-- KPI Card 2 -->
+<div class="bg-surface-canvas border border-border-subtle rounded-xl p-5 relative overflow-hidden flex flex-col justify-between">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-danger"></div>
+<div class="pl-2">
+<div class="flex justify-between items-start mb-2">
+<span class="font-ui-label text-ui-label text-text-muted uppercase tracking-wider">Operating Margin</span>
+<span class="material-symbols-outlined text-text-muted text-lg">trending_down</span>
+</div>
+<div class="flex items-baseline gap-2 mb-1">
+<span class="font-mono text-2xl font-bold text-text-main">24.2%</span>
+<span class="font-mono text-sm text-danger font-medium">-1.1%</span>
+</div>
+<p class="font-body-main text-body-main text-text-muted text-sm mb-4">Slight contraction due to increased R&amp;D headcount.</p>
+</div>
+<div class="flex justify-between items-center pl-2 pt-4 border-t border-border-subtle">
+<a class="text-xs text-info hover:underline flex items-center gap-1 font-ui-label" href="#"><span class="material-symbols-outlined text-[14px]">link</span> Expense_Report.csv</a>
+<button class="text-xs bg-primary-light text-primary-container px-3 py-1.5 rounded-full hover:bg-primary-container hover:text-white transition-colors font-ui-label font-medium flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">chat_bubble</span> Ask Chat
+                        </button>
+</div>
+</div>
+<!-- KPI Card 3 -->
+<div class="bg-surface-canvas border border-border-subtle rounded-xl p-5 relative overflow-hidden flex flex-col justify-between">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-success"></div>
+<div class="pl-2">
+<div class="flex justify-between items-start mb-2">
+<span class="font-ui-label text-ui-label text-text-muted uppercase tracking-wider">Net Retention</span>
+<span class="material-symbols-outlined text-text-muted text-lg">sync</span>
+</div>
+<div class="flex items-baseline gap-2 mb-1">
+<span class="font-mono text-2xl font-bold text-text-main">118%</span>
+<span class="font-mono text-sm text-success font-medium">+3.0%</span>
+</div>
+<p class="font-body-main text-body-main text-text-muted text-sm mb-4">Strong upsell performance in existing Mid-Market accounts.</p>
+</div>
+<div class="flex justify-between items-center pl-2 pt-4 border-t border-border-subtle">
+<a class="text-xs text-info hover:underline flex items-center gap-1 font-ui-label" href="#"><span class="material-symbols-outlined text-[14px]">link</span> Customer_Success.pdf</a>
+<button class="text-xs bg-primary-light text-primary-container px-3 py-1.5 rounded-full hover:bg-primary-container hover:text-white transition-colors font-ui-label font-medium flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">chat_bubble</span> Ask Chat
+                        </button>
+</div>
+</div>
+</div>
+<!-- Main Bento Grid Area -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+<!-- Chart Section (Spans 2 columns) -->
+<div class="lg:col-span-2 border border-border-subtle rounded-xl bg-surface-canvas flex flex-col relative overflow-hidden">
+<!-- Decorative top accent -->
+<div class="h-1 w-full bg-gradient-to-r from-primary-container to-primary-light absolute top-0 left-0"></div>
+<div class="p-6 border-b border-border-subtle flex justify-between items-center">
+<h2 class="font-heading-lg text-heading-lg text-text-main">Revenue Growth Trajectory</h2>
+<button class="text-text-muted hover:text-text-main">
+<span class="material-symbols-outlined">more_vert</span>
 </button>
 </div>
+<!-- Placeholder for Chart -->
+<div class="p-6 flex-1 min-h-[300px] flex items-center justify-center bg-primary-light/10 relative">
+<!-- Abstract representation of a chart using divs -->
+<div class="w-full h-full flex items-end justify-between gap-2 px-4 pb-8 pt-12 relative border-l border-b border-border-subtle">
+<!-- Y-Axis labels -->
+<div class="absolute left-[-40px] top-0 bottom-0 flex flex-col justify-between font-mono text-xs text-text-muted pb-8 pt-12">
+<span class="">$50M</span>
+<span class="">$25M</span>
+<span class="">$0</span>
 </div>
-<div class="bg-main-surface border border-border-subtle rounded-lg p-card-padding shadow-sm flex flex-col gap-2 relative overflow-hidden group hover:border-outline-variant transition-colors">
-<div class="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-transparent to-status-warning/10 rounded-bl-full"></div>
-<div class="flex justify-between items-start">
-<span class="font-metadata text-metadata text-text-secondary uppercase tracking-wider">Operating Margin</span>
-<span class="material-symbols-outlined text-text-muted text-sm cursor-pointer group-hover:text-primary transition-colors">open_in_new</span>
-</div>
-<div class="flex items-baseline gap-2">
-<span class="text-3xl font-bold tracking-tight text-text-primary">24.2%</span>
-<div class="flex items-center text-status-warning font-badge text-badge bg-status-warning/10 px-1.5 py-0.5 rounded">
-<span class="material-symbols-outlined text-[10px] mr-0.5">trending_down</span>
-                                    -1.1%
-                                </div>
-</div>
-<p class="font-body text-body text-text-muted text-sm mt-1">Slight contraction due to increased R&amp;D headcount expansion.</p>
-<div class="mt-4 pt-3 border-t border-border-subtle flex justify-between items-center">
-<div class="flex gap-1.5">
-<span class="font-badge text-badge bg-surface-container text-text-secondary px-2 py-0.5 rounded">Q3_Financials.csv</span>
-</div>
-<button class="font-metadata text-metadata text-primary hover:text-accent-indigo flex items-center gap-1 transition-colors">
-                                    Ask in Chat <span class="material-symbols-outlined text-[12px]">forum</span>
-</button>
-</div>
-</div>
-<div class="bg-main-surface border border-border-subtle rounded-lg p-card-padding shadow-sm flex flex-col gap-2 relative overflow-hidden group hover:border-outline-variant transition-colors">
-<div class="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-transparent to-status-positive/10 rounded-bl-full"></div>
-<div class="flex justify-between items-start">
-<span class="font-metadata text-metadata text-text-secondary uppercase tracking-wider">Net Retention</span>
-<span class="material-symbols-outlined text-text-muted text-sm cursor-pointer group-hover:text-primary transition-colors">open_in_new</span>
-</div>
-<div class="flex items-baseline gap-2">
-<span class="text-3xl font-bold tracking-tight text-text-primary">118%</span>
-<div class="flex items-center text-status-positive font-badge text-badge bg-status-positive/10 px-1.5 py-0.5 rounded">
-<span class="material-symbols-outlined text-[10px] mr-0.5">trending_up</span>
-                                    +3.0%
-                                </div>
-</div>
-<p class="font-body text-body text-text-muted text-sm mt-1">Strong up-sell motion in mid-market tier driving NRR growth.</p>
-<div class="mt-4 pt-3 border-t border-border-subtle flex justify-between items-center">
-<div class="flex gap-1.5">
-<span class="font-badge text-badge bg-surface-container text-text-secondary px-2 py-0.5 rounded">Cust_Metrics_YTD.csv</span>
-</div>
-<button class="font-metadata text-metadata text-primary hover:text-accent-indigo flex items-center gap-1 transition-colors">
-                                    Ask in Chat <span class="material-symbols-outlined text-[12px]">forum</span>
-</button>
-</div>
-</div>
-</div>
-<!-- Trend Chart Area (Calm UI representation) -->
-<div class="bg-main-surface border border-border-subtle rounded-lg p-card-padding shadow-sm mt-2">
-<div class="flex justify-between items-center mb-6">
-<div>
-<h4 class="font-card-title text-card-title text-text-primary">Revenue Growth Trajectory</h4>
-<p class="font-body text-body text-text-secondary text-sm mt-0.5">Monthly actuals vs projected baseline</p>
-</div>
-<div class="flex gap-2">
-<button class="p-1.5 bg-surface-container rounded hover:bg-surface-variant transition-colors">
-<span class="material-symbols-outlined text-text-secondary text-sm">download</span>
-</button>
-<button class="p-1.5 bg-surface-container rounded hover:bg-surface-variant transition-colors">
-<span class="material-symbols-outlined text-text-secondary text-sm">fullscreen</span>
-</button>
-</div>
-</div>
-<!-- Abstract Line Chart Visualization (CSS based) -->
-<div class="h-64 relative border-l border-b border-border-subtle ml-8 mb-6 pb-2 pl-2 flex items-end justify-between">
-<!-- Y-axis labels -->
-<div class="absolute -left-8 top-0 h-full flex flex-col justify-between text-xs text-text-muted font-metadata">
-<span>$15M</span>
-<span>$10M</span>
-<span>$5M</span>
-<span>$0M</span>
-</div>
-<!-- Grid lines -->
-<div class="absolute left-0 top-0 w-full h-full flex flex-col justify-between pointer-events-none">
-<div class="w-full border-t border-border-subtle/50 border-dashed"></div>
-<div class="w-full border-t border-border-subtle/50 border-dashed"></div>
-<div class="w-full border-t border-border-subtle/50 border-dashed"></div>
-<div class="w-full border-transparent"></div>
-</div>
-<!-- Data Points & Lines -->
-<div class="w-full h-full relative z-10 flex items-end justify-between px-4">
-<div class="w-2 bg-primary/20 h-[30%] rounded-t-sm relative group cursor-pointer hover:bg-primary/40 transition-colors">
-<div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-inverse-surface text-inverse-on-surface text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20">$4.5M</div>
-</div>
-<div class="w-2 bg-primary/20 h-[45%] rounded-t-sm relative group cursor-pointer hover:bg-primary/40 transition-colors">
-<div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-inverse-surface text-inverse-on-surface text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20">$6.8M</div>
-</div>
-<div class="w-2 bg-primary/40 h-[40%] rounded-t-sm relative group cursor-pointer hover:bg-primary/60 transition-colors">
-<div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-inverse-surface text-inverse-on-surface text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20">$6.0M</div>
-</div>
-<div class="w-2 bg-primary/60 h-[65%] rounded-t-sm relative group cursor-pointer hover:bg-primary/80 transition-colors">
-<div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-inverse-surface text-inverse-on-surface text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20">$9.8M</div>
-</div>
-<div class="w-2 bg-primary/80 h-[85%] rounded-t-sm relative group cursor-pointer hover:bg-primary transition-colors">
-<div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-inverse-surface text-inverse-on-surface text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20">$12.7M</div>
-</div>
-<div class="w-2 bg-primary h-[95%] rounded-t-sm relative group cursor-pointer">
-<div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-inverse-surface text-inverse-on-surface text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20">$14.2M</div>
-<div class="absolute -top-2 left-1/2 w-3 h-3 bg-white border-2 border-primary rounded-full -translate-x-1/2 shadow-sm z-10"></div>
-</div>
-<!-- Connecting Line Mock -->
-<svg class="absolute top-0 left-0 w-full h-full pointer-events-none" preserveaspectratio="none">
-<path d="M 20 180 L 170 140 L 320 155 L 470 90 L 620 40 L 770 15" fill="none" stroke="#4f46e5" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" vector-effect="non-scaling-stroke"></path>
+<!-- Bars -->
+<div class="w-full bg-primary-container/20 rounded-t-sm h-[40%] relative group cursor-pointer hover:bg-primary-container/30 transition-colors"><div class="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 font-mono text-xs text-text-main bg-white shadow-sm border border-border-subtle px-2 py-1 rounded transition-opacity pointer-events-none">$18M</div></div>
+<div class="w-full bg-primary-container/40 rounded-t-sm h-[55%] relative group cursor-pointer hover:bg-primary-container/50 transition-colors"><div class="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 font-mono text-xs text-text-main bg-white shadow-sm border border-border-subtle px-2 py-1 rounded transition-opacity pointer-events-none">$24M</div></div>
+<div class="w-full bg-primary-container/60 rounded-t-sm h-[65%] relative group cursor-pointer hover:bg-primary-container/70 transition-colors"><div class="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 font-mono text-xs text-text-main bg-white shadow-sm border border-border-subtle px-2 py-1 rounded transition-opacity pointer-events-none">$28M</div></div>
+<div class="w-full bg-primary-container/80 rounded-t-sm h-[80%] relative group cursor-pointer hover:bg-primary-container/90 transition-colors"><div class="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 font-mono text-xs text-text-main bg-white shadow-sm border border-border-subtle px-2 py-1 rounded transition-opacity pointer-events-none">$36M</div></div>
+<div class="w-full bg-primary-container rounded-t-sm h-[95%] relative group cursor-pointer hover:bg-primary-container transition-colors"><div class="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 font-mono text-xs text-text-main bg-white shadow-sm border border-border-subtle px-2 py-1 rounded transition-opacity pointer-events-none">$42.8M</div></div>
+<!-- Line overlaid (simulated with SVG) -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none" viewBox="0 0 100 100">
+<path d="M 10 70 L 30 55 L 50 45 L 70 30 L 90 10" fill="none" stroke="#1d00a5" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+<circle cx="10" cy="70" fill="#1d00a5" r="1.5"></circle>
+<circle cx="30" cy="55" fill="#1d00a5" r="1.5"></circle>
+<circle cx="50" cy="45" fill="#1d00a5" r="1.5"></circle>
+<circle cx="70" cy="30" fill="#1d00a5" r="1.5"></circle>
+<circle cx="90" cy="10" fill="#FFFFFF" r="2.5" stroke="#1d00a5" stroke-width="1.5"></circle>
 </svg>
-</div>
-<!-- X-axis labels -->
-<div class="absolute -bottom-6 left-0 w-full flex justify-between px-4 text-xs text-text-muted font-metadata">
-<span>Jan</span>
-<span>Feb</span>
-<span>Mar</span>
-<span>Apr</span>
-<span>May</span>
-<span>Jun</span>
+<!-- X-Axis Labels -->
+<div class="absolute bottom-1 left-0 w-full flex justify-between px-4 font-mono text-xs text-text-muted">
+<span class="">Q1</span><span class="">Q2</span><span class="">Q3</span><span class="">Q4</span><span class="">YTD</span>
 </div>
 </div>
-<div class="mt-8 pt-4 border-t border-border-subtle flex justify-between items-center bg-surface-container-low p-3 rounded-md">
-<div class="flex items-start gap-3">
-<span class="material-symbols-outlined text-primary mt-0.5">lightbulb</span>
+</div>
+<!-- Key Insight Callout inside Chart Area -->
+<div class="bg-[#F8FAFC] border-t border-border-subtle p-4 flex gap-4 items-start">
+<div class="w-8 h-8 rounded-full bg-warning-light flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-warning text-sm">lightbulb</span>
+</div>
 <div>
-<p class="font-body text-body text-text-primary text-sm"><span class="font-semibold">Key Insight:</span> Revenue trajectory steepened in May, correlating strongly with the release of the new Enterprise pricing tier.</p>
-</div>
-</div>
-<button class="font-metadata text-metadata text-primary hover:text-accent-indigo flex items-center gap-1 transition-colors whitespace-nowrap ml-4">
-                                Ask in Chat <span class="material-symbols-outlined text-[12px]">forum</span>
-</button>
-</div>
-</div>
-</section>
-<!-- PDF Document Intelligence Section -->
-<section class="flex flex-col gap-4 mt-4">
-<div class="flex items-center gap-2 border-b border-border-subtle pb-2">
-<span class="material-symbols-outlined text-accent-navy">description</span>
-<h3 class="font-section-title text-section-title text-text-primary">Qualitative Intelligence</h3>
-<span class="font-badge text-badge bg-surface-container-high text-on-surface-variant px-2 py-0.5 rounded ml-2">PDF Sourced</span>
-</div>
-<div class="grid grid-cols-12 gap-6">
-<!-- Left Col: Executive Summary from PDF -->
-<div class="col-span-5 bg-sidebar-surface border border-border-subtle rounded-lg p-card-padding flex flex-col gap-4">
-<h4 class="font-card-title text-card-title text-text-primary">Strategic Context Summary</h4>
-<p class="font-body text-body text-text-primary leading-relaxed text-sm">
-                                The Q3 Board Memo highlights a strategic shift towards enterprise expansion, prioritizing higher ACV over raw user volume. 
-                                Leadership expresses cautious optimism regarding European market penetration, though macroeconomic headwinds in that region are noted as a primary risk factor.
-                            </p>
-<p class="font-body text-body text-text-primary leading-relaxed text-sm">
-                                Engineering resource allocation will shift 30% from new feature development to infrastructure stability to support anticipated enterprise load.
-                            </p>
-<div class="mt-auto pt-4 flex flex-wrap gap-2">
-<span class="font-badge text-badge bg-white border border-border-subtle text-text-secondary px-2 py-1 rounded flex items-center gap-1">
-<span class="material-symbols-outlined text-[12px]">picture_as_pdf</span> Board_Memo_Q3.pdf
-                                </span>
-<span class="font-badge text-badge bg-white border border-border-subtle text-text-secondary px-2 py-1 rounded flex items-center gap-1">
-<span class="material-symbols-outlined text-[12px]">picture_as_pdf</span> Exec_Summary_Sep.pdf
-                                </span>
-</div>
-</div>
-<!-- Right Col: Source Quotes -->
-<div class="col-span-7 flex flex-col gap-4">
-<!-- Quote Card 1 -->
-<div class="bg-main-surface border border-border-subtle rounded-lg p-5 shadow-sm group hover:border-outline-variant transition-colors">
-<div class="flex gap-4">
-<div class="w-1 bg-primary rounded-full self-stretch opacity-70"></div>
-<div class="flex-1">
-<p class="font-body text-body text-text-primary italic mb-3">
-                                            "While mid-market growth remains stable, our path to achieving 2024 margin targets relies heavily on closing the current pipeline of 14 Tier-1 enterprise prospects by year-end."
-                                        </p>
-<div class="flex justify-between items-center">
-<div class="flex items-center gap-2">
-<span class="font-metadata text-metadata text-text-secondary text-xs">Page 12 • Market Expansion Strategy</span>
-<span class="w-1 h-1 rounded-full bg-border-subtle"></span>
-<span class="font-badge text-badge bg-surface-container text-text-secondary px-1.5 py-0.5 rounded text-[10px]">Board_Memo_Q3.pdf</span>
-</div>
-<button class="font-metadata text-metadata text-primary hover:text-accent-indigo flex items-center gap-1 transition-colors text-xs">
-                                                Ask in Chat <span class="material-symbols-outlined text-[12px]">forum</span>
-</button>
+<h4 class="font-ui-label text-ui-label font-bold text-text-main mb-1">Key Insight</h4>
+<p class="font-body-main text-body-main text-sm text-text-muted mb-2">The acceleration in Q4 (projected) correlates strongly with the new pricing tier rollout. The AI model suggests a 92% confidence that this trend will sustain if churn remains under 2%.</p>
+<a class="text-sm text-primary-container font-medium hover:underline flex items-center gap-1 font-ui-label" href="#">
+                                Ask in Chat <span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+</a>
 </div>
 </div>
 </div>
+<!-- PDF Insight Card -->
+<div class="border border-border-subtle rounded-xl bg-surface-canvas relative overflow-hidden flex flex-col shadow-sm">
+<!-- Vertical Accent Bar -->
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-primary-container"></div>
+<div class="p-6 border-b border-border-subtle flex items-center gap-3 pl-7">
+<div class="p-2 bg-primary-light rounded text-primary-container shrink-0">
+<span class="material-symbols-outlined">description</span>
 </div>
-<!-- Quote Card 2 -->
-<div class="bg-main-surface border border-border-subtle rounded-lg p-5 shadow-sm group hover:border-outline-variant transition-colors">
-<div class="flex gap-4">
-<div class="w-1 bg-status-warning rounded-full self-stretch opacity-70"></div>
-<div class="flex-1">
-<p class="font-body text-body text-text-primary italic mb-3">
-                                            "Customer acquisition costs (CAC) in the EMEA region have increased by 18% quarter-over-quarter, prompting a temporary freeze on new top-of-funnel marketing spend in that territory."
-                                        </p>
-<div class="flex justify-between items-center">
-<div class="flex items-center gap-2">
-<span class="font-metadata text-metadata text-text-secondary text-xs">Page 4 • Marketing Efficiencies</span>
-<span class="w-1 h-1 rounded-full bg-border-subtle"></span>
-<span class="font-badge text-badge bg-surface-container text-text-secondary px-1.5 py-0.5 rounded text-[10px]">Exec_Summary_Sep.pdf</span>
-</div>
-<button class="font-metadata text-metadata text-primary hover:text-accent-indigo flex items-center gap-1 transition-colors text-xs">
-                                                Ask in Chat <span class="material-symbols-outlined text-[12px]">forum</span>
-</button>
+<div>
+<h3 class="font-heading-lg text-heading-lg text-text-main text-base">Strategic Analysis Summary</h3>
+<p class="font-mono text-xs text-text-muted mt-1">Source: Q3_Strategy_Review.PDF</p>
 </div>
 </div>
+<div class="p-6 pl-7 flex-1 flex flex-col gap-5 overflow-y-auto">
+<!-- Bullet Points -->
+<div>
+<h4 class="font-ui-label text-ui-label text-text-muted uppercase tracking-wider mb-3">Key Findings</h4>
+<ul class="space-y-2 font-body-main text-body-main text-sm text-text-main">
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-primary-container text-[16px] mt-0.5 shrink-0">check_circle</span>
+                                    Market expansion into EMEA is pacing 2 quarters ahead of schedule.
+                                </li>
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-primary-container text-[16px] mt-0.5 shrink-0">check_circle</span>
+                                    Competitor 'Alpha' shows weakened position in Enterprise segment.
+                                </li>
+</ul>
+</div>
+<!-- Structured Blocks -->
+<div class="bg-danger-light/30 border border-danger-light rounded-lg p-3">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-danger text-[16px]">warning</span>
+<h5 class="font-ui-label text-ui-label font-bold text-danger">Identified Risks</h5>
+</div>
+<p class="font-body-main text-body-main text-xs text-on-surface-variant">Supply chain dependencies for hardware tokens present a Q1 bottleneck. Mitigation strategy needed.</p>
+</div>
+<div class="bg-success-light/40 border border-success-light rounded-lg p-3">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-success text-[16px]">rocket_launch</span>
+<h5 class="font-ui-label text-ui-label font-bold text-success">Opportunities</h5>
+</div>
+<p class="font-body-main text-body-main text-xs text-on-surface-variant">Cross-selling 'Module B' to 'Module A' legacy customers represents a $5M ARR untapped pipeline.</p>
 </div>
 </div>
+<div class="p-4 border-t border-border-subtle bg-gray-50 flex justify-center">
+<button class="w-full text-sm bg-white border border-border-subtle text-text-main px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors font-nav-item font-medium flex items-center justify-center gap-2 shadow-sm">
+<span class="material-symbols-outlined text-[18px]">open_in_new</span> View Full Document
+                        </button>
 </div>
 </div>
-</section>
-<div class="h-12"></div> <!-- Bottom spacing -->
+</div> <!-- End Grid -->
+</div> <!-- End Scrollable Area -->
 </div>
 </main>
-</div>
+<script>
+    function toggleSidebar() {
+        const body = document.getElementById('app-body');
+        const icon = document.getElementById('toggle-icon');
+        body.classList.toggle('is-collapsed');
+        icon.innerText = body.classList.contains('is-collapsed') ? 'chevron_right' : 'chevron_left';
+    }
+</script>
+
+
 </body></html>

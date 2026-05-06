@@ -1,12 +1,11 @@
 <!DOCTYPE html>
 
-<html lang="en"><head>
+<html class="dark" lang="en"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>Company Intelligence - Strategic Chat</title>
+<title>Strategic Intelligence Copilot - Chat</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&amp;family=Inter:wght@400;500;700&amp;family=JetBrains+Mono:wght@400&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
         tailwind.config = {
@@ -14,341 +13,335 @@
             theme: {
                 extend: {
                     "colors": {
-                        "tertiary-container": "#a44100",
-                        "surface-tint": "#4d44e3",
-                        "surface-variant": "#e4e1ee",
-                        "status-positive": "#0F9F8F",
-                        "tertiary-fixed": "#ffdbcc",
-                        "raised-surface": "#FBFAFF",
-                        "primary": "#3525cd",
-                        "on-secondary-container": "#535c7f",
+                        "text-muted": "#6B7280",
+                        "secondary-container": "#464951",
+                        "surface-container-low": "#1b1b24",
+                        "primary-fixed-dim": "#c3c0ff",
+                        "outline-variant": "#464555",
+                        "success-light": "#DCFCE7",
+                        "secondary-fixed": "#e0e2ec",
+                        "on-surface-variant": "#c7c4d8",
+                        "outline": "#918fa1",
+                        "surface-tint": "#c3c0ff",
+                        "on-error": "#690005",
+                        "secondary-fixed-dim": "#c4c6d0",
+                        "inverse-surface": "#e4e1ee",
+                        "error": "#ffb4ab",
+                        "on-secondary-fixed-variant": "#44474f",
+                        "bg-root": "#12151C",
+                        "primary-fixed": "#e2dfff",
+                        "on-primary": "#1d00a5",
+                        "on-secondary-fixed": "#191c23",
+                        "inverse-primary": "#4d44e3",
+                        "surface-container-lowest": "#0e0d16",
                         "on-primary-container": "#dad7ff",
                         "on-tertiary-container": "#ffd2be",
-                        "secondary-container": "#cdd5ff",
-                        "secondary": "#545d80",
-                        "tertiary": "#7e3000",
-                        "main-surface": "#FFFFFF",
-                        "inverse-surface": "#302f39",
-                        "app-bg": "#F8F7FC",
-                        "accent-indigo": "#4F46E5",
-                        "text-primary": "#151826",
-                        "secondary-fixed-dim": "#bcc5ee",
-                        "on-secondary-fixed": "#101939",
-                        "surface-container": "#f0ecf9",
-                        "outline-variant": "#c7c4d8",
-                        "inverse-on-surface": "#f3effc",
-                        "sidebar-surface": "#F4F2FA",
-                        "on-surface": "#1b1b24",
-                        "on-tertiary": "#ffffff",
-                        "accent-navy": "#111A3A",
-                        "status-warning": "#D97706",
-                        "on-surface-variant": "#464555",
-                        "on-secondary": "#ffffff",
-                        "surface-dim": "#dcd8e5",
-                        "primary-container": "#4f46e5",
-                        "on-primary": "#ffffff",
-                        "status-processing": "#0284C7",
-                        "on-primary-fixed-variant": "#3323cc",
-                        "error": "#ba1a1a",
-                        "surface": "#fcf8ff",
-                        "background": "#fcf8ff",
-                        "on-tertiary-fixed": "#351000",
-                        "on-tertiary-fixed-variant": "#7b2f00",
-                        "surface-bright": "#fcf8ff",
-                        "surface-container-lowest": "#ffffff",
-                        "outline": "#777587",
-                        "text-secondary": "#626A7C",
-                        "primary-fixed-dim": "#c3c0ff",
-                        "on-background": "#1b1b24",
+                        "primary-light": "#EEF2FF",
+                        "surface-bright": "#393842",
+                        "danger-light": "#FEE2E2",
+                        "tertiary-container": "#a44100",
+                        "on-secondary": "#2d3038",
+                        "on-surface": "#e4e1ee",
                         "on-primary-fixed": "#0f0069",
-                        "on-error": "#ffffff",
-                        "primary-fixed": "#e2dfff",
-                        "surface-container-highest": "#e4e1ee",
-                        "surface-container-low": "#f5f2ff",
-                        "status-critical": "#E11D48",
-                        "on-error-container": "#93000a",
-                        "secondary-fixed": "#dce1ff",
+                        "primary": "#c3c0ff",
+                        "on-primary-fixed-variant": "#3323cc",
+                        "surface-container-high": "#2a2933",
+                        "border-subtle": "#E8EAEF",
+                        "text-hint": "#9CA3AF",
+                        "on-background": "#e4e1ee",
+                        "secondary": "#c4c6d0",
+                        "surface-container": "#1f1f28",
+                        "primary-container": "#4f46e5",
+                        "on-tertiary": "#571f00",
+                        "on-tertiary-fixed": "#351000",
+                        "nav-inactive": "#8B95A8",
+                        "inverse-on-surface": "#302f39",
+                        "surface-variant": "#35343e",
+                        "tertiary": "#ffb695",
+                        "info-light": "#DBEAFE",
+                        "text-main": "#111827",
+                        "nav-active": "#FFFFFF",
+                        "info": "#2563EB",
+                        "on-secondary-container": "#b6b8c2",
+                        "warning": "#D97706",
+                        "surface": "#13121b",
+                        "surface-canvas": "#FFFFFF",
+                        "success": "#16A34A",
+                        "surface-dim": "#13121b",
+                        "warning-light": "#FEF3C7",
+                        "on-tertiary-fixed-variant": "#7b2f00",
+                        "error-container": "#93000a",
                         "tertiary-fixed-dim": "#ffb695",
-                        "surface-container-high": "#eae6f4",
-                        "on-secondary-fixed-variant": "#3d4567",
-                        "inverse-primary": "#c3c0ff",
-                        "border-subtle": "#E5E2F0",
-                        "text-muted": "#8A91A3",
-                        "error-container": "#ffdad6"
+                        "surface-container-highest": "#35343e",
+                        "tertiary-fixed": "#ffdbcc",
+                        "background": "#13121b",
+                        "on-error-container": "#ffdad6",
+                        "danger": "#DC2626"
                     },
                     "borderRadius": {
                         "DEFAULT": "0.25rem",
                         "lg": "0.5rem",
                         "xl": "0.75rem",
-                        "2xl": "1.5rem",
                         "full": "9999px"
                     },
                     "spacing": {
-                        "card-padding": "24px",
-                        "page-padding": "32px",
-                        "base": "8px",
-                        "table-cell-y": "14px",
-                        "gutter": "24px"
+                        "widget-padding": "16px",
+                        "internal-gap": "24px",
+                        "nav-width": "260px",
+                        "sidebar-panel": "300px",
+                        "canvas-margin": "24px"
                     },
                     "fontFamily": {
-                        "metadata": ["Inter"],
-                        "section-title": ["Inter"],
-                        "body": ["Inter"],
-                        "app-title": ["Inter"],
-                        "badge": ["Inter"],
-                        "card-title": ["Inter"]
+                        "heading-lg": ["Plus Jakarta Sans"],
+                        "nav-item": ["Inter"],
+                        "display": ["Plus Jakarta Sans"],
+                        "ui-label": ["Inter"],
+                        "session-header": ["Inter"],
+                        "mono": ["JetBrains Mono"],
+                        "body-main": ["Inter"]
                     },
                     "fontSize": {
-                        "metadata": ["13px", {"lineHeight": "1.4", "fontWeight": "500"}],
-                        "section-title": ["20px", {"lineHeight": "1.4", "fontWeight": "600"}],
-                        "body": ["14px", {"lineHeight": "1.6", "fontWeight": "400"}],
-                        "app-title": ["32px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "600"}],
-                        "badge": ["12px", {"lineHeight": "1", "letterSpacing": "0.01em", "fontWeight": "500"}],
-                        "card-title": ["16px", {"lineHeight": "1.4", "fontWeight": "600"}]
+                        "heading-lg": ["20px", { "lineHeight": "1.4", "fontWeight": "600" }],
+                        "nav-item": ["14px", { "lineHeight": "1.4", "fontWeight": "500" }],
+                        "display": ["24px", { "lineHeight": "1.2", "fontWeight": "700" }],
+                        "ui-label": ["13px", { "lineHeight": "1", "fontWeight": "500" }],
+                        "session-header": ["10px", { "lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "700" }],
+                        "mono": ["12px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "body-main": ["14px", { "lineHeight": "1.6", "fontWeight": "400" }]
                     }
                 }
             }
         }
     </script>
 <style>
-        .material-symbols-outlined {
-            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-        }
-        .material-symbols-outlined.filled {
-            font-variation-settings: 'FILL' 1;
-        }
+        body { background-color: #12151C; }
+        .sidebar { transition: width 0.3s ease; }
+        .main-content { transition: margin-left 0.3s ease; }
+        .is-collapsed .sidebar { width: 56px !important; }
+        .is-collapsed .main-content { margin-left: 56px !important; }
+        .is-collapsed .sidebar-text { display: none !important; }
+        .is-collapsed .sidebar-header { padding-left: 12px !important; padding-right: 12px !important; justify-content: center !important; }
+        .is-collapsed .nav-item-link { padding-left: 0 !important; justify-content: center !important; }
+        .is-collapsed .workspace-switcher { padding-left: 0 !important; justify-content: center !important; }
+        .is-collapsed .workspace-switcher-content { display: none !important; }
     </style>
 </head>
-<body class="bg-app-bg text-text-primary font-body flex h-screen overflow-hidden">
-<!-- Global SideNavBar -->
-<nav class="w-64 h-screen border-r border-border-subtle bg-sidebar-surface flex flex-col sticky top-0 left-0 hidden md:flex shrink-0">
-<!-- Brand Header -->
-<div class="px-gutter py-6 border-b border-border-subtle">
-<div class="flex items-center gap-3">
-<div class="w-8 h-8 rounded-lg bg-accent-indigo text-white flex items-center justify-center font-bold text-lg shadow-sm">
-                    I
-                </div>
+<body class="bg-bg-root text-on-surface h-screen flex overflow-hidden" id="app-body">
+<!-- SideNavBar -->
+<nav class="sidebar fixed left-0 top-0 h-full w-[260px] bg-bg-root flex flex-col justify-between py-canvas-margin z-50" id="sidebar">
+<button class="absolute right-2 top-5 w-6 h-6 bg-surface-container text-on-surface rounded-full flex items-center justify-center border border-border-subtle cursor-pointer hover:bg-surface-variant transition-colors z-50" onclick="toggleSidebar()">
+<span class="material-symbols-outlined text-[16px]" id="toggle-icon">chevron_left</span>
+</button>
 <div>
-<h1 class="text-card-title font-card-title text-text-primary tracking-tight">Intelligence</h1>
-<p class="text-badge font-badge text-text-secondary mt-1">Strategic Workspace</p>
+<div class="sidebar-header px-6 mb-8 flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-on-primary text-sm" style="font-variation-settings: 'FILL' 1;">smart_toy</span>
+</div>
+<div class="sidebar-text">
+<h1 class="font-display text-display font-bold text-on-surface leading-none text-lg">Intelligence Copilot</h1>
+<span class="text-nav-inactive text-xs block mt-1">Strategic Intelligence</span>
 </div>
 </div>
+<ul class="flex flex-col gap-2">
+<li>
+<a class="nav-item-link flex items-center gap-3 py-2 text-nav-active font-bold border-l-2 border-primary pl-4 hover:text-nav-active transition-all duration-200 scale-95 active:scale-90" href="#">
+<span class="material-symbols-outlined">chat_bubble</span>
+<span class="font-nav-item text-nav-item sidebar-text">Chat</span>
+</a>
+</li>
+<li>
+<a class="nav-item-link flex items-center gap-3 py-2 text-nav-inactive font-medium pl-4 hover:text-nav-active transition-all duration-200 scale-95 active:scale-90 border-l-2 border-transparent" href="#">
+<span class="material-symbols-outlined">monitoring</span>
+<span class="font-nav-item text-nav-item sidebar-text">Visualization Data</span>
+</a>
+</li>
+<li>
+<a class="nav-item-link flex items-center gap-3 py-2 text-nav-inactive font-medium pl-4 hover:text-nav-active transition-all duration-200 scale-95 active:scale-90 border-l-2 border-transparent" href="#">
+<span class="material-symbols-outlined">database</span>
+<span class="font-nav-item text-nav-item sidebar-text">Source Data</span>
+</a>
+</li>
+</ul>
 </div>
-<!-- Navigation Links -->
-<div class="flex-1 overflow-y-auto py-4 px-2 space-y-1">
-<a class="flex items-center gap-3 bg-surface-container text-primary-container font-semibold rounded-lg px-3 py-2 transition-all duration-200" href="#">
-<span class="material-symbols-outlined filled text-[20px]">chat</span>
-<span class="text-body font-body font-medium">Chat</span>
-</a>
-<a class="flex items-center gap-3 text-text-secondary hover:text-text-primary hover:bg-surface-container-high rounded-lg px-3 py-2 transition-all duration-200" href="#">
-<span class="material-symbols-outlined text-[20px]">monitoring</span>
-<span class="text-body font-body">Visualization Data</span>
-</a>
-<a class="flex items-center gap-3 text-text-secondary hover:text-text-primary hover:bg-surface-container-high rounded-lg px-3 py-2 transition-all duration-200" href="#">
-<span class="material-symbols-outlined text-[20px]">database</span>
-<span class="text-body font-body">Source Data</span>
-</a>
+<div class="px-4 py-2 mt-auto">
+<div class="flex flex-col gap-1 cursor-pointer hover:opacity-80 transition-opacity">
+<div class="workspace-switcher flex items-center gap-3 text-nav-active pl-2">
+<span class="material-symbols-outlined text-[20px]">grid_view</span>
+<span class="font-nav-item text-nav-item font-bold sidebar-text">Demo</span>
 </div>
-<!-- Footer Navigation -->
-<div class="px-2 py-4 border-t border-border-subtle space-y-1">
-<a class="flex items-center gap-3 text-text-secondary hover:text-text-primary hover:bg-surface-container-high rounded-lg px-3 py-2 transition-all duration-200" href="#">
-<span class="material-symbols-outlined text-[20px]">settings</span>
-<span class="text-body font-body">Settings</span>
-</a>
-<a class="flex items-center gap-3 text-text-secondary hover:text-text-primary hover:bg-surface-container-high rounded-lg px-3 py-2 transition-all duration-200" href="#">
-<span class="material-symbols-outlined text-[20px]">contact_support</span>
-<span class="text-body font-body">Support</span>
-</a>
+<div class="workspace-switcher-content flex items-center justify-between text-nav-inactive ml-[32px]">
+<span class="text-[12px] font-medium">Switch workspace</span>
+<span class="material-symbols-outlined text-[16px]">expand_more</span>
+</div>
+</div>
 </div>
 </nav>
-<!-- Main Workspace Area -->
-<div class="flex-1 flex flex-col min-w-0">
-<!-- TopAppBar -->
-<header class="h-16 bg-main-surface border-b border-border-subtle flex items-center justify-between px-6 sticky top-0 z-40 shrink-0">
-<!-- Mobile Brand (Visible only on sm/md) -->
-<div class="md:hidden flex items-center gap-2">
-<div class="w-8 h-8 rounded-lg bg-accent-indigo text-white flex items-center justify-center font-bold">I</div>
-<h1 class="text-card-title font-card-title text-text-primary">Company Intelligence</h1>
-</div>
-<div class="hidden md:block">
-<!-- Spacer for desktop to align right items -->
-</div>
-<!-- Actions -->
-<div class="flex items-center gap-4">
-<div class="relative hidden sm:block">
-<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-[20px]">search</span>
-<input class="w-64 pl-9 pr-4 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body font-body text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent-indigo focus:border-accent-indigo transition-shadow" placeholder="Search knowledge base..." type="text"/>
-</div>
-<button class="w-9 h-9 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-container-low rounded-full transition-colors relative">
-<span class="material-symbols-outlined">notifications</span>
-<span class="absolute top-2 right-2 w-2 h-2 bg-status-critical rounded-full border border-main-surface"></span>
-</button>
-<button class="w-9 h-9 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-container-low rounded-full transition-colors">
-<span class="material-symbols-outlined">help</span>
-</button>
-<div class="w-8 h-8 rounded-full overflow-hidden border border-border-subtle shrink-0 cursor-pointer">
-<img alt="User Avatar" class="w-full h-full object-cover" data-alt="A professional headshot of an executive in a modern corporate setting. The lighting is soft and flattering, creating a premium, trustworthy aesthetic. The background is slightly blurred, showing a bright, contemporary office environment. The style aligns with a sophisticated corporate profile." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDW-NBrmCqFUAar5wfqB7AJhevarjlDF6i6I_1oAXXrRNuospjJwTQDOcdxNldY22lbGtjHdRFLtWqkYBMH6eHoFnNpVgcKYZIaWg3t2XAEUVdKCLKKlBTCFgY9vBlFAilu7FEwTuSA-1CJNrl72f_SiAwhHiQhlpG4HwR3VsQ_PSLsqXxXLrYq8iVvACbbdp-bsCPhwJqsiMxU0xU4mdZEukVDM_nNXyjyVrGtN0I_3irb83NLTlkQ5ht9IxRKeENxnYIotNbjPERD"/>
+<!-- Main Content Canvas -->
+<main class="main-content ml-[260px] flex-1 h-screen flex flex-col pt-canvas-margin pr-canvas-margin pb-canvas-margin relative z-10" id="main-content">
+<!-- Floating Canvas -->
+<div class="bg-surface-canvas rounded-[24px] shadow-[0_8px_40px_rgba(0,0,0,0.25)] flex-1 flex overflow-hidden w-full relative">
+<!-- TopAppBar Internal (Simulated since TopAppBar is docked outside normally, but adjusting for spec layout) -->
+<div class="absolute top-0 left-0 w-full h-16 flex justify-between items-center px-6 border-b border-border-subtle bg-surface-canvas/90 backdrop-blur z-20 hidden">
+<h2 class="font-heading-lg text-heading-lg text-text-main">Strategic Intelligence Copilot</h2>
+<div class="flex items-center gap-4 text-text-muted">
+<span class="material-symbols-outlined cursor-pointer opacity-80 hover:opacity-100 hover:text-primary">notifications</span>
+<span class="material-symbols-outlined cursor-pointer opacity-80 hover:opacity-100 hover:text-primary">history</span>
+<img alt="User Profile Avatar" class="w-8 h-8 rounded-full border border-border-subtle cursor-pointer" data-alt="A small circular user profile avatar graphic with a pale blue background and dark indigo initials 'U'. It sits seamlessly within the modern, high-contrast user interface, providing a professional and clean aesthetic element." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDmskvvGTc19VxW3DX0_WKSoLHkTsTTxGFrcM0S8nfR5t3BaqzdB6jqoQJHF0a414Rqtx_uz8gBCCN3bhKi6BKQCNvPuxayPtP3H4ld-poUz2vTIsEc7S7iS_W0VB64VNz9aUS6DoEEHmSY5SJFKSn5_SX5-kOrYOB-ewIJao4CCJX6-_p0aQk3Mbl8Yfo2xR__2aD7RlAuDAUgjmvCgvoFNzSLHuN7tetUaIck35qssiZjBddjvWFaouneRI0m-uYwhtHSTvgo7bc"/>
 </div>
 </div>
-</header>
-<!-- Content Split View -->
-<div class="flex-1 flex overflow-hidden">
-<!-- Conversation Thread (Center) -->
-<main class="flex-1 flex flex-col relative bg-app-bg">
-<!-- Scrollable Messages -->
-<div class="flex-1 overflow-y-auto px-6 py-8 pb-32 space-y-8">
-<!-- User Message -->
-<div class="max-w-4xl mx-auto w-full flex gap-4 justify-end">
-<div class="bg-main-surface border border-border-subtle px-5 py-4 rounded-2xl rounded-tr-sm shadow-sm max-w-2xl">
-<p class="text-body font-body text-text-primary">Analyze Q3 market penetration for the enterprise segment versus our mid-market performance. Identify key friction points driving the divergence.</p>
+<!-- Chat Area (Left Column) -->
+<div class="flex-1 flex flex-col bg-surface-canvas relative border-r border-border-subtle text-text-main">
+<!-- Chat Scrollable Region -->
+<div class="flex-1 overflow-y-auto p-8 flex flex-col gap-6 relative">
+<!-- Session Timestamp -->
+<div class="text-center font-session-header text-session-header text-text-hint uppercase tracking-widest mt-4">
+                        Session started: Oct 24, 09:41 AM
+                    </div>
+<!-- User Bubble -->
+<div class="self-end max-w-[80%] flex flex-col items-end gap-1">
+<div class="bg-[#E8E8F8] text-text-main font-body-main text-body-main p-4 rounded-tl-[16px] rounded-tr-[16px] rounded-br-[4px] rounded-bl-[16px] shadow-sm">
+                            Can you analyze the Q2 revenue data against enterprise client feedback and generate a decision brief for next quarter?
+                        </div>
+</div>
+<!-- AI Assistant Card -->
+<div class="self-start max-w-[85%] flex flex-col gap-3">
+<div class="flex items-center gap-3 mb-1">
+<div class="w-8 h-8 rounded bg-primary-light flex items-center justify-center border border-primary/20">
+<span class="material-symbols-outlined text-primary-container text-sm" style="font-variation-settings: 'FILL' 1;">smart_toy</span>
+</div>
+<span class="font-ui-label text-ui-label text-text-main font-semibold">Intelligence Copilot</span>
+</div>
+<div class="border border-border-subtle rounded-xl p-6 bg-white flex flex-col gap-5 relative">
+<!-- Accent Bar -->
+<div class="absolute left-0 top-4 bottom-4 w-[3px] bg-primary rounded-r"></div>
+<p class="font-body-main text-body-main text-text-main pl-2">
+                                Based on the synthesis of financial data and client sentiment, there is a clear correlation between the recent feature rollout and a slight dip in Q2 enterprise renewals, despite overall revenue growth.
+                            </p>
+<!-- Cited Evidence Box -->
+<div class="bg-gray-50 border border-border-subtle rounded-lg p-4 pl-5">
+<h4 class="font-ui-label text-ui-label text-text-muted mb-3 flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">library_books</span> Cited Evidence
+                                </h4>
+<div class="flex flex-wrap gap-2">
+<div class="flex items-center gap-2 px-3 py-1.5 bg-white border border-border-subtle rounded-md shadow-sm cursor-pointer hover:border-primary-container transition-colors">
+<span class="material-symbols-outlined text-success text-sm">table_view</span>
+<span class="font-mono text-mono text-text-main">Q2-Revenue.csv</span>
+</div>
+<div class="flex items-center gap-2 px-3 py-1.5 bg-white border border-border-subtle rounded-md shadow-sm cursor-pointer hover:border-primary-container transition-colors">
+<span class="material-symbols-outlined text-danger text-sm">picture_as_pdf</span>
+<span class="font-mono text-mono text-text-main">Enterprise_Feedback.pdf</span>
 </div>
 </div>
-<!-- Assistant Response Card (Strategic Memo) -->
-<div class="max-w-4xl mx-auto w-full flex gap-4">
-<div class="w-8 h-8 rounded-lg bg-accent-navy text-white flex items-center justify-center shrink-0 shadow-sm mt-1">
-<span class="material-symbols-outlined text-[18px]">psychology</span>
 </div>
-<div class="flex-1 bg-main-surface border border-border-subtle rounded-2xl shadow-sm overflow-hidden flex flex-col">
-<!-- Header / Badges -->
-<div class="px-card-padding py-4 border-b border-border-subtle flex items-center gap-3 bg-surface-container-lowest">
-<span class="bg-status-positive/10 text-status-positive border border-status-positive/20 px-2.5 py-1 rounded-md text-badge font-badge flex items-center gap-1.5">
-<span class="material-symbols-outlined text-[14px]">check_circle</span>
-                                    High Confidence
-                                </span>
-<span class="bg-status-warning/10 text-status-warning border border-status-warning/20 px-2.5 py-1 rounded-md text-badge font-badge flex items-center gap-1.5">
-<span class="material-symbols-outlined text-[14px]">info</span>
-                                    Data Gap in EMEA
-                                </span>
+<p class="font-body-main text-body-main text-text-main pl-2">
+                                The feedback indicates that the new UI introduced in Q1 increased onboarding time for established enterprise users, leading to friction during renewal discussions in Q2. However, net-new logo revenue offset the churn, explaining the top-line growth.
+                            </p>
+<!-- Recommended Action -->
+<div class="bg-primary-light border border-primary/20 rounded-lg p-4 pl-5">
+<h4 class="font-ui-label text-ui-label text-primary-container mb-2 font-bold flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">lightbulb</span> Recommended Action
+                                </h4>
+<p class="font-body-main text-body-main text-text-main text-sm">
+                                    Deploy targeted enablement resources for existing enterprise accounts and consider a temporary "legacy view" toggle to ease transition friction for Q3 renewals.
+                                </p>
 </div>
-<!-- Document Content -->
-<div class="px-card-padding py-6 space-y-6">
-<!-- Direct Answer -->
-<div>
-<h3 class="text-card-title font-card-title text-text-primary mb-2">Executive Summary</h3>
-<p class="text-body font-body text-text-primary leading-relaxed">
-                                        Q3 Enterprise penetration grew by 14% quarter-over-quarter, significantly outpacing the mid-market segment which stagnated at 2% growth. The primary driver for this divergence is an extended implementation timeline in mid-market accounts, compounded by a lack of out-of-the-box integrations for legacy CRM systems <span class="inline-flex items-center justify-center w-5 h-5 rounded bg-surface-variant text-text-secondary text-[11px] font-medium ml-1 cursor-pointer hover:bg-secondary-container transition-colors" title="Source: Q3_Financial_Rollup.pdf">[1]</span>. Enterprise accounts bypassed these issues utilizing custom API deployments <span class="inline-flex items-center justify-center w-5 h-5 rounded bg-surface-variant text-text-secondary text-[11px] font-medium ml-1 cursor-pointer hover:bg-secondary-container transition-colors" title="Source: CRM_Pipeline_Extract_Oct.csv">[2]</span>.
-                                    </p>
-</div>
-<!-- Strategic Interpretation -->
-<div>
-<h3 class="text-card-title font-card-title text-text-primary mb-2">Strategic Interpretation</h3>
-<div class="border-l-2 border-accent-indigo pl-4 py-1">
-<p class="text-body font-body text-text-secondary leading-relaxed">
-                                            The data indicates a structural mismatch in our mid-market product offering. While enterprise clients have the technical resources to overcome integration friction, mid-market clients abandon the pipeline during the technical validation phase. This is not a top-of-funnel issue, but rather a late-stage conversion failure directly tied to deployment complexity.
-                                        </p>
-</div>
-</div>
-<!-- Recommendation Box -->
-<div class="bg-surface-container-low border border-accent-indigo/30 rounded-xl p-5">
-<div class="flex items-center gap-2 mb-2">
-<span class="material-symbols-outlined text-accent-indigo text-[20px]">lightbulb</span>
-<h4 class="text-metadata font-metadata text-accent-indigo font-semibold uppercase tracking-wider">Recommended Action</h4>
-</div>
-<p class="text-body font-body text-text-primary mb-3">
-                                        Accelerate the release of the native Salesforce/HubSpot connectors currently slated for Q1. Consider a short-term professional services subsidy to unblock stuck Q4 mid-market deals.
-                                    </p>
-</div>
-</div>
-<!-- Footer Actions -->
-<div class="px-card-padding py-3 bg-surface-container-lowest border-t border-border-subtle flex items-center justify-between">
-<div class="flex gap-2">
-<button class="text-metadata font-metadata flex items-center gap-1.5 px-3 py-1.5 rounded-md hover:bg-surface-container transition-colors text-text-secondary">
-<span class="material-symbols-outlined text-[16px]">library_books</span>
-                                        View Sources
-                                    </button>
-<button class="text-metadata font-metadata flex items-center gap-1.5 px-3 py-1.5 rounded-md hover:bg-surface-container transition-colors text-text-secondary">
-<span class="material-symbols-outlined text-[16px]">account_tree</span>
-                                        View Trace
-                                    </button>
-</div>
-<button class="text-metadata font-metadata flex items-center gap-1.5 px-4 py-1.5 rounded-md bg-accent-navy text-white hover:bg-accent-navy/90 transition-colors shadow-sm">
-<span class="material-symbols-outlined text-[16px]">description</span>
-                                    Generate Decision Brief
+<!-- Action Buttons -->
+<div class="flex items-center gap-3 mt-2 pl-2">
+<button class="px-4 py-2 border border-border-subtle text-text-main font-ui-label text-ui-label rounded hover:bg-gray-50 transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">visibility</span> View Sources
+                                </button>
+<button class="px-4 py-2 border border-border-subtle text-text-main font-ui-label text-ui-label rounded hover:bg-gray-50 transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">account_tree</span> View Trace
+                                </button>
+<button class="px-4 py-2 bg-primary-container text-white font-ui-label text-ui-label rounded hover:bg-primary-container/90 transition-colors shadow-sm flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">description</span> Generate Decision Brief
                                 </button>
 </div>
 </div>
 </div>
 </div>
-<!-- Composer (Bottom Sticky) -->
-<div class="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-app-bg via-app-bg to-transparent">
-<div class="max-w-4xl mx-auto">
-<div class="bg-main-surface border border-border-subtle rounded-2xl shadow-sm p-2 flex flex-col relative focus-within:ring-1 focus-within:ring-accent-indigo focus-within:border-accent-indigo transition-all">
 <!-- Input Area -->
-<textarea class="w-full resize-none border-0 bg-transparent text-body font-body text-text-primary placeholder:text-text-muted focus:ring-0 px-3 py-2" placeholder="Ask a strategic question or type / for commands..." rows="2" style="min-height: 60px;"></textarea>
-<!-- Bottom Action Row -->
-<div class="flex items-center justify-between px-2 pt-2 border-t border-border-subtle/50 mt-1">
-<!-- Command Hints -->
-<div class="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-<button class="text-[11px] font-badge text-text-secondary bg-surface-container px-2 py-1 rounded hover:bg-surface-variant transition-colors whitespace-nowrap">/decision-brief</button>
-<button class="text-[11px] font-badge text-text-secondary bg-surface-container px-2 py-1 rounded hover:bg-surface-variant transition-colors whitespace-nowrap">/sources</button>
-<button class="text-[11px] font-badge text-text-secondary bg-surface-container px-2 py-1 rounded hover:bg-surface-variant transition-colors whitespace-nowrap">/trace</button>
-</div>
-<button class="w-8 h-8 flex items-center justify-center rounded-lg bg-accent-indigo text-white hover:bg-accent-indigo/90 transition-colors shrink-0">
-<span class="material-symbols-outlined text-[18px]">arrow_upward</span>
+<div class="p-6 bg-surface-canvas border-t border-border-subtle z-10">
+<div class="relative flex items-center">
+<button class="absolute left-4 text-text-hint hover:text-text-main transition-colors">
+<span class="material-symbols-outlined">attach_file</span>
+</button>
+<input class="w-full bg-white border border-border-subtle rounded-xl py-4 pl-12 pr-24 font-body-main text-body-main text-text-main focus:outline-none focus:ring-2 focus:ring-primary-container focus:border-transparent shadow-sm" placeholder="Ask a strategic question or type '/'" type="text"/>
+<div class="absolute right-3 flex items-center gap-2">
+<button class="w-8 h-8 flex items-center justify-center text-text-hint hover:text-text-main transition-colors rounded-full hover:bg-gray-100">
+<span class="material-symbols-outlined text-xl">mic</span>
+</button>
+<button class="w-8 h-8 flex items-center justify-center bg-primary-container text-white rounded-lg shadow-sm hover:bg-primary-container/90 transition-colors">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">send</span>
 </button>
 </div>
+</div>
+<!-- Slash Commands Hints -->
+<div class="flex gap-4 mt-3 pl-2">
+<div class="flex items-center gap-1.5 cursor-pointer opacity-70 hover:opacity-100">
+<span class="bg-gray-100 text-text-muted font-mono text-[10px] px-1.5 py-0.5 rounded border border-border-subtle">/brief</span>
+<span class="font-ui-label text-[11px] text-text-muted">Generate Brief</span>
+</div>
+<div class="flex items-center gap-1.5 cursor-pointer opacity-70 hover:opacity-100">
+<span class="bg-gray-100 text-text-muted font-mono text-[10px] px-1.5 py-0.5 rounded border border-border-subtle">/chart</span>
+<span class="font-ui-label text-[11px] text-text-muted">Create Visual</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Sources Panel (Right Column) -->
+<div class="w-[300px] bg-gray-50 flex flex-col text-text-main shrink-0 border-l border-border-subtle relative z-10 hidden md:flex">
+<div class="p-5 border-b border-border-subtle flex items-center justify-between bg-white">
+<h3 class="font-heading-lg text-[16px] font-semibold text-text-main">Sources Used</h3>
+<span class="material-symbols-outlined text-text-hint cursor-pointer hover:text-text-main">close</span>
+</div>
+<div class="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+<!-- Source Card 1 -->
+<div class="bg-white border border-border-subtle rounded-lg p-4 shadow-sm hover:border-primary-light transition-colors cursor-pointer group">
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-danger text-sm">picture_as_pdf</span>
+<span class="font-ui-label text-ui-label font-semibold text-text-main group-hover:text-primary-container transition-colors">Q3_Fin PDF</span>
+</div>
+<span class="text-[10px] text-text-hint font-mono bg-gray-100 px-1.5 py-0.5 rounded">p.12</span>
+</div>
+<p class="font-body-main text-[12px] text-text-muted italic border-l-2 border-gray-200 pl-2">
+                            "Enterprise renewal rates dipped 4% YoY in Q2, primarily attributed to extended onboarding cycles."
+                        </p>
+</div>
+<!-- Source Card 2 -->
+<div class="bg-white border border-border-subtle rounded-lg p-4 shadow-sm hover:border-primary-light transition-colors cursor-pointer group">
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-success text-sm">table_view</span>
+<span class="font-ui-label text-ui-label font-semibold text-text-main group-hover:text-primary-container transition-colors">CRM_Pi CSV</span>
+</div>
+<span class="text-[10px] text-text-hint font-mono bg-gray-100 px-1.5 py-0.5 rounded">Row 42</span>
+</div>
+<p class="font-body-main text-[12px] text-text-muted italic border-l-2 border-gray-200 pl-2">
+                            "[Data Point]: Churn Reason - UI Complexity. Count: 14 Enterprise Accounts."
+                        </p>
+</div>
+</div>
+<div class="p-5 border-t border-border-subtle bg-white flex flex-col gap-3">
+<a class="flex items-center justify-between text-text-main hover:text-primary-container font-ui-label text-ui-label transition-colors" href="#">
+<span>Trace Reference</span>
+<span class="material-symbols-outlined text-sm">chevron_right</span>
+</a>
+<a class="flex items-center justify-between text-text-main hover:text-primary-container font-ui-label text-ui-label transition-colors" href="#">
+<span>Drafted Briefs</span>
+<span class="material-symbols-outlined text-sm">chevron_right</span>
+</a>
 </div>
 </div>
 </div>
 </main>
-<!-- Evidence Rail (Right Drawer) -->
-<aside class="w-80 h-full border-l border-border-subtle bg-sidebar-surface flex flex-col shrink-0 hidden lg:flex">
-<div class="px-6 py-5 border-b border-border-subtle bg-main-surface">
-<h2 class="text-section-title font-section-title text-text-primary flex items-center gap-2">
-<span class="material-symbols-outlined text-text-secondary">library_books</span>
-                        Sources Used
-                    </h2>
-</div>
-<div class="flex-1 overflow-y-auto p-4 space-y-4">
-<!-- Source Card 1 -->
-<div class="bg-main-surface border border-border-subtle rounded-xl p-4 shadow-sm hover:border-accent-indigo/50 transition-colors cursor-pointer group">
-<div class="flex items-start justify-between mb-3">
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-status-critical text-[20px]">picture_as_pdf</span>
-<span class="text-metadata font-metadata text-text-primary font-semibold truncate max-w-[160px]" title="Q3_Financial_Rollup.pdf">Q3_Financial_Rollup.pdf</span>
-</div>
-<span class="text-[11px] font-badge text-text-secondary bg-surface-variant px-1.5 py-0.5 rounded">[1]</span>
-</div>
-<div class="flex items-center gap-2 mb-2">
-<span class="px-2 py-0.5 rounded text-[11px] font-metadata bg-surface-container text-text-secondary border border-border-subtle">Finance Team</span>
-<span class="px-2 py-0.5 rounded text-[11px] font-metadata bg-surface-container text-text-secondary border border-border-subtle">Q3 2023</span>
-</div>
-<p class="text-[12px] font-body text-text-muted line-clamp-2 mt-2">"Enterprise segment recognized revenue increased 14.2% driven by custom API deployments..."</p>
-</div>
-<!-- Source Card 2 -->
-<div class="bg-main-surface border border-border-subtle rounded-xl p-4 shadow-sm hover:border-accent-indigo/50 transition-colors cursor-pointer group">
-<div class="flex items-start justify-between mb-3">
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-status-positive text-[20px]">table</span>
-<span class="text-metadata font-metadata text-text-primary font-semibold truncate max-w-[160px]" title="CRM_Pipeline_Extract_Oct.csv">CRM_Pipeline_Extract...</span>
-</div>
-<span class="text-[11px] font-badge text-text-secondary bg-surface-variant px-1.5 py-0.5 rounded">[2]</span>
-</div>
-<div class="flex items-center gap-2 mb-2">
-<span class="px-2 py-0.5 rounded text-[11px] font-metadata bg-surface-container text-text-secondary border border-border-subtle">Sales Ops</span>
-<span class="px-2 py-0.5 rounded text-[11px] font-metadata bg-surface-container text-text-secondary border border-border-subtle">Oct 2023</span>
-</div>
-<p class="text-[12px] font-body text-text-muted line-clamp-2 mt-2">Extract of all mid-market stalled deals citing 'integration capabilities' as primary churn reason.</p>
-</div>
-</div>
-<!-- Auxiliary Panels links -->
-<div class="px-4 py-4 border-t border-border-subtle bg-main-surface space-y-1">
-<button class="w-full flex items-center justify-between text-body font-body text-text-secondary hover:text-text-primary hover:bg-surface-container-low px-3 py-2 rounded-lg transition-colors">
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-[18px]">account_tree</span>
-                            Trace Reference
-                        </div>
-<span class="material-symbols-outlined text-[16px]">chevron_right</span>
-</button>
-<button class="w-full flex items-center justify-between text-body font-body text-text-secondary hover:text-text-primary hover:bg-surface-container-low px-3 py-2 rounded-lg transition-colors">
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-[18px]">description</span>
-                            Drafted Briefs
-                        </div>
-<span class="material-symbols-outlined text-[16px]">chevron_right</span>
-</button>
-</div>
-</aside>
-</div>
-</div>
+<script>
+    function toggleSidebar() {
+        const body = document.getElementById('app-body');
+        const icon = document.getElementById('toggle-icon');
+        body.classList.toggle('is-collapsed');
+        icon.innerText = body.classList.contains('is-collapsed') ? 'chevron_right' : 'chevron_left';
+    }
+</script>
 </body></html>

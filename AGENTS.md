@@ -49,6 +49,18 @@ Use these docs and assets for visual implementation:
 - [`docs/designs/visualization/code.html`](docs/designs/visualization/code.html) — Visualization Data reference HTML.
 - [`docs/designs/visualization/screen.png`](docs/designs/visualization/screen.png) — Visualization Data visual reference.
 
+Design files are the source of truth for UI/UX only: layout, spacing, visual hierarchy, component styling, and interaction shape. They are not the source of truth for product data, API fields, enum values, or business rules. Use backend responses, frontend types, `/openapi.json`, and `docs/prd.md` for content and data contracts.
+
+Current UI alignment decisions:
+
+- Use the dark full-screen background with one large rounded white content card.
+- Remove the old top header from the main app shell.
+- Keep Workspace switching in the bottom-left nav profile area, matching the design. The compact Workspace control must still support switching and creating Workspaces.
+- Implement the sidebar collapse behavior. Expanded state shows icons and labels; collapsed state shows icons only. Icon clicks still perform the same nav or Workspace action.
+- shadcn/ui is set up in the web app. Use shadcn components for reusable primitives when available, including buttons, inputs, selects, dialogs, dropdowns/popovers, tables, badges, and cards. Keep custom layout/styling where needed for design fidelity.
+- Keep Chat and Visualization Data visually faithful to the design first. Until backend responses are ready, use mock/presentational content only as placeholders. Replace placeholder content with backend data once the API contract is available.
+- Keep Source Data connected to the existing backend where available. Filters and stats may be presentational until backend response shapes support them.
+
 ## Domain rules to preserve
 
 - Say **Workspace**, not account, organization, or tenant.

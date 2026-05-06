@@ -2,13 +2,13 @@ import { createRootRoute, HeadContent, Outlet, Scripts } from '@tanstack/react-r
 
 import { Sidebar } from '../components/layout/sidebar'
 import { QueryProvider } from '../components/providers/query-provider'
-import { WorkspaceSelector } from '../features/workspaces/components/workspace-selector'
+import { TooltipProvider } from '../components/ui/tooltip'
 import { WorkspaceProvider } from '../features/workspaces/hooks/use-active-workspace'
 import '../app.css'
 
 export const Route = createRootRoute({
   head: () => ({
-    meta: [{ charSet: 'utf-8' }, { name: 'viewport', content: 'width=device-width, initial-scale=1' }, { title: 'Final Project' }],
+    meta: [{ charSet: 'utf-8' }, { name: 'viewport', content: 'width=device-width, initial-scale=1' }, { title: 'Company Intelligence Copilot' }],
     links: [],
   }),
   component: RootDocument,
@@ -23,19 +23,14 @@ function RootDocument() {
       <body>
         <QueryProvider>
           <WorkspaceProvider>
-            <div className="min-h-screen bg-[#F8F7FC] text-[#151826] md:flex">
-              <Sidebar />
-              <div className="min-w-0 flex-1">
-                <header className="flex items-center justify-between border-b border-[#E5E2F0] bg-white px-6 py-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#626A7C]">Company Intelligence Copilot</p>
-                    <h1 className="text-xl font-semibold text-[#151826]">Company memory workspace</h1>
-                  </div>
-                  <WorkspaceSelector />
-                </header>
-                <Outlet />
+            <TooltipProvider>
+              <div className="flex h-screen overflow-hidden bg-[#12151C] font-[family-name:var(--font-body)] text-[var(--foreground)]">
+                <Sidebar />
+                <main className="m-6 ml-0 flex-1 overflow-hidden rounded-3xl bg-white shadow-[0_8px_40px_rgba(0,0,0,0.25)]">
+                  <Outlet />
+                </main>
               </div>
-            </div>
+            </TooltipProvider>
           </WorkspaceProvider>
         </QueryProvider>
         <Scripts />

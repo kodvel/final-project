@@ -281,6 +281,37 @@ Set up:
 
 Do not add charting or UI component libraries yet. Decide those during Visualization Data UI work.
 
+### UI design alignment
+
+The files under `docs/designs/` are the source of truth for UI/UX. Use them for layout, spacing, visual hierarchy, component styling, and interaction shape. They do not define backend data, product contracts, enum values, or business rules. For content and data, use backend responses, local frontend types, `/openapi.json`, and `docs/prd.md`.
+
+Current frontend shell decisions:
+
+- Use the dark full-screen background and one large rounded white content card shown in the design files.
+- Remove the old top header from the main app shell.
+- Put Workspace switching in the bottom-left nav profile area. The control must support listing, switching, and creating Workspaces.
+- Implement a functional collapsible sidebar. Expanded state shows icons and labels; collapsed state shows icons only. Clicking an icon must perform the same action as clicking the expanded item.
+- shadcn/ui is set up in the web app. Use shadcn components for reusable primitives when available, including buttons, inputs, selects, dialogs, dropdowns/popovers, tables, badges, and cards. Use `lucide-react` icons through shadcn/lucide. Do not add a charting library yet; use styled, presentational chart placeholders until Visualization Data contracts are ready.
+- Load the design fonts in the web app: DM Sans for headings, Inter for body/UI, and JetBrains Mono for code-like labels.
+- Treat Chat and Visualization Data as visual-first pages until backend response shapes are ready. Mock content is allowed only as presentational placeholder content.
+- Keep Source Data connected to existing backend responses where available. Design-only filters, stats, and pagination can be presentational until the backend supports them.
+
+Current UI implementation status:
+
+- [x] shadcn/ui baseline is configured under `apps/web/src/components/ui`.
+- [x] `lucide-react` icons are available.
+- [x] Design fonts and UI tokens are loaded in `apps/web/src/app.css`.
+- [x] Main shell uses the dark background and one rounded white content card.
+- [x] Old top header is removed.
+- [x] Sidebar collapse is functional.
+- [x] Workspace switch/create is in the bottom-left nav area.
+- [x] Chat page is design-faithful with local mock interaction only.
+- [x] Source Data page is design-aligned and keeps existing backend hooks.
+- [x] Visualization Data page is design-faithful with mock/presentational content only.
+- [ ] Replace Chat mock interaction with backend chat sessions/messages when the API is ready.
+- [ ] Replace Visualization Data mock content with backend Source Artifact responses when the API is ready.
+- [ ] Wire Source Data filter/stats/pagination UI to backend-supported response shapes when available.
+
 ### Repository cleanup
 
 - Remove `packages/contracts` from the workspace if it is still present.
@@ -395,11 +426,16 @@ storage/uploads/{workspace_id}/{source_id}/original.{ext}
   - Chat
   - Visualization Data
   - Source Data
-- Add workspace selector/form in app header/dashboard area, not as sidebar menu.
+- Add Workspace selector/form in the bottom-left nav profile area, matching the design shell. Do not use the old top header.
 - Workspace UI supports:
   - list workspace options
   - create workspace
   - switch client-selected active workspace
+- Add functional sidebar collapse:
+  - expanded state shows icons and labels
+  - collapsed state shows icons only
+  - icon clicks still navigate or open the Workspace switcher
+- Current implementation: Workspace switch/create is available from the bottom-left nav control; the old top header is removed.
 - Build Source Data page.
 - Build source table with columns:
   - title
@@ -420,6 +456,7 @@ storage/uploads/{workspace_id}/{source_id}/original.{ext}
   - period label
 - Add loading, empty, success, and error states.
 - Add delete confirmation.
+- Current implementation: Source Data is design-aligned and still uses existing backend hooks for list/upload/delete/retry. Filter controls, stats fallback values, and pagination are presentational until backend response shapes support them.
 
 ### Tests
 
@@ -441,8 +478,9 @@ storage/uploads/{workspace_id}/{source_id}/original.{ext}
 ### Acceptance criteria
 
 - [x] User can upload CSV or PDF.
-- [x] User can create a workspace from header/dashboard area.
+- [x] User can create a Workspace from the bottom-left nav Workspace switcher.
 - [x] User can switch active workspace.
+- [x] Sidebar can collapse to icon-only mode and still navigate/open Workspace switcher.
 - [x] Source Data table only shows sources for active workspace.
 - [x] Uploaded file is saved locally.
 - [x] Source metadata is saved in database.
@@ -494,6 +532,8 @@ User uploads a CSV in Source Data. After processing, user opens **Visualization 
 ### Frontend work
 
 - Build Visualization Data page.
+- Match the Visualization Data design shell and white-card layout.
+- Render design-faithful mock content only as a placeholder until backend visualization responses are ready.
 - Add filters:
   - Team Label
   - Category Label
@@ -506,6 +546,7 @@ User uploads a CSV in Source Data. After processing, user opens **Visualization 
   - anomaly/insight cards
 - Add empty state when no ready CSV/PDF exists.
 - Add failed-source state if processing failed.
+- Current implementation: Visualization Data has a design-faithful presentational page with KPI cards, a CSS chart placeholder, and a PDF Insight Board. It does not call the backend yet.
 
 ### Tests
 
@@ -523,6 +564,7 @@ User uploads a CSV in Source Data. After processing, user opens **Visualization 
 - [ ] Insight card artifact is saved when useful insight inputs exist.
 - [ ] Visualization Data page displays CSV artifacts.
 - [ ] Visualization Data filters work for team/category/period.
+- [x] Visualization Data page displays design-faithful mock CSV-style KPI/chart content while API artifact responses are pending.
 
 ---
 
@@ -561,6 +603,7 @@ User uploads a PDF in Source Data. After processing, user opens **Visualization 
 ### Frontend work
 
 - Extend Visualization Data page to render PDF Insight Board.
+- Match the PDF Insight Board design. Use backend artifact data when available; use design-faithful placeholder content only until the API response is ready.
 - Show cards/sections for:
   - Summary
   - Key Findings
@@ -569,6 +612,7 @@ User uploads a PDF in Source Data. After processing, user opens **Visualization 
   - Opportunities
   - Source Quotes
 - Keep PDF visuals different from CSV visuals.
+- Current implementation: Visualization Data includes a presentational PDF Insight Board. It does not call the backend yet.
 
 ### Tests
 
@@ -584,6 +628,7 @@ User uploads a PDF in Source Data. After processing, user opens **Visualization 
 - [ ] PDF Source is not Ready until ChromaDB indexing is ready.
 - [ ] Visualization Data page displays PDF Insight Board.
 - [ ] PDF is not forced into chart format.
+- [x] Visualization Data page displays a design-faithful mock PDF Insight Board while API artifact responses are pending.
 
 ---
 
@@ -700,10 +745,17 @@ User opens **Chat**, sees a GPT-like interface, sends a message, receives a basi
   - input box
   - send button
   - loading state
+- Match the Chat design shell:
+  - left chat area
+  - right Sources Used panel
+  - pinned input bar
+  - assistant response card with evidence, interpretation, recommended action, View Sources, View Trace, and Generate Decision Brief actions
+- Local mock chat interaction is allowed before backend chat persistence is ready. Replace mock content with backend messages and citations once API responses are available.
 - Load existing session messages.
 - Send message to backend.
 - Render user and assistant messages.
 - Render command result message type if available.
+- Current implementation: Chat is design-faithful with local mock messages and local submit behavior. It does not call the backend or persist messages yet.
 
 ### Tests
 
@@ -716,6 +768,8 @@ User opens **Chat**, sees a GPT-like interface, sends a message, receives a basi
 
 - [ ] User can open Chat page.
 - [ ] User can send message.
+- [x] User can open the design-aligned Chat page with local mock messages.
+- [x] User can submit a local mock message and receive a mock assistant response.
 - [ ] Message is persisted.
 - [ ] Assistant response is persisted.
 - [ ] Chat history reloads correctly.
