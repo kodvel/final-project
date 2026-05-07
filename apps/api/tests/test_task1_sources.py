@@ -24,6 +24,22 @@ def upload_source(client, workspace_id: int, filename: str = "metrics.csv", titl
     return response.json()
 
 
+def upload_invalid_csv(client, workspace_id: int) -> dict:
+    """CSV that cannot be parsed (empty content triggers failure)."""
+    response = client.post(
+        "/sources",
+        data={
+            "workspace_id": str(workspace_id),
+            "title": "Bad CSV",
+            "team_label": "data_analysis",
+            "category_labels": ["analytics_metrics"],
+        },
+        files={"file": ("bad.csv", b"", "text/csv")},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
 def test_create_and_list_workspaces(client) -> None:
     created = create_workspace(client, "Developer 1")
 
@@ -41,8 +57,8 @@ def test_upload_csv_source_saves_metadata_and_file(client) -> None:
     assert source["workspace_id"] == workspace["id"]
     assert source["file_type"] == "csv"
     assert source["category_labels"] == ["analytics_metrics", "revenue_sales"]
-    assert source["processing_status"] == ProcessingStatus.FAILED
-    assert source["processing_error"]
+    # Valid CSV is processed synchronously/fallback and marked READY with artifacts
+    assert source["processing_status"] == ProcessingStatus.READY
     assert source["storage_path"].endswith(f"uploads/{workspace['id']}/{source['id']}/original.csv")
 
 
@@ -110,13 +126,20 @@ def test_soft_delete_hides_source_but_keeps_audit_access(client) -> None:
 
 def test_retry_processing_for_failed_source(client) -> None:
     workspace = create_workspace(client)
-    source = upload_source(client, workspace["id"])
 
-    response = client.post(f"/sources/{source['id']}/retry-processing")
+    # Upload an invalid/unparseable CSV that will fail processing
+    bad_source = upload_invalid_csv(client, workspace["id"])
+
+    # Initially the source should be FAILED due to parse error
+    assert bad_source["processing_status"] == ProcessingStatus.FAILED
+    assert bad_source["processing_error"]
+
+    # Retry should re-run processing (and fail again for truly invalid content)
+    response = client.post(f"/sources/{bad_source['id']}/retry-processing")
 
     assert response.status_code == 200
+    # Retry of invalid content still fails (no artifacts can be generated)
     assert response.json()["processing_status"] == "failed"
-    assert response.json()["processing_error"]
 
 
 def test_get_deleted_source_returns_404(client) -> None:

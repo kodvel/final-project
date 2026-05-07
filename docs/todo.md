@@ -546,7 +546,7 @@ User uploads a CSV in Source Data. After processing, user opens **Visualization 
   - anomaly/insight cards
 - Add empty state when no ready CSV/PDF exists.
 - Add failed-source state if processing failed.
-- Current implementation: Visualization Data has a design-faithful presentational page with KPI cards, a CSS chart placeholder, and a PDF Insight Board. It does not call the backend yet.
+- Current implementation: Visualization Data is wired to backend Source Artifact responses for CSV profiles, chart specs, and insight cards. It keeps a clearly labeled PDF Insight Board placeholder until PDF artifact responses are available.
 
 ### Tests
 
@@ -558,12 +558,12 @@ User uploads a CSV in Source Data. After processing, user opens **Visualization 
 
 ### Acceptance criteria
 
-- [ ] Uploaded CSV is processed from local storage.
-- [ ] CSV profile artifact is saved.
-- [ ] Chart spec artifact is saved when useful chart inputs exist.
-- [ ] Insight card artifact is saved when useful insight inputs exist.
-- [ ] Visualization Data page displays CSV artifacts.
-- [ ] Visualization Data filters work for team/category/period.
+- [x] Uploaded CSV is processed from local storage.
+- [x] CSV profile artifact is saved.
+- [x] Chart spec artifact is saved when useful chart inputs exist.
+- [x] Insight card artifact is saved when useful insight inputs exist.
+- [x] Visualization Data page displays CSV artifacts.
+- [x] Visualization Data filters work for team/category/period.
 - [x] Visualization Data page displays design-faithful mock CSV-style KPI/chart content while API artifact responses are pending.
 
 ---

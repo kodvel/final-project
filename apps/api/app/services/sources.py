@@ -58,24 +58,40 @@ def create_source(session: Session, data: SourceCreate, file_content: bytes) -> 
     session.commit()
     session.refresh(source)
 
-    # Enqueue background processing (stub: marks failed if enqueue missing)
+    # Enqueue background processing
     _enqueue_processing(session, source)
 
+    # Re-fetch to get updated status after async processing start
+    session.refresh(source)
     return source
 
 
 def _enqueue_processing(session: Session, source: SourceData) -> None:
-    """Attempt to enqueue Celery task. Mark Failed with processing_error if unavailable."""
+    """Attempt to enqueue Celery task. Fall back to synchronous processing if unavailable."""
+    # Try Celery first if celery_app is configured
     try:
-        raise ImportError("Celery not configured - using stub")
+        from app.jobs.celery_app import celery_app
+        from app.jobs.source_processing import process_source_task
+
+        # Attempt to send task - will raise if broker not available
+        try:
+            process_source_task.delay(source.id)
+            return  # Successfully enqueued
+        except Exception as celery_err:
+            # Celery broker not available, fall through to sync
+            import traceback
+            traceback.print_exception(type(celery_err), celery_err, celery_err.__traceback__)
+    except ImportError:
+        pass  # Celery not installed, fall through to sync
+
+    # Synchronous fallback: run processing directly in this thread
+    # Safe for tests and environments without Redis/Celery
+    try:
+        from app.services import source_processing
+        source_processing.process_source(session, source.id)
     except Exception:
-        source.processing_status = ProcessingStatus.FAILED
-        source.processing_error = (
-            "Background processing unavailable. Source saved but not processed. "
-            "Use retry-processing endpoint when Celery is configured."
-        )
-        session.add(source)
-        session.commit()
+        # Already handled inside process_source with proper status set
+        pass
 
 
 def list_sources(
