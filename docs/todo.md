@@ -1031,10 +1031,10 @@ No direct product flow. This task keeps frontend and backend aligned while other
 
 ### Acceptance criteria
 
-- [ ] Frontend type names match PRD vocabulary.
-- [ ] Frontend enum values match backend enum values.
-- [ ] FastAPI OpenAPI output reflects the expected API shapes.
-- [ ] Frontend and backend use the same concepts consistently without `packages/contracts`.
+- [x] Frontend type names match PRD vocabulary.
+- [x] Frontend enum values match backend enum values.
+- [x] FastAPI OpenAPI output reflects the expected API shapes.
+- [x] Frontend and backend use the same concepts consistently without `packages/contracts`.
 
 ---
 

@@ -70,7 +70,7 @@ def _enqueue_processing(session: Session, source: SourceData) -> None:
     """Attempt to enqueue Celery task. Fall back to synchronous processing if unavailable."""
     # Try Celery first if celery_app is configured
     try:
-        from app.jobs.celery_app import celery_app
+        from app.jobs.celery_app import celery_app  # noqa: F401
         from app.jobs.source_processing import process_source_task
 
         # Attempt to send task - will raise if broker not available

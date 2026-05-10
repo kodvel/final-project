@@ -67,3 +67,41 @@ export type ChatMessagePairApi = {
   user_message: ChatMessageApi
   assistant_message: ChatMessageApi
 }
+
+export type AgentToolCall = {
+  id: number
+  messageId: number
+  toolName: string
+  status: string
+  summary: string
+  createdAt: IsoDateTime
+}
+
+export type AgentToolCallApi = {
+  id: number
+  message_id: number
+  tool_name: string
+  status: string
+  summary: string
+  created_at: IsoDateTime
+}
+
+export type MessageSourceCitation = {
+  id: number
+  messageId: number
+  sourceId: number
+  artifactId?: number | null
+  quote?: string | null
+  pageNumber?: number | null
+  createdAt: IsoDateTime
+}
+
+export type MessageSourceCitationApi = {
+  id: number
+  message_id: number
+  source_id: number
+  artifact_id?: number | null
+  quote?: string | null
+  page_number?: number | null
+  created_at: IsoDateTime
+}

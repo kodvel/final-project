@@ -2,9 +2,8 @@
 
 import csv
 import io
-import json
 import re
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -100,8 +99,6 @@ def infer_column_type(values: list[str]) -> str:
     # Categorical detection: low unique ratio OR short non-numeric strings with few unique values
     unique_ratio = len(set(non_null)) / len(non_null) if non_null else 1.0
     avg_len = sum(len(v) for v in non_null) / len(non_null) if non_null else 0
-    has_low_cardinality = unique_ratio <= 0.95
-    has_short_text_values = avg_len < 30 and not any(c.isdigit() for c in "".join(non_null[:10] or [""]))
     if unique_ratio < 0.8 or (avg_len < 30 and not any(c.isdigit() for c in "".join(non_null[:10] or [""]))):
         return "categorical"
 

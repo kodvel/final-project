@@ -20,5 +20,5 @@ export type WorkspaceApi = {
   name: string
   description?: string | null
   created_at: IsoDateTime
-  updated_at?: IsoDateTime
+  updated_at: IsoDateTime
 }

@@ -9,9 +9,19 @@ def create_workspace(client, name: str = "Demo") -> dict:
     return response.json()
 
 
-def upload_csv_source(client, workspace_id: int, filename: str = "metrics.csv", title: str = "Monthly metrics", csv_content: str | None = None) -> dict:
+def upload_csv_source(
+    client,
+    workspace_id: int,
+    filename: str = "metrics.csv",
+    title: str = "Monthly metrics",
+    csv_content: str | None = None,
+) -> dict:
     if csv_content is None:
-        csv_content = "month,revenue,region\n2026-01,1000,North\n2026-02,1500,North\n2026-03,1200,South\n2026-04,1800,South\n2026-05,2200,North\n2026-06,2000,East"
+        csv_content = (
+            "month,revenue,region\n"
+            "2026-01,1000,North\n2026-02,1500,North\n2026-03,1200,South\n"
+            "2026-04,1800,South\n2026-05,2200,North\n2026-06,2000,East"
+        )
 
     response = client.post(
         "/sources",

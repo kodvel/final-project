@@ -21,3 +21,8 @@ apps/api/storage/*
 .env
 .env.*
 !.env.example
+
+.pnpm-store/
+.claude/
+.agents/
+skills-lock.json

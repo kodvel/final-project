@@ -53,3 +53,11 @@ class DecisionApprovalStatus(StrEnum):
     REVIEWED = "reviewed"
     APPROVED = "approved"
     REJECTED = "rejected"
+
+
+class ArtifactType(StrEnum):
+    CSV_PROFILE = "csv_profile"
+    CHART_SPEC = "chart_spec"
+    INSIGHT_CARD = "insight_card"
+    PDF_SUMMARY = "pdf_summary"
+    PDF_INSIGHT_BOARD = "pdf_insight_board"
