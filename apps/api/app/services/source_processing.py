@@ -15,7 +15,7 @@ def process_source(session: Session, source_id: int) -> SourceData:
     """Process a source file and generate visualization artifacts.
 
     - For CSV: profile, generate chart specs and insight cards.
-    - For PDF: not handled here (Task 3).
+    - For PDF: OCR, chunk, label, aggregate into source_summary and source_insight.
 
     Sets processing_status to Processing -> Ready (or Failed on error).
     """
@@ -33,13 +33,8 @@ def process_source(session: Session, source_id: int) -> SourceData:
     try:
         if source.file_type == SourceFileType.CSV:
             _process_csv(session, source)
-        # PDF processing is handled in Task 3; for now just mark ready if PDF
         elif source.file_type == SourceFileType.PDF:
-            # Task 3 will handle PDF properly; for now just acknowledge
-            source.processing_status = ProcessingStatus.READY
-            source.processed_at = datetime.utcnow()
-            session.add(source)
-            session.commit()
+            _process_pdf(session, source)
         else:
             raise ValueError(f"Unsupported file type: {source.file_type}")
 
@@ -63,6 +58,22 @@ def process_source(session: Session, source_id: int) -> SourceData:
 
     session.refresh(source)
     return source
+
+
+def _process_pdf(session: Session, source: SourceData) -> None:
+    """Process a PDF source through the full pipeline."""
+    from app.services.pdf_extractor import process_pdf
+
+    process_pdf(session, source)
+
+    # Mark ready if artifacts were generated
+    artifacts = _get_artifacts_for_source(session, source.id)
+    if artifacts:
+        source.processing_status = ProcessingStatus.READY
+        source.processed_at = datetime.utcnow()
+        source.processing_error = None
+        session.add(source)
+        session.commit()
 
 
 def _process_csv(session: Session, source: SourceData) -> None:

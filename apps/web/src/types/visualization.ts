@@ -1,6 +1,6 @@
 import type { CategoryLabel, TeamLabel } from './common'
 
-export type VisualizationArtifactType = 'csv_profile' | 'chart_spec' | 'insight_card' | 'pdf_summary' | 'pdf_insight_board'
+export type VisualizationArtifactType = 'csv_profile' | 'chart_spec' | 'insight_card' | 'source_summary' | 'source_insight'
 
 export type VisualizationArtifact = {
   id: number
@@ -79,8 +79,41 @@ export type InsightCardContent = {
   recommendation?: string
 }
 
+// Citation-ready object used in source_insight arrays
+export type CitationItem = {
+  text?: string
+  quote?: string
+  page_number?: number | null
+}
+
+// Source insight content for Document Insight
+export type SourceInsightContent = {
+  key_findings: Array<string | CitationItem>
+  assumptions?: Array<string | CitationItem>
+  risks: Array<string | CitationItem>
+  opportunities: Array<string | CitationItem>
+  source_quotes?: Array<string | CitationItem>
+}
+
+// Source summary content for Document Insight
+export type SourceSummaryContent = {
+  summary: string
+  page_count?: number
+  ocr_model?: string
+  structuring_model?: string
+  extracted_markdown_path?: string
+  chunk_metadata_path?: string
+  warnings?: string[]
+}
+
 // Union type for artifact content
-export type VisualizationArtifactContent = CsvProfileContent | ChartSpecContent | InsightCardContent | Record<string, unknown>
+export type VisualizationArtifactContent =
+  | CsvProfileContent
+  | ChartSpecContent
+  | InsightCardContent
+  | SourceSummaryContent
+  | SourceInsightContent
+  | Record<string, unknown>
 
 // Artifact grouped by source for list view
 export type VisualizationSourceGroup = {

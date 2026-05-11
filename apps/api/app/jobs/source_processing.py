@@ -1,14 +1,20 @@
 """Thin source-processing Celery task entrypoint."""
 
-from celery import Task
+from sqlmodel import Session
 
-from app.db.session import SessionLocal
+from app.db.session import engine
+from app.jobs.celery_app import celery_app
 from app.services import source_processing as sp
+
+try:
+    from celery import Task
+except ImportError:  # pragma: no cover - exercised when Celery is not installed
+    Task = object  # type: ignore[misc,assignment]
 
 
 def process_source_task(source_id: int) -> dict:
     """Celery task entrypoint: process a source and generate artifacts."""
-    with SessionLocal() as session:
+    with Session(engine) as session:
         result = sp.process_source(session, source_id)
         return {"source_id": result.id, "status": result.processing_status.value}
 
@@ -21,5 +27,8 @@ class SourceProcessingTask(Task):
     retry_kwargs = {"max_retries": 3}
 
 
-# Bind to celery app instance in jobs/celery_app.py
-# This file stays thin; all testable logic is in services/source_processing.py
+if celery_app is not None:
+    process_source_task = celery_app.task(
+        name="source_processing.process_source",
+        base=SourceProcessingTask,
+    )(process_source_task)

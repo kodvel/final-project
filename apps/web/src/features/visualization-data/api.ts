@@ -3,6 +3,8 @@ import type {
   ChartSpecContent,
   CsvProfileContent,
   InsightCardContent,
+  SourceInsightContent,
+  SourceSummaryContent,
   VisualizationArtifact,
   VisualizationArtifactApi,
   VisualizationArtifactContent,
@@ -58,6 +60,24 @@ export function isChartSpec(content: VisualizationArtifactContent): content is C
 
 export function isInsightCard(content: VisualizationArtifactContent): content is InsightCardContent {
   return typeof content === 'object' && content !== null && 'insight_type' in content
+}
+
+export function isSourceSummary(content: VisualizationArtifactContent): content is SourceSummaryContent {
+  return typeof content === 'object' && content !== null && 'summary' in content && 'page_count' in content
+}
+
+export function isSourceInsight(content: VisualizationArtifactContent): content is SourceInsightContent {
+  return typeof content === 'object' && content !== null && 'key_findings' in content && 'risks' in content && 'opportunities' in content
+}
+
+// Helper to get source_summary artifact from a list
+export function getSourceSummaryArtifact(artifacts: VisualizationArtifact[]): VisualizationArtifact | undefined {
+  return artifacts.find((a) => a.artifactType === 'source_summary')
+}
+
+// Helper to get source_insight artifact from a list
+export function getSourceInsightArtifact(artifacts: VisualizationArtifact[]): VisualizationArtifact | undefined {
+  return artifacts.find((a) => a.artifactType === 'source_insight')
 }
 
 // Helper to extract KPIs from chart_spec artifacts

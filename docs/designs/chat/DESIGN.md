@@ -427,7 +427,7 @@ Synthesized intelligence from connected CSV and PDF data sources.
 +----------------------------------------------------------------------+
 ```
 
-**PDF Insight Board card:**
+**Document Insight card:**
 ```
 +----------------------------------------------------------------------+
 | (indigo 3px left border)                                             |

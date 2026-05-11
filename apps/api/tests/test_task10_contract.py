@@ -58,10 +58,10 @@ def test_artifact_type_wire_values() -> None:
     assert ArtifactType.CSV_PROFILE == "csv_profile"
     assert ArtifactType.CHART_SPEC == "chart_spec"
     assert ArtifactType.INSIGHT_CARD == "insight_card"
-    assert ArtifactType.PDF_SUMMARY == "pdf_summary"
-    assert ArtifactType.PDF_INSIGHT_BOARD == "pdf_insight_board"
+    assert ArtifactType.SOURCE_SUMMARY == "source_summary"
+    assert ArtifactType.SOURCE_INSIGHT == "source_insight"
     assert set(ArtifactType) == {
-        "csv_profile", "chart_spec", "insight_card", "pdf_summary", "pdf_insight_board"
+        "csv_profile", "chart_spec", "insight_card", "source_summary", "source_insight"
     }
 
 

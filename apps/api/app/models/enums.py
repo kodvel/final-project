@@ -59,5 +59,5 @@ class ArtifactType(StrEnum):
     CSV_PROFILE = "csv_profile"
     CHART_SPEC = "chart_spec"
     INSIGHT_CARD = "insight_card"
-    PDF_SUMMARY = "pdf_summary"
-    PDF_INSIGHT_BOARD = "pdf_insight_board"
+    SOURCE_SUMMARY = "source_summary"
+    SOURCE_INSIGHT = "source_insight"

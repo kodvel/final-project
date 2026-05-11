@@ -2,11 +2,18 @@ import { createFileRoute } from '@tanstack/react-router'
 import { ArrowRight, ChevronDown, Download, FileText, Lightbulb, Maximize2, TrendingDown, TrendingUp } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
-import { isChartSpec, isInsightCard } from '../features/visualization-data/api'
+import {
+  getSourceInsightArtifact,
+  getSourceSummaryArtifact,
+  isChartSpec,
+  isInsightCard,
+  isSourceInsight,
+  isSourceSummary,
+} from '../features/visualization-data/api'
 import { useInsightCards, useKpiCards, usePrimaryChart, useVisualizationArtifacts } from '../features/visualization-data/hooks'
 import { useActiveWorkspace } from '../features/workspaces/hooks/use-active-workspace'
 import type { CategoryLabel, TeamLabel } from '../types/common'
-import type { ChartSpecContent, VisualizationArtifact } from '../types/visualization'
+import type { ChartSpecContent, CitationItem, VisualizationArtifact } from '../types/visualization'
 
 const TEAM_LABELS: TeamLabel[] = ['marketing', 'product', 'data_analysis', 'business']
 const CATEGORY_LABELS: CategoryLabel[] = [
@@ -48,6 +55,7 @@ function VisualizationDataPage() {
   // Separate CSV vs PDF artifacts
   const csvArtifacts = artifacts.filter((a) => a.sourceFileType !== 'pdf')
   const pdfArtifacts = artifacts.filter((a) => a.sourceFileType === 'pdf')
+  const pdfArtifactGroups = groupArtifactsBySource(pdfArtifacts)
 
   // CSV-only KPIs, chart, and insights
   const csvKpis = kpis.filter((k) => !k.sourceTitle?.endsWith('.pdf'))
@@ -80,7 +88,7 @@ function VisualizationDataPage() {
 
   // Show empty state when no ready CSV/PDF artifacts exist
   const hasCsvArtifacts = csvArtifacts.length > 0
-  const hasPdfArtifacts = pdfArtifacts.length > 0
+  const hasPdfArtifacts = pdfArtifactGroups.length > 0
 
   return (
     <div className="h-full overflow-auto p-8 text-foreground">
@@ -176,8 +184,16 @@ function VisualizationDataPage() {
             </section>
           )}
 
-          {/* PDF Insight Board — only render if we have PDF artifacts; otherwise show placeholder labeled as mock */}
-          {hasPdfArtifacts ? <PdfInsightBoard artifacts={pdfArtifacts} /> : <PdfInsightBoardMock />}
+          {/* Document Insight — render one board per processed PDF Source */}
+          {hasPdfArtifacts ? (
+            <section className="space-y-6">
+              {pdfArtifactGroups.map((group) => (
+                <DocumentInsightBoard key={group.sourceId} artifacts={group.artifacts} />
+              ))}
+            </section>
+          ) : (
+            <DocumentInsightBoardMock />
+          )}
         </>
       )}
     </div>
@@ -269,17 +285,24 @@ function ChartSpecChart({ spec }: { spec: ChartSpecContent }) {
   )
 }
 
-function PdfInsightBoard({
-  artifacts,
-}: {
-  artifacts: Array<{ id: number; title: string; sourceTitle?: string; contentJson: Record<string, unknown> }>
-}) {
-  // Group PDF artifacts by source — render first available summary/insight_board
-  const firstPdf = artifacts[0]
-  const content = firstPdf?.contentJson as Record<string, unknown> | undefined
-  const keyFindings = (content?.key_findings as string[]) ?? []
-  const risks = (content?.risks as string[]) ?? []
-  const opportunities = (content?.opportunities as string[]) ?? []
+function DocumentInsightBoard({ artifacts }: { artifacts: VisualizationArtifact[] }) {
+  const summaryArtifact = getSourceSummaryArtifact(artifacts)
+  const insightArtifact = getSourceInsightArtifact(artifacts)
+
+  const summaryContent = summaryArtifact && isSourceSummary(summaryArtifact.contentJson) ? summaryArtifact.contentJson : null
+  const insightContent = insightArtifact && isSourceInsight(insightArtifact.contentJson) ? insightArtifact.contentJson : null
+
+  const title = summaryArtifact?.title ?? insightArtifact?.title ?? 'Document Insight'
+  const sourceTitle = summaryArtifact?.sourceTitle ?? insightArtifact?.sourceTitle
+
+  // Extract arrays — handle string (backward compat) or CitationItem objects
+  const keyFindings = insightContent?.key_findings ?? []
+  const risks = insightContent?.risks ?? []
+  const opportunities = insightContent?.opportunities ?? []
+  const assumptions = insightContent?.assumptions ?? []
+  const sourceQuotes = insightContent?.source_quotes ?? []
+
+  const hasInsightArrays = keyFindings.length > 0 || risks.length > 0 || opportunities.length > 0 || assumptions.length > 0 || sourceQuotes.length > 0
 
   return (
     <section className="rounded-2xl border border-border border-l-[3px] border-l-primary bg-background p-6 shadow-sm">
@@ -289,57 +312,93 @@ function PdfInsightBoard({
             <FileText className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="font-heading text-lg font-semibold text-foreground">{firstPdf?.title ?? 'PDF Insight Board'}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">PDF Insight Board</p>
+            <h2 className="font-heading text-lg font-semibold text-foreground">{title}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Document Insight</p>
           </div>
         </div>
-        {firstPdf?.sourceTitle && (
+        {sourceTitle && (
           <span className="rounded-full bg-muted px-3 py-1 font-mono text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Source: {firstPdf.sourceTitle}
+            Source: {sourceTitle}
           </span>
         )}
       </div>
 
-      <div className="grid grid-cols-[1.2fr_1fr] gap-6">
-        <div>
-          <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Key Findings</p>
-          {keyFindings.length > 0 ? (
-            <ul className="space-y-3 text-sm leading-6 text-foreground">
-              {keyFindings.map((finding) => (
-                <li key={finding} className="flex gap-3">
-                  <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-                  {finding}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-text-hint">No key findings available.</p>
+      {/* Summary section from source_summary */}
+      {summaryContent && (
+        <div className="mb-6">
+          <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Summary</p>
+          <p className="text-sm leading-6 text-foreground">{summaryContent.summary}</p>
+          {summaryContent.page_count != null && <p className="mt-2 text-xs text-text-hint">{summaryContent.page_count} page(s) extracted</p>}
+          {summaryContent.warnings && summaryContent.warnings.length > 0 && (
+            <div className="mt-3 rounded-xl border border-status-failed bg-status-failed-light p-3">
+              <p className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-status-failed">Warnings</p>
+              <ul className="list-disc pl-4 text-sm leading-6 text-foreground">
+                {summaryContent.warnings.map((w) => (
+                  <li key={w}>{w}</li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
+      )}
 
-        <div className="space-y-4">
-          {risks.length > 0 && (
-            <InsightBox tone="risk" title="Identified Risks">
-              {risks.join(' ')}
-            </InsightBox>
-          )}
-          {opportunities.length > 0 && (
-            <InsightBox tone="opportunity" title="Opportunities">
-              {opportunities.join(' ')}
-            </InsightBox>
-          )}
-          {risks.length === 0 && opportunities.length === 0 && (
-            <InsightBox tone="risk" title="Identified Risks">
-              Processing complete — insights will appear here once extracted.
-            </InsightBox>
-          )}
+      {hasInsightArrays ? (
+        <div className="grid grid-cols-[1.2fr_1fr] gap-6">
+          <div>
+            <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Key Findings</p>
+            {keyFindings.length > 0 ? (
+              <ul className="space-y-3 text-sm leading-6 text-foreground">
+                {keyFindings.map((item, i) => (
+                  <li key={typeof item === 'string' ? `${i}-${item}` : i} className="flex gap-3">
+                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                    <CitationText item={item} />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-text-hint">No key findings available.</p>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            {risks.length > 0 && (
+              <InsightBox tone="risk" title="Identified Risks">
+                <CitationList items={risks} />
+              </InsightBox>
+            )}
+            {opportunities.length > 0 && (
+              <InsightBox tone="opportunity" title="Opportunities">
+                <CitationList items={opportunities} />
+              </InsightBox>
+            )}
+            {assumptions.length > 0 && (
+              <div className="rounded-xl border border-border bg-surface-subtle p-4">
+                <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Assumptions</p>
+                <CitationList items={assumptions} />
+              </div>
+            )}
+            {sourceQuotes.length > 0 && (
+              <div className="rounded-xl border border-border bg-surface-subtle p-4">
+                <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Source Quotes</p>
+                <CitationList items={sourceQuotes} />
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="rounded-xl border border-dashed border-border p-6 text-center">
+          <p className="text-sm text-text-hint">
+            {summaryContent
+              ? 'Summary generated. Document insights will appear here once extracted.'
+              : 'Processing complete — insights will appear here once extracted.'}
+          </p>
+        </div>
+      )}
     </section>
   )
 }
 
-function PdfInsightBoardMock() {
+function DocumentInsightBoardMock() {
   return (
     <section className="rounded-2xl border border-border border-l-[3px] border-l-muted bg-background p-6 shadow-sm opacity-60">
       <div className="mb-6 flex items-start justify-between gap-4">
@@ -348,17 +407,27 @@ function PdfInsightBoardMock() {
             <FileText className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="font-heading text-lg font-semibold text-foreground">PDF Insight Board</h2>
-            <p className="mt-1 text-sm text-muted-foreground">No PDF sources processed yet</p>
+            <h2 className="font-heading text-lg font-semibold text-foreground">Document Insight</h2>
+            <p className="mt-1 text-sm text-muted-foreground">No document sources processed yet</p>
           </div>
         </div>
         <span className="rounded-full bg-surface-subtle px-3 py-1 font-mono text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           [placeholder]
         </span>
       </div>
-      <p className="text-sm text-text-hint">Upload a PDF source and wait for processing to see an insight board here.</p>
+      <p className="text-sm text-text-hint">Upload a PDF source and wait for processing to see document insights here.</p>
     </section>
   )
+}
+
+function groupArtifactsBySource(artifacts: VisualizationArtifact[]): Array<{ sourceId: number; artifacts: VisualizationArtifact[] }> {
+  const groups = new Map<number, VisualizationArtifact[]>()
+  for (const artifact of artifacts) {
+    const current = groups.get(artifact.sourceId) ?? []
+    current.push(artifact)
+    groups.set(artifact.sourceId, current)
+  }
+  return Array.from(groups.entries()).map(([sourceId, sourceArtifacts]) => ({ sourceId, artifacts: sourceArtifacts }))
 }
 
 function FilterSelect<T extends string>({
@@ -489,8 +558,32 @@ function InsightBox({ tone, title, children }: { tone: 'risk' | 'opportunity'; t
   return (
     <div className={`rounded-xl p-4 ${styles}`}>
       <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em]">{title}</p>
-      <p className="text-sm leading-6 text-foreground">{children}</p>
+      <div className="text-sm leading-6 text-foreground">{children}</div>
     </div>
+  )
+}
+
+function CitationText({ item }: { item: string | CitationItem }) {
+  if (typeof item === 'string') return <span>{item}</span>
+  const display = item.text ?? item.quote ?? ''
+  return (
+    <span>
+      {display}
+      {item.page_number != null && <span className="ml-2 font-mono text-[10px] text-text-hint">p.{item.page_number}</span>}
+      {item.quote && item.text && <span className="mt-1 block text-xs italic text-muted-foreground">"{item.quote}"</span>}
+    </span>
+  )
+}
+
+function CitationList({ items }: { items: Array<string | CitationItem> }) {
+  return (
+    <ul className="space-y-1 text-sm leading-6 text-foreground">
+      {items.map((item, i) => (
+        <li key={typeof item === 'string' ? `${i}-${item.slice(0, 40)}` : `${i}-${(item.text ?? item.quote ?? '').slice(0, 40)}`}>
+          <CitationText item={item} />
+        </li>
+      ))}
+    </ul>
   )
 }
 

@@ -5,7 +5,10 @@ description = "FastAPI backend for the final project foundation template."
 requires-python = "==3.14.*"
 dependencies = [
   "alembic>=1.18.4",
+  "chonkie",
   "fastapi>=0.116.0",
+  "litellm",
+  "mistralai",
   "pydantic-settings>=2.14.0",
   "python-multipart>=0.0.27",
   "scalar-fastapi>=1.8.2",

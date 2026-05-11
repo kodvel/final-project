@@ -68,6 +68,12 @@ def create_source(session: Session, data: SourceCreate, file_content: bytes) -> 
 
 def _enqueue_processing(session: Session, source: SourceData) -> None:
     """Attempt to enqueue Celery task. Fall back to synchronous processing if unavailable."""
+    from app.core.config import get_settings
+
+    if not get_settings().rag_enable_background_processing:
+        _process_source_sync(session, source)
+        return
+
     # Try Celery first if celery_app is configured
     try:
         from app.jobs.celery_app import celery_app  # noqa: F401
@@ -86,6 +92,13 @@ def _enqueue_processing(session: Session, source: SourceData) -> None:
 
     # Synchronous fallback: run processing directly in this thread
     # Safe for tests and environments without Redis/Celery
+    _process_source_sync(session, source)
+
+
+def _process_source_sync(session: Session, source: SourceData) -> None:
+    """Run source processing synchronously."""
+    if source.id is None:
+        raise ValueError("Source must be persisted before processing")
     try:
         from app.services import source_processing
         source_processing.process_source(session, source.id)

@@ -45,7 +45,7 @@ Primary tasks:
 
 - Task 1: Workspace + Source Data UI part
 - Task 2: CSV Visualization UI part
-- Task 3: PDF Insight Board UI part
+- Task 3: Document Insight UI part
 - Task 5: Chat UI
 
 ### Developer C — AI / Integration / Demo
@@ -546,7 +546,7 @@ User uploads a CSV in Source Data. After processing, user opens **Visualization 
   - anomaly/insight cards
 - Add empty state when no ready CSV/PDF exists.
 - Add failed-source state if processing failed.
-- Current implementation: Visualization Data is wired to backend Source Artifact responses for CSV profiles, chart specs, and insight cards. It keeps a clearly labeled PDF Insight Board placeholder until PDF artifact responses are available.
+- Current implementation: Visualization Data is wired to backend Source Artifact responses for CSV profiles, chart specs, and insight cards. It keeps a clearly labeled Document Insight placeholder until PDF artifact responses are available.
 
 ### Tests
 
@@ -568,7 +568,7 @@ User uploads a CSV in Source Data. After processing, user opens **Visualization 
 
 ---
 
-## Task 3: PDF processing into Insight Board
+## Task 3: PDF processing into Document Insight
 
 - **Type:** AFK
 - **Blocked by:** Task 1
@@ -577,33 +577,79 @@ User uploads a CSV in Source Data. After processing, user opens **Visualization 
 
 ### Product flow
 
-User uploads a PDF in Source Data. After processing, user opens **Visualization Data** and sees a PDF Insight Board instead of a chart.
+User uploads a PDF in Source Data. After processing, user opens **Visualization Data** and sees a Document Insight view instead of a chart.
 
 ### Backend work
 
-- Add PDF extraction service.
+- Add PDF OCR and Document Insight services.
+- Add Task 3 dependencies: `mistralai`, `litellm`, and `chonkie`.
+- Add Task 3 config fields:
+  - `RAG_MISTRAL_API_KEY`
+  - `RAG_OPENAI_API_BASE_URL`
+  - `RAG_OPENAI_API_KEY`
+  - `RAG_OPENAI_MODEL`, default `google/gemini-3.1-flash-lite-preview`
+  - `RAG_MAX_FILE_SIZE_MB`, default `30`
+  - `RAG_ENABLE_BACKGROUND_PROCESSING`, default `false`
 - Read PDF from local storage.
-- Extract text and page references where possible.
+- Enforce a 30 MB maximum PDF size before inline base64 OCR.
+- Use Mistral OCR with model `mistral-ocr-latest`, inline base64 `document_url`, `table_format="html"`, and `include_image_base64=false`.
+- If `RAG_MISTRAL_API_KEY` is missing or OCR fails, mark the Source as Failed with a clear processing error.
+- Save extracted markdown to:
+
+```text
+storage/extracted/{workspace_id}/{source_id}/ocr.md
+```
+
+- Add page markers to extracted markdown so later chunks can keep page references.
+- Chunk extracted markdown with Chonkie `RecursiveChunker` using `chunk_size=3000` and `min_characters_per_chunk=300`.
+- Use LiteLLM for chunk labeling with `RAG_OPENAI_API_BASE_URL`, `RAG_OPENAI_API_KEY`, and `RAG_OPENAI_MODEL`, defaulting to `google/gemini-3.1-flash-lite-preview`.
+- Chunk labeling metadata uses fixed labels for `document_section` and `content_type`, plus free-text `topics`, `entities`, and `time_periods`.
+- `document_section` labels are `executive_summary`, `market_context`, `customer_insight`, `competitor_analysis`, `financials`, `product_feature`, `risks`, `opportunities`, `recommendation`, `methodology`, `appendix`, and `unknown`.
+- `content_type` labels are `narrative`, `table`, `metric`, `quote`, `assumption`, `risk`, `opportunity`, `recommendation`, and `raw_text`.
+- LiteLLM JSON outputs must be parsed, repaired once if invalid, and then treated as Failed if still invalid.
+- If a chunk labeling call fails after one retry, fail the PDF processing instead of silently skipping the chunk.
+- Save chunk metadata to:
+
+```text
+storage/extracted/{workspace_id}/{source_id}/chunks.json
+```
+
+- Use a LiteLLM aggregation call to create final Source Artifacts from chunk metadata.
 - Generate artifacts:
-  - `pdf_summary` as the required minimum artifact
-  - `pdf_insight_board` when enough text is extracted for useful structured sections
-- PDF Insight Board should include:
-  - document summary
+  - `source_summary` as the required minimum artifact
+  - `source_insight` when enough text is extracted for useful structured sections
+- `source_summary.content_json` should include:
+  - summary
+  - page count
+  - OCR model
+  - structuring model
+  - extracted markdown path
+  - chunk metadata path
+  - warnings
+- `source_insight.content_json` should include:
   - key findings
   - assumptions
   - risks
   - opportunities
   - source quotes
+- Insight items should be citation-ready objects with `text`, `page_number`, and `quote` when available.
+- Maximum insight counts are 5 key findings, 3 assumptions, 5 risks, 5 opportunities, and 5 source quotes.
+- If OCR produces fewer than 500 meaningful characters, save `source_summary`, skip `source_insight`, set status to Ready, and include a warning in `source_summary.content_json.warnings`.
+- On retry, overwrite `ocr.md` and `chunks.json`, and upsert `source_summary` and `source_insight` by `artifact_type` instead of creating duplicates.
 - Store artifacts in `source_artifact.content_json`.
 - Update source status:
   - Processing while extracting
-  - Ready after the PDF summary, insight board, and ChromaDB indexing are ready
+  - Ready after `source_summary` is saved and `source_insight` is saved or intentionally skipped with a warning
   - Failed if extraction fails
+- ChromaDB indexing is deferred to Task 4. Task 3 prepares `ocr.md` and `chunks.json`; Task 4 indexes chunks and retrieval metadata.
+- Source processing runs synchronously by default for demo reliability. Add `RAG_ENABLE_BACKGROUND_PROCESSING=false` as the default. If background processing is enabled later but unavailable, fall back to sync processing with a warning.
 
 ### Frontend work
 
-- Extend Visualization Data page to render PDF Insight Board.
-- Match the PDF Insight Board design. Use backend artifact data when available; use design-faithful placeholder content only until the API response is ready.
+- Extend Visualization Data page to render Document Insight from `source_summary` and `source_insight` artifacts.
+- Match the Document Insight design. Use backend artifact data when available; use design-faithful placeholder content only until the API response is ready.
+- Select the insight artifact by `artifactType === "source_insight"`; do not assume the first PDF artifact is the insight artifact.
+- Render warnings from `source_summary.contentJson.warnings` when present.
 - Show cards/sections for:
   - Summary
   - Key Findings
@@ -612,23 +658,26 @@ User uploads a PDF in Source Data. After processing, user opens **Visualization 
   - Opportunities
   - Source Quotes
 - Keep PDF visuals different from CSV visuals.
-- Current implementation: Visualization Data includes a presentational PDF Insight Board. It does not call the backend yet.
+- Current implementation: Visualization Data includes a presentational Document Insight placeholder. It does not call the backend for PDF artifacts yet.
 
 ### Tests
 
-- Backend test: PDF/text fixture becomes insight board artifact.
+- Backend test: mocked Mistral OCR and LiteLLM output create `source_summary` and `source_insight` artifacts.
+- Backend test: short OCR text creates `source_summary` with warning and skips `source_insight`.
 - Backend test: extraction failure marks source as Failed.
-- Frontend test: PDF Insight Board renders from API response.
+- Frontend test: Document Insight renders from `source_summary` and `source_insight` API responses.
 
 ### Acceptance criteria
 
 - [ ] Uploaded PDF is processed from local storage.
-- [ ] PDF summary artifact is saved.
-- [ ] PDF Insight Board artifact is saved when enough useful text is extracted.
-- [ ] PDF Source is not Ready until ChromaDB indexing is ready.
-- [ ] Visualization Data page displays PDF Insight Board.
+- [ ] `source_summary` artifact is saved.
+- [ ] `source_insight` artifact is saved when enough useful text is extracted.
+- [ ] Extracted OCR markdown is saved to `storage/extracted/{workspace_id}/{source_id}/ocr.md`.
+- [ ] Chunk metadata is saved to `storage/extracted/{workspace_id}/{source_id}/chunks.json`.
+- [ ] Short OCR text creates a Ready Source with `source_summary` warnings and no `source_insight`.
+- [ ] Visualization Data page displays Document Insight.
 - [ ] PDF is not forced into chart format.
-- [x] Visualization Data page displays a design-faithful mock PDF Insight Board while API artifact responses are pending.
+- [x] Visualization Data page displays a design-faithful mock Document Insight while API artifact responses are pending.
 
 ---
 
@@ -654,7 +703,7 @@ CSV Sources are not indexed into ChromaDB for MVP. Chat uses CSV Source Artifact
 company_knowledge
 ```
 
-- During PDF processing, chunk extracted text.
+- During Task 4, read Task 3's extracted markdown and chunk metadata files.
 - Embed chunks.
 - Store chunks in ChromaDB with metadata:
   - workspace_id
@@ -673,8 +722,11 @@ company_knowledge
   - language
   - page_number
   - chunk_index
+  - topics
+  - entities
+  - time_periods
   - created_at
-- Use AI extraction for:
+- Reuse Task 3 AI chunk labels for:
   - `document_section`
   - `content_type`
 - Use fallback values:

@@ -20,11 +20,11 @@ The MVP has three main navigation items:
 
 The Chat page behaves like a GPT-style strategy workspace. The AI is not only a passive assistant. It acts as a Company Strategy Consultant that can analyze source data, challenge assumptions, compare options, recommend product or feature initiatives, identify risks, and generate a formatted Decision Brief inside the chat when asked.
 
-The Visualization Data page turns uploaded sources into understandable artifacts. CSV files produce an auto-generated visual story, including summary cards, trends, segment breakdowns, relationship views, anomaly highlights, and insight cards. PDF files produce a PDF Insight Board, including summaries, key findings, assumptions, risks, opportunities, and source quotes.
+The Visualization Data page turns uploaded sources into understandable artifacts. CSV files produce an auto-generated visual story, including summary cards, trends, segment breakdowns, relationship views, anomaly highlights, and insight cards. PDF files produce a Document Insight view from generic Source Artifacts, including summaries, key findings, assumptions, risks, opportunities, and source quotes.
 
-The Source Data page is the Single Source of Truth for uploaded company context. Users can add CSV and PDF files, choose team labels, choose one or more category labels, set the period, and track processing status. CSV files are parsed for visualization and analysis. PDF files are extracted, chunked, embedded, and indexed for retrieval.
+The Source Data page is the Single Source of Truth for uploaded company context. Users can add CSV and PDF files, choose team labels, choose one or more category labels, set the period, and track processing status. CSV files are parsed for visualization and analysis. PDF files are OCRed, chunked, labeled, and later indexed for retrieval.
 
-The backend uses FastAPI as the API layer, Python for AI/RAG/data processing, SQLModel and Alembic for relational app data, ChromaDB as the vector database for PDF/document retrieval, Redis and Celery for background file processing, OpenAI Agent SDK for agent orchestration, and Langfuse for agent observability. The frontend uses TanStack Start, TanStack Router, React, and TypeScript.
+The backend uses FastAPI as the API layer, Python for AI/RAG/data processing, SQLModel and Alembic for relational app data, ChromaDB as the vector database for PDF/document retrieval, optional Redis and Celery for background file processing, OpenAI Agent SDK for agent orchestration, and Langfuse for agent observability. The frontend uses TanStack Start, TanStack Router, React, and TypeScript.
 
 ## User Stories
 
@@ -120,13 +120,17 @@ The backend uses FastAPI as the API layer, Python for AI/RAG/data processing, SQ
 - Category labels are Analytics / Metrics, Market Research, Product / Feature, Customer Insight, Business Model, Competitor Analysis, and Revenue / Sales.
 - Category labels support multi-select.
 - Visualization filters are Team Label, Category Label, and Period.
-- File processing uses background jobs with four statuses: Uploaded, Processing, Ready, and Failed.
+- File processing uses four statuses: Uploaded, Processing, Ready, and Failed. Processing runs synchronously by default for the demo and can later use background jobs.
 - Structured CSV data is parsed and profiled for auto-generated visualizations.
 - CSV visualization should produce a generic visual story instead of only raw tables.
 - CSV visualization includes executive summary cards, trend explorer, segment breakdown, relationship view, anomaly highlights, and auto insight cards when the underlying data supports them.
 - Unstructured PDF data is not forced into charts.
-- PDF visualization is represented as a PDF Insight Board.
-- PDF Insight Board includes document summary, key findings, assumptions, risks, opportunities, and source quotes.
+- PDF visualization is represented as a Document Insight view.
+- Document Insight uses `source_summary` for the document summary and `source_insight` for key findings, assumptions, risks, opportunities, and source quotes.
+- PDF OCR uses Mistral OCR with model `mistral-ocr-latest`, inline base64 document input, `table_format="html"`, and image base64 disabled.
+- PDF structuring uses LiteLLM with `RAG_OPENAI_API_BASE_URL`, `RAG_OPENAI_API_KEY`, and `RAG_OPENAI_MODEL`, defaulting to `google/gemini-3.1-flash-lite-preview`.
+- PDF processing writes extracted markdown to `storage/extracted/{workspace_id}/{source_id}/ocr.md` and chunk metadata to `storage/extracted/{workspace_id}/{source_id}/chunks.json`.
+- Source processing runs synchronously by default for the demo. `RAG_ENABLE_BACKGROUND_PROCESSING=false` keeps sync processing; when enabled later, background failures should fall back to sync processing with a warning.
 - Chat can use all relevant sources by default.
 - Chat users can override scope by mentioning team, category, period, or source constraints in natural language.
 - Chat responses are semi-structured by default: Direct Answer, Evidence, Interpretation, Recommendation / Next Step, and Confidence + Gaps.
@@ -142,7 +146,7 @@ The backend uses FastAPI as the API layer, Python for AI/RAG/data processing, SQ
 - Backend FastAPI/Pydantic/SQLModel schemas are the validation source of truth. Frontend TypeScript types live locally under `apps/web/src/types`, and `/openapi.json` is the contract reference for source data, visualizations, chat messages, source citations, and decision briefs.
 - SQLModel and Alembic should be used for relational app data such as sources, metadata labels, periods, processing jobs, chat sessions, chat messages, generated artifacts, and trace references.
 - ChromaDB should be used as the vector database for PDF chunks, document insight retrieval, and company knowledge retrieval.
-- Redis and Celery should be used for background source processing.
+- Redis and Celery should be available for optional background source processing, but demo processing defaults to synchronous execution.
 - OpenAI Agent SDK should be used for AI agent orchestration.
 - Langfuse should be used for AI agent observability.
 - The issue tracker and triage labels are not configured in the current repository context. This PRD is saved as a local document first, per the requested output.
@@ -151,9 +155,9 @@ Major modules to build or modify:
 
 - Workspace Management: handles lightweight workspace creation and client-side workspace switching without authentication.
 - Source Data Management: handles upload metadata, team labels, category labels, period, source table listing, status display, and source deletion.
-- Source Processing Pipeline: handles background transition from Uploaded to Processing to Ready or Failed, and supports retrying Failed Sources.
+- Source Processing Pipeline: handles transition from Uploaded to Processing to Ready or Failed, supports retrying Failed Sources, and can run synchronously or through optional background processing.
 - CSV Profiler and Visualization Generator: deep module that accepts structured rows and returns visualization-ready metadata, chart specs, summary stats, anomalies, and insight text.
-- PDF Ingestion and Knowledge Indexer: deep module that extracts text, chunks content, creates embeddings, stores vectors, and returns document insight board data.
+- PDF Ingestion and Knowledge Indexer: deep module that OCRs PDF files, writes extracted markdown, chunks content, labels chunks, creates embeddings, stores vectors, and returns Document Insight data.
 - Company Knowledge Retrieval: deep module that selects relevant structured summaries and document chunks based on user chat intent, labels, categories, and period.
 - AI Consultant Orchestrator: deep module that routes user questions to tools, retrieves sources, formats grounded responses, and records observability traces.
 - Decision Brief Generator: deep module that turns chat context and source evidence into a formatted decision brief.
@@ -161,7 +165,7 @@ Major modules to build or modify:
 - API Contract Alignment: keeps backend schemas, frontend local TypeScript types, and `/openapi.json` aligned for source data, processing status, visualizations, chat responses, citations, traces, and decision briefs.
 - Frontend Shell and Navigation: implements the three-page layout with Chat, Visualization Data, and Source Data.
 - Chat Interface: implements GPT-like conversation, source and trace display, and formatted Decision Brief rendering.
-- Visualization Data Interface: implements auto visualization cards for CSV and PDF Insight Board cards for documents.
+- Visualization Data Interface: implements auto visualization cards for CSV and Document Insight cards for PDF documents.
 - Source Data Interface: implements source library table and Add New Data dialog.
 
 ## High-Level Schema
@@ -174,7 +178,7 @@ This schema is PRD-level and should guide implementation. It is not intended to 
 - Source: an uploaded CSV or PDF file plus metadata, labels, period, storage path, processing status, and generated artifacts.
 - Source Data: the product page/menu where users manage Sources.
 - Source Category: join table for multi-select category labels on a source.
-- Source Artifact: generated output from source processing, such as CSV profiles, chart specs, insight cards, PDF summaries, and PDF insight boards.
+- Source Artifact: generated output from source processing, such as CSV profiles, chart specs, insight cards, source summaries, and source insights.
 - Chat Session: a GPT-like conversation thread inside the workspace.
 - Chat Message: one user, assistant, or system message inside a chat session.
 - Agent Tool Call: simplified record of tools used while generating an assistant response.
@@ -245,7 +249,7 @@ Stores generated source-processing outputs used by Visualization Data and Chat.
 
 - `id`
 - `source_id`
-- `artifact_type`: `csv_profile`, `chart_spec`, `insight_card`, `pdf_summary`, `pdf_insight_board`
+- `artifact_type`: `csv_profile`, `chart_spec`, `insight_card`, `source_summary`, `source_insight`
 - `title`
 - `content_json`
 - `created_at`
@@ -256,7 +260,8 @@ Stores generated source-processing outputs used by Visualization Data and Chat.
 - CSV profile: column names, inferred types, row count, numeric columns, categorical columns, date columns.
 - Chart spec: chart type, x-axis, y-axis, series, labels, display title.
 - Insight card: anomaly, trend, interpretation, confidence, related columns.
-- PDF insight board: summary, key findings, assumptions, risks, opportunities, quotes.
+- Source summary: summary, page count, OCR model, structuring model, extracted markdown path, chunk metadata path, and warnings.
+- Source insight: key findings, assumptions, risks, opportunities, and source quotes. Each item should include supporting quote and page number when available.
 
 #### `chat_session`
 
@@ -450,17 +455,18 @@ flowchart TD
   B --> C[Create source_data row]
   B --> D[Save original file to local storage]
   C --> E[Set status: Uploaded]
-  D --> F[Queue Celery processing job]
+  D --> F[Run source processing sync by default or optional background]
   F --> G[Set status: Processing]
   G --> H{File type}
   H -->|CSV| I[CSV Profiler]
   I --> J[Generate csv_profile, chart_spec, insight_card]
   J --> K[Save source_artifact rows]
-  H -->|PDF| L[PDF Extractor]
-  L --> M[AI section/content extraction]
-  M --> N[Chunk and embed document]
-  N --> O[Store chunks in ChromaDB company_knowledge]
-  M --> P[Generate pdf_summary and pdf_insight_board]
+  H -->|PDF| L[Mistral OCR to extracted markdown]
+  L --> M[Chunk markdown with Chonkie]
+  M --> N[LiteLLM chunk labeling]
+  N --> O[Save extracted ocr.md and chunks.json]
+  N --> P[Generate source_summary and source_insight]
+  O --> S[Task 4 indexes chunks in ChromaDB]
   P --> K
   K --> Q[Set status: Ready]
   G --> R[Set status: Failed on error]
@@ -535,7 +541,7 @@ Modules to test:
 - AI Consultant Orchestrator should be tested with mocked model and tool calls to verify source-grounded response structure, insufficient-data behavior, and trace reference creation.
 - Decision Brief Generator should be tested with fixed evidence inputs to verify all required sections are present.
 - Frontend Source Data page should be tested for table rendering, upload dialog fields, labels, categories, period selection, and processing status display.
-- Frontend Visualization Data page should be tested for rendering CSV visual story sections and PDF Insight Board sections from API responses.
+- Frontend Visualization Data page should be tested for rendering CSV visual story sections and Document Insight sections from API responses.
 - Frontend Chat page should be tested for message rendering, semi-structured AI responses, View Sources, View Trace, and Decision Brief formatting.
 
 Prior art in the current codebase:
