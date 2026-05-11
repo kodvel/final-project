@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { ArrowRight, ChevronDown, Download, FileText, Lightbulb, Maximize2, TrendingDown, TrendingUp } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
+import { CATEGORY_LABEL_OPTIONS, TEAM_LABEL_OPTIONS } from '../constants/source-options'
 import {
   getSourceInsightArtifact,
   getSourceSummaryArtifact,
@@ -14,17 +15,6 @@ import { useInsightCards, useKpiCards, usePrimaryChart, useVisualizationArtifact
 import { useActiveWorkspace } from '../features/workspaces/hooks/use-active-workspace'
 import type { CategoryLabel, TeamLabel } from '../types/common'
 import type { ChartSpecContent, CitationItem, VisualizationArtifact } from '../types/visualization'
-
-const TEAM_LABELS: TeamLabel[] = ['marketing', 'product', 'data_analysis', 'business']
-const CATEGORY_LABELS: CategoryLabel[] = [
-  'analytics_metrics',
-  'market_research',
-  'product_feature',
-  'customer_insight',
-  'business_model',
-  'competitor_analysis',
-  'revenue_sales',
-]
 
 export const Route = createFileRoute('/visualization-data')({
   component: VisualizationDataPage,
@@ -102,8 +92,8 @@ function VisualizationDataPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <FilterSelect label="Team" value={teamFilter} onChange={setTeamFilter} options={TEAM_LABELS} formatLabel={formatLabel} />
-          <FilterSelect label="Category" value={categoryFilter} onChange={setCategoryFilter} options={CATEGORY_LABELS} formatLabel={formatLabel} />
+          <FilterSelect label="Team" value={teamFilter} onChange={setTeamFilter} options={TEAM_LABEL_OPTIONS} />
+          <FilterSelect label="Category" value={categoryFilter} onChange={setCategoryFilter} options={CATEGORY_LABEL_OPTIONS} />
           <PeriodFilter periodStart={periodStart} periodEnd={periodEnd} onStartChange={setPeriodStart} onEndChange={setPeriodEnd} />
         </div>
       </header>
@@ -435,13 +425,11 @@ function FilterSelect<T extends string>({
   value,
   onChange,
   options,
-  formatLabel,
 }: {
   label: string
   value: T | ''
   onChange: (v: T | '') => void
-  options: T[]
-  formatLabel: (v: T) => string
+  options: Array<{ value: T; label: string }>
 }) {
   return (
     <select
@@ -450,9 +438,9 @@ function FilterSelect<T extends string>({
       className="appearance-none rounded-lg border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-ring"
     >
       <option value="">{label}</option>
-      {options.map((opt) => (
-        <option key={opt} value={opt}>
-          {formatLabel(opt)}
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
         </option>
       ))}
     </select>
@@ -608,8 +596,4 @@ function ErrorState({ message }: { message: string }) {
   return (
     <section className="rounded-2xl border border-status-failed bg-status-failed-light p-8 text-sm text-status-failed shadow-sm">{message}</section>
   )
-}
-
-function formatLabel(value: string) {
-  return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 }

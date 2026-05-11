@@ -1,5 +1,7 @@
 # PRD: Company Intelligence Copilot
 
+For the current Source Data processing architecture, use [`docs/architecture.md`](architecture.md) as the source of truth.
+
 ## Problem Statement
 
 Companies often collect product, marketing, data analysis, and business information in separate places. Marketing may own user behavior reports, product teams may own feature and roadmap documents, data analysts may prepare monthly datasets, and business teams may own market, competitor, revenue, and business model documents.
@@ -20,11 +22,11 @@ The MVP has three main navigation items:
 
 The Chat page behaves like a GPT-style strategy workspace. The AI is not only a passive assistant. It acts as a Company Strategy Consultant that can analyze source data, challenge assumptions, compare options, recommend product or feature initiatives, identify risks, and generate a formatted Decision Brief inside the chat when asked.
 
-The Visualization Data page turns uploaded sources into understandable artifacts. CSV files produce an auto-generated visual story, including summary cards, trends, segment breakdowns, relationship views, anomaly highlights, and insight cards. PDF files produce a Document Insight view from generic Source Artifacts, including summaries, key findings, assumptions, risks, opportunities, and source quotes.
+The Visualization Data page turns ready Sources into a cached, period-based intelligence view. It composes normalized Source Artifacts across CSV and PDF Sources instead of treating each file type as a separate product model.
 
-The Source Data page is the Single Source of Truth for uploaded company context. Users can add CSV and PDF files, choose team labels, choose one or more category labels, set the period, and track processing status. CSV files are parsed for visualization and analysis. PDF files are OCRed, chunked, labeled, and later indexed for retrieval.
+The Source Data page is the Single Source of Truth for uploaded company context. Users can add CSV and PDF files, choose team labels, choose one or more category labels, set a month-level period, and track processing status. CSV and PDF files are extracted through file-specific processors, then normalized into shared `source_summary`, `source_content`, and optional `source_insight` artifacts.
 
-The backend uses FastAPI as the API layer, Python for AI/RAG/data processing, SQLModel and Alembic for relational app data, ChromaDB as the vector database for PDF/document retrieval, optional Redis and Celery for background file processing, OpenAI Agent SDK for agent orchestration, and Langfuse for agent observability. The frontend uses TanStack Start, TanStack Router, React, and TypeScript.
+The backend uses FastAPI as the API layer, Python for AI/RAG/data processing, SQLModel and Alembic for relational app data, ChromaDB as the vector database for searchable `source_content`, optional Redis and Celery for later background file processing, an OpenAI-compatible LLM client for consultant responses and structured workflows, Tavily for bounded web search fallback, and Langfuse for observability. The frontend uses TanStack Start, TanStack Router, React, TypeScript, and DeltaKit for chat streaming.
 
 ## User Stories
 
@@ -119,35 +121,42 @@ The backend uses FastAPI as the API layer, Python for AI/RAG/data processing, SQ
 - Team labels are Marketing, Product, Data Analysis, and Business.
 - Category labels are Analytics / Metrics, Market Research, Product / Feature, Customer Insight, Business Model, Competitor Analysis, and Revenue / Sales.
 - Category labels support multi-select.
-- Visualization filters are Team Label, Category Label, and Period.
+- Visualization Data is scoped by Workspace and month range only. Team and category labels remain Source metadata for grouping and Chat scope, not Visualization filters.
 - File processing uses four statuses: Uploaded, Processing, Ready, and Failed. Processing runs synchronously by default for the demo and can later use background jobs.
-- Structured CSV data is parsed and profiled for auto-generated visualizations.
-- CSV visualization should produce a generic visual story instead of only raw tables.
-- CSV visualization includes executive summary cards, trend explorer, segment breakdown, relationship view, anomaly highlights, and auto insight cards when the underlying data supports them.
+- Structured CSV data is parsed, profiled, interpreted, and normalized into shared Source Artifacts.
+- CSV processing uses deterministic code for facts and an LLM for business-readable interpretation.
+- CSV `source_content` indexes summarized factual chunks, not every raw row.
 - Unstructured PDF data is not forced into charts.
-- PDF visualization is represented as a Document Insight view.
-- Document Insight uses `source_summary` for the document summary and `source_insight` for key findings, assumptions, risks, opportunities, and source quotes.
+- PDF processing generates `source_summary`, `source_content`, and optional `source_insight` with key findings, assumptions, risks, opportunities, and source quotes.
 - PDF OCR uses Mistral OCR with model `mistral-ocr-latest`, inline base64 document input, `table_format="html"`, and image base64 disabled.
 - PDF structuring uses LiteLLM with `RAG_OPENAI_API_BASE_URL`, `RAG_OPENAI_API_KEY`, and `RAG_OPENAI_MODEL`, defaulting to `google/gemini-3.1-flash-lite-preview`.
 - PDF processing writes extracted markdown to `storage/extracted/{workspace_id}/{source_id}/ocr.md` and chunk metadata to `storage/extracted/{workspace_id}/{source_id}/chunks.json`.
 - Source processing runs synchronously by default for the demo. `RAG_ENABLE_BACKGROUND_PROCESSING=false` keeps sync processing; when enabled later, background failures should fall back to sync processing with a warning.
 - Chat can use all relevant sources by default.
 - Chat users can override scope by mentioning team, category, period, or source constraints in natural language.
+- Chat is full-session-aware. The backend loads all Chat Session messages and builds bounded model context with a conversation summary for older messages, recent raw messages, and the current user message.
+- Chat context assembly is budgeted across conversation history, uploaded Source RAG evidence, optional Tavily web evidence, and reserved output tokens. Grounding rules and the current user message are never dropped.
+- RAG evidence injected into Chat must be compact, validated against SQL, deduplicated, reranked, diversity-capped by Source, and quality-gated before it is shown to the model.
+- Chat streams responses through DeltaKit-compatible Server-Sent Events: `text/event-stream` with `data:` JSON events that include a `type` field and end with `data: [DONE]`.
 - Chat responses are semi-structured by default: Direct Answer, Evidence, Interpretation, Recommendation / Next Step, and Confidence + Gaps.
 - Chat answers must be source-grounded. If data is insufficient, the AI must say so and ask for missing information or label assumptions clearly.
+- Chat may use Tavily web search only when uploaded Source evidence is weak or empty and the question is public, current, market-facing, or generally answerable from the web. Web evidence must be labeled separately from uploaded Source evidence.
 - Chat responses should expose View Sources and View Trace actions.
 - View Trace links to or references Langfuse trace information.
 - Decision Briefs are generated as formatted chat responses, not as a separate MVP page.
+- Decision Brief generation is explicit through `/decision-brief`. It uses the current Chat Session conversation and citations already used in that session. It does not auto-save conversation memory and does not run broad retrieval across all Sources again for the MVP.
+- Decision Brief generation uses a deterministic backend workflow with structured LLM calls for extraction, evidence assessment, and drafting. It is not an autonomous agent workflow for the MVP.
 - Decision Brief format includes Decision Title, Context / Problem, Source Evidence, Strategic Interpretation, Recommendation, Alternatives Considered, Risks & Assumptions, Success Metrics, Next Steps, and Recommendation Status.
 - Recommendation Status values are Go, No-Go, and Validate First. Approval Status values are Draft, Reviewed, Approved, and Rejected; these are independent from Recommendation Status.
+- Decision Brief Approval Status is changed from actions on the Decision Brief card in Chat. `/brief-status` is not part of the MVP interaction model.
 - The frontend uses the existing TanStack Start, TanStack Router, React, and TypeScript foundation.
 - The backend uses the existing FastAPI foundation.
 - Python remains the primary place for RAG, AI Agent work, and data analysis, consistent with the accepted foundation ADR.
 - Backend FastAPI/Pydantic/SQLModel schemas are the validation source of truth. Frontend TypeScript types live locally under `apps/web/src/types`, and `/openapi.json` is the contract reference for source data, visualizations, chat messages, source citations, and decision briefs.
 - SQLModel and Alembic should be used for relational app data such as sources, metadata labels, periods, processing jobs, chat sessions, chat messages, generated artifacts, and trace references.
-- ChromaDB should be used as the vector database for PDF chunks, document insight retrieval, and company knowledge retrieval.
+- ChromaDB should be used as the vector database for all indexable `source_content` chunks. SQL remains the source of truth.
 - Redis and Celery should be available for optional background source processing, but demo processing defaults to synchronous execution.
-- OpenAI Agent SDK should be used for AI agent orchestration.
+- OpenAI-compatible LLM calls should be used for consultant responses and deterministic structured workflows. Autonomous agent behavior is not required for Decision Brief generation in the MVP.
 - Langfuse should be used for AI agent observability.
 - The issue tracker and triage labels are not configured in the current repository context. This PRD is saved as a local document first, per the requested output.
 
@@ -156,16 +165,16 @@ Major modules to build or modify:
 - Workspace Management: handles lightweight workspace creation and client-side workspace switching without authentication.
 - Source Data Management: handles upload metadata, team labels, category labels, period, source table listing, status display, and source deletion.
 - Source Processing Pipeline: handles transition from Uploaded to Processing to Ready or Failed, supports retrying Failed Sources, and can run synchronously or through optional background processing.
-- CSV Profiler and Visualization Generator: deep module that accepts structured rows and returns visualization-ready metadata, chart specs, summary stats, anomalies, and insight text.
-- PDF Ingestion and Knowledge Indexer: deep module that OCRs PDF files, writes extracted markdown, chunks content, labels chunks, creates embeddings, stores vectors, and returns Document Insight data.
-- Company Knowledge Retrieval: deep module that selects relevant structured summaries and document chunks based on user chat intent, labels, categories, and period.
+- CSV Extractor and Normalizer: deep module that parses structured rows, computes facts, detects patterns, and returns normalized `source_summary`, `source_content`, and optional `source_insight`.
+- PDF Extractor and Normalizer: deep module that OCRs PDF files, writes extracted markdown, chunks content, labels chunks, and returns normalized `source_summary`, `source_content`, and optional `source_insight`.
+- Company Knowledge Indexing and Retrieval: deep module that indexes `source_content` chunks in ChromaDB, validates results against SQL, and returns citation-ready evidence.
 - AI Consultant Orchestrator: deep module that routes user questions to tools, retrieves sources, formats grounded responses, and records observability traces.
 - Decision Brief Generator: deep module that turns chat context and source evidence into a formatted decision brief.
 - Langfuse Observability Integration: captures prompts, source retrieval, tool calls, model output, latency, errors, and trace IDs.
 - API Contract Alignment: keeps backend schemas, frontend local TypeScript types, and `/openapi.json` aligned for source data, processing status, visualizations, chat responses, citations, traces, and decision briefs.
 - Frontend Shell and Navigation: implements the three-page layout with Chat, Visualization Data, and Source Data.
 - Chat Interface: implements GPT-like conversation, source and trace display, and formatted Decision Brief rendering.
-- Visualization Data Interface: implements auto visualization cards for CSV and Document Insight cards for PDF documents.
+- Visualization Data Interface: implements a cached period-based intelligence view composed from ready Source Artifacts.
 - Source Data Interface: implements source library table and Add New Data dialog.
 
 ## High-Level Schema
@@ -178,11 +187,12 @@ This schema is PRD-level and should guide implementation. It is not intended to 
 - Source: an uploaded CSV or PDF file plus metadata, labels, period, storage path, processing status, and generated artifacts.
 - Source Data: the product page/menu where users manage Sources.
 - Source Category: join table for multi-select category labels on a source.
-- Source Artifact: generated output from source processing, such as CSV profiles, chart specs, insight cards, source summaries, and source insights.
+- Source Artifact: normalized knowledge generated from source processing: required `source_summary`, required `source_content` for indexable Sources, and optional `source_insight`.
+- Visualization Snapshot: a rebuildable cached view for one Workspace and one month range, composed from ready Source Artifacts.
 - Chat Session: a GPT-like conversation thread inside the workspace.
 - Chat Message: one user, assistant, or system message inside a chat session.
 - Agent Tool Call: simplified record of tools used while generating an assistant response.
-- Message Source Citation: source evidence used by an assistant response.
+- Message Source Citation: evidence used by assistant messages. The table name may remain `message_source_citation`, but it can store either uploaded Source evidence or web citations.
 - Decision Brief Draft: a generated decision artifact that appears as a formatted assistant response and can be marked draft, reviewed, approved, or rejected.
 
 ### Relational Database Schema
@@ -208,7 +218,7 @@ Only one workspace is active in a client UI at a time. All Source Data, Visualiz
 
 #### `source_data`
 
-Stores uploaded file metadata. Original uploaded files are stored in local storage, not directly in the database.
+Stores uploaded file metadata. Original uploaded files are stored in server-side file storage, not directly in the database.
 
 - `id`
 - `workspace_id`
@@ -217,9 +227,8 @@ Stores uploaded file metadata. Original uploaded files are stored in local stora
 - `file_type`: `csv`, `pdf`
 - `original_filename`
 - `storage_path`
-- `period_start`
-- `period_end`
-- `period_label`
+- `period_start_month`: `YYYY-MM`
+- `period_end_month`: `YYYY-MM`
 - `processing_status`: `uploaded`, `processing`, `ready`, `failed`
 - `processing_error`
 - `uploaded_at`
@@ -228,7 +237,7 @@ Stores uploaded file metadata. Original uploaded files are stored in local stora
 - `created_at`
 - `updated_at`
 
-Recommended local storage path format:
+Recommended server-side file storage path format:
 
 ```text
 storage/uploads/{workspace_id}/{source_id}/original.{ext}
@@ -245,23 +254,60 @@ Stores category labels for each source. A source can have multiple categories.
 
 #### `source_artifact`
 
-Stores generated source-processing outputs used by Visualization Data and Chat.
+Stores normalized Source knowledge used by Visualization Data, Chat, citations, and Decision Brief Drafts.
 
 - `id`
 - `source_id`
-- `artifact_type`: `csv_profile`, `chart_spec`, `insight_card`, `source_summary`, `source_insight`
+- `artifact_type`: `source_summary`, `source_content`, `source_insight`
 - `title`
 - `content_json`
 - `created_at`
 - `updated_at`
 
-`content_json` stays flexible because source data is generic. Examples:
+`content_json` uses a common top-level envelope. Sections may be empty when they do not apply:
 
-- CSV profile: column names, inferred types, row count, numeric columns, categorical columns, date columns.
-- Chart spec: chart type, x-axis, y-axis, series, labels, display title.
-- Insight card: anomaly, trend, interpretation, confidence, related columns.
-- Source summary: summary, page count, OCR model, structuring model, extracted markdown path, chunk metadata path, and warnings.
-- Source insight: key findings, assumptions, risks, opportunities, and source quotes. Each item should include supporting quote and page number when available.
+```json
+{
+  "summary": "",
+  "statistics": {
+    "row_count": null,
+    "column_count": null,
+    "page_count": null,
+    "chunk_count": null
+  },
+  "columns": [],
+  "sections": [],
+  "findings": [],
+  "risks": [],
+  "opportunities": [],
+  "assumptions": [],
+  "quotes": [],
+  "chunks": [],
+  "warnings": [],
+  "metadata": {}
+}
+```
+
+#### `visualization_snapshot`
+
+Stores cached Visualization Data views. Snapshots are derived from Source Artifacts and can be rebuilt.
+
+- `id`
+- `workspace_id`
+- `period_start_month`: `YYYY-MM`
+- `period_end_month`: `YYYY-MM`
+- `scope_hash`
+- `title`
+- `content_json`
+- `source_ids_json`
+- `artifact_ids_json`
+- `status`: `ready`, `failed`
+- `generation_error`
+- `generated_at`
+- `created_at`
+- `updated_at`
+
+Use a unique constraint on `workspace_id`, `period_start_month`, and `period_end_month`.
 
 #### `chat_session`
 
@@ -270,8 +316,28 @@ Stores chat threads.
 - `id`
 - `workspace_id`
 - `title`
+- `last_message_at`
+- `conversation_summary`
+- `summary_cutoff_message_id`
+- `summary_updated_at`
 - `created_at`
 - `updated_at`
+
+Chat Sessions are lazily created on the first user message. A Chat Session remains scoped to the Workspace used at creation time and does not follow later Active Workspace changes. Chat history lists sessions by `last_message_at` descending and initially shows the latest 5 sessions with a Show More action.
+
+`conversation_summary` stores a compact summary of older messages up to `summary_cutoff_message_id`. Normal Chat model context is built as:
+
+```text
+conversation_summary
+recent raw messages
+current user message
+retrieved uploaded Source evidence
+web evidence when Tavily fallback is allowed and used
+```
+
+The summary preserves continuity but is not evidence. Internal company factual claims still require uploaded Source citations.
+
+ContextBuilder must reserve output tokens before prompt assembly and balance the prompt across conversation context and RAG evidence. When budget is tight, lower-ranked RAG chunks and older redundant raw messages are dropped before grounding rules, the current user message, or high-quality uploaded Source evidence.
 
 #### `chat_message`
 
@@ -282,8 +348,23 @@ Stores user, assistant, and system messages.
 - `role`: `user`, `assistant`, `system`
 - `content`
 - `message_type`: `normal`, `decision_brief`, `command_result`
+- `status`: `pending`, `streaming`, `completed`, `failed`, `interrupted`
 - `trace_id`
+- `error_message`
+- `metadata_json`
 - `created_at`
+- `updated_at`
+- `completed_at`
+
+The message lifecycle is:
+
+```text
+pending -> streaming -> completed
+pending -> failed
+streaming -> interrupted
+```
+
+User messages are stored as `completed`. Assistant messages are created as `streaming`, then become `completed`, `failed`, or `interrupted`. Partial interrupted assistant content should be retained for audit and UI recovery.
 
 #### `agent_tool_call`
 
@@ -294,21 +375,43 @@ Stores simplified tool-call summaries for UI/debugging. Full details belong in L
 - `tool_name`
 - `status`: `success`, `failed`
 - `summary`
+- `input_json`
+- `output_json`
 - `created_at`
 
 #### `message_source_citation`
 
-Stores source evidence used by assistant messages.
+Stores evidence used by assistant messages. The table name may remain `message_source_citation` for compatibility, but the model supports both uploaded Source citations and Tavily web citations.
 
 - `id`
 - `message_id`
+- `citation_type`: `uploaded_source`, `web`
+- `ordinal`
 - `source_id`
 - `artifact_id`
+- `chunk_id`
+- `url`
+- `title`
+- `domain`
+- `provider`
+- `provider_request_id`
+- `published_date`
+- `favicon_url`
 - `quote`
+- `snippet`
 - `page_number`
+- `row_refs_json`
+- `relevance_score`
+- `citation_status`: `available`, `source_deleted`, `source_failed`, `artifact_missing`, `web_unavailable`
+- `retrieved_at`
 - `created_at`
 
-For CSV citations, `artifact_id` can point to a profile, chart spec, or insight card. For PDF citations, `quote` and `page_number` should be used when available.
+Validation rules:
+
+- `uploaded_source` citations require `source_id` and may include `artifact_id`, `chunk_id`, `quote`, `page_number`, or `row_refs_json`.
+- `web` citations require `url`, should not set `source_id`, and should store Tavily display metadata such as title, snippet, score, and provider request ID.
+- Only evidence actually used in the final answer is saved as a citation. Retrieved-but-unused candidates are not shown as Sources Used.
+- Old citations remain visible for audit even if their Source is later deleted or reprocessed; non-available citations render with a warning/disabled state.
 
 #### `decision_brief`
 
@@ -318,12 +421,16 @@ Stores generated Decision Brief Drafts. A brief is not created for every chat. I
 - `workspace_id`
 - `chat_session_id`
 - `chat_message_id`
+- `sequence_number`
+- `context_cutoff_message_id`
 - `title`
+- `objective`
 - `recommendation_status`: `go`, `no_go`, `validate_first`
 - `approval_status`: `draft`, `reviewed`, `approved`, `rejected`
 - `content_json`
 - `created_at`
 - `updated_at`
+- `status_updated_at`
 
 `content_json` should be structured, not plain markdown:
 
@@ -340,14 +447,28 @@ Stores generated Decision Brief Drafts. A brief is not created for every chat. I
 }
 ```
 
+Each `/decision-brief` creates a new point-in-time draft. Drafts are not overwritten and do not auto-update when the conversation continues. `context_cutoff_message_id` records the last Chat Message included in the draft context.
+
+Decision Brief Approval Status transitions:
+
+```text
+draft -> reviewed
+draft -> approved
+draft -> rejected
+reviewed -> approved
+reviewed -> rejected
+approved = locked
+rejected = locked
+```
+
 ### Slash Commands
 
 The Chat page supports MVP slash commands:
 
-- `/decision-brief`: generates a Decision Brief Draft from the current chat context.
-- `/sources`: shows sources used in the current discussion or latest assistant response.
+- `/decision-brief`: generates a Decision Brief Draft from the current chat context and citations already used in that session.
 - `/trace`: shows the latest Langfuse trace reference.
-- `/brief-status <draft|reviewed|approved|rejected>`: updates the latest Decision Brief Draft status in the current chat session.
+
+Decision Brief status changes are not slash commands in the MVP. They are actions on the Decision Brief card in Chat and call `PATCH /decision-briefs/{brief_id}/status`.
 
 Decision Briefs represent AI-generated decision drafts, not final company decisions. The AI recommendation status and human approval status must remain separate.
 
@@ -359,19 +480,20 @@ Use one ChromaDB collection for MVP:
 company_knowledge
 ```
 
-Each PDF chunk is embedded and stored with rich metadata to improve retrieval precision.
+Each indexable `source_content` chunk is embedded and stored with rich metadata to improve retrieval precision. CSV chunks are summarized factual snippets, not raw rows. PDF chunks are OCR text chunks with page references.
 
 Recommended chunk metadata:
 
 - `workspace_id`
 - `source_id`
+- `artifact_id`
+- `chunk_id`
 - `source_title`
-- `source_type`: `pdf`
+- `file_type`: `csv` or `pdf`
 - `team_label`
 - `category_labels`
-- `period_start`
-- `period_end`
-- `period_label`
+- `period_start_month`
+- `period_end_month`
 - `document_section`: `executive_summary`, `market_context`, `competitor_analysis`, `customer_insight`, `business_model`, `risk`, `pricing`, `roadmap`, `unknown`
 - `section_confidence`
 - `content_type`: `summary`, `finding`, `assumption`, `risk`, `opportunity`, `quote`, `raw_text`
@@ -381,7 +503,9 @@ Recommended chunk metadata:
 - `chunk_index`
 - `created_at`
 
-`document_section` and `content_type` are assigned by AI extraction during PDF processing. If the model is uncertain, it should use `unknown` and `raw_text`.
+`document_section` and `content_type` are assigned by AI extraction for unstructured content and by deterministic mapping for structured content where possible. If uncertain, use `unknown` and `raw_text`.
+
+Company Knowledge Retrieval must return compact citation-ready evidence, not full raw artifacts. Normal Chat should inject roughly 8-12 final evidence chunks after SQL validation, deduplication, reranking, per-Source diversity capping, and quality gating. If retrieval quality is weak, Chat should label evidence gaps or use Tavily only when the question is web-capable instead of filling the prompt with misleading chunks.
 
 ### API Contracts Overview
 
@@ -403,11 +527,11 @@ The PRD expects high-level API contracts, not final OpenAPI definitions.
 #### Source Data
 
 - `POST /sources`
-  - Creates a source record for the explicit `workspace_id`, uploads a CSV/PDF file to local storage, stores team label, category labels, and period, then starts background processing.
-  - Returns source metadata and initial processing status.
+  - Creates a source record for the explicit `workspace_id`, uploads a CSV/PDF file to server-side file storage, stores team label, category labels, and month-level period, then processes synchronously by default.
+  - Returns source metadata and processing status.
 - `GET /sources`
   - Lists sources.
-  - Requires `workspace_id` and supports filters for team label, category label, period, file type, and processing status.
+  - Requires `workspace_id` and supports Source Data management filters such as team label, category label, month range, file type, and processing status.
 - `GET /sources/{source_id}`
   - Returns one source with categories, processing status, and generated artifacts.
 - `DELETE /sources/{source_id}`
@@ -418,25 +542,28 @@ The PRD expects high-level API contracts, not final OpenAPI definitions.
 #### Visualization Data
 
 - `GET /visualizations`
-  - Returns visualization-ready artifacts from ready sources.
-  - Requires `workspace_id` and supports filters for team label, category label, and period. Period filters use range overlap.
-- `GET /visualizations/{source_id}`
-  - Returns artifacts for a single source.
+  - Returns a cached period-based Visualization Snapshot composed from ready overlapping Sources.
+  - Requires `workspace_id`, `period_start_month`, and `period_end_month`.
+- `POST /visualizations/refresh`
+  - Regenerates the Visualization Snapshot for the given Workspace and month range.
 
 #### Chat
 
-- `POST /chat/sessions`
-  - Creates a chat session.
-  - Requires `workspace_id`; the session remains scoped to that Workspace.
+- `GET /chat/sessions`
+  - Lists Chat Sessions for the explicit `workspace_id`.
+  - Supports `limit` and `offset`; the Chat history dropdown initially loads the latest 5 and uses Show More for additional sessions.
 - `GET /chat/sessions/{session_id}`
   - Returns chat messages, tool call summaries, source citations, and trace references.
-- `POST /chat/sessions/{session_id}/messages`
-  - Sends a user message and returns an assistant response.
-  - The assistant response includes content, sources, tool call summaries, and optional trace ID.
-- `POST /chat/sessions/{session_id}/commands`
-  - Executes slash commands such as `/decision-brief`, `/sources`, `/trace`, and `/brief-status`.
+- `POST /chat/messages/stream`
+  - Sends a user message or supported slash command and streams the assistant response through DeltaKit-compatible SSE.
+  - Request body includes explicit `workspace_id`, optional `session_id`, and `message`.
+  - If `session_id` is missing, the backend lazily creates a Chat Session for the Workspace and derives its title from the first user message.
+  - If `session_id` is present, the backend validates that the Chat Session belongs to the requested Workspace.
+  - The endpoint handles normal chat and supported MVP slash commands such as `/decision-brief` and `/trace`.
 
 Chat auto-selects relevant Sources by default. User messages may narrow Source Scope by mentioning team, category, period, or source constraints in natural language; this scope is evaluated per message and is not a persistent chat filter in MVP.
+
+Stream events are SSE `data:` JSON objects with a `type` field. Built-in DeltaKit-compatible event types include `text_delta`, `tool_call`, and `tool_result`. App-specific event types include `session_created`, `user_message_saved`, `assistant_started`, `sources_used`, `web_sources_used`, `decision_brief_created`, `assistant_completed`, `assistant_interrupted`, and `error`. The stream ends with `data: [DONE]`.
 
 #### Decision Briefs
 
@@ -444,6 +571,7 @@ Chat auto-selects relevant Sources by default. User messages may narrow Source S
   - Returns a Decision Brief Draft.
 - `PATCH /decision-briefs/{brief_id}/status`
   - Updates approval status for a Decision Brief Draft.
+  - Valid transitions are Draft to Reviewed/Approved/Rejected, and Reviewed to Approved/Rejected. Approved and Rejected are locked for the MVP.
 
 ## Technical Architecture Diagrams
 
@@ -453,61 +581,91 @@ Chat auto-selects relevant Sources by default. User messages may narrow Source S
 flowchart TD
   A[User uploads CSV/PDF] --> B[FastAPI Source Endpoint]
   B --> C[Create source_data row]
-  B --> D[Save original file to local storage]
+  B --> D[Save original file to server storage]
   C --> E[Set status: Uploaded]
   D --> F[Run source processing sync by default or optional background]
   F --> G[Set status: Processing]
   G --> H{File type}
-  H -->|CSV| I[CSV Profiler]
-  I --> J[Generate csv_profile, chart_spec, insight_card]
+  H -->|CSV| I[CSV extractor computes facts]
+  I --> J[CSV normalizer creates source_summary, source_content, optional source_insight]
   J --> K[Save source_artifact rows]
   H -->|PDF| L[Mistral OCR to extracted markdown]
-  L --> M[Chunk markdown with Chonkie]
-  M --> N[LiteLLM chunk labeling]
+  L --> M[Normalize markdown and chunk by code]
+  M --> N[LLM chunk labeling and synthesis]
   N --> O[Save extracted ocr.md and chunks.json]
-  N --> P[Generate source_summary and source_insight]
-  O --> S[Task 4 indexes chunks in ChromaDB]
+  N --> P[Generate source_summary, source_content, optional source_insight]
+  O --> S[Index source_content chunks in ChromaDB]
+  P --> S
   P --> K
-  K --> Q[Set status: Ready]
+  S --> Q[Set status: Ready]
   G --> R[Set status: Failed on error]
+```
+
+### Visualization Composer Flow
+
+```mermaid
+flowchart TD
+  A[User opens Visualization Data] --> B[Workspace + month range]
+  B --> C[Find visualization_snapshot]
+  C --> D{Valid cache?}
+  D -->|Yes| E[Return snapshot]
+  D -->|No| F[Find ready overlapping Sources]
+  F --> G[Load source_summary and source_insight]
+  G --> H[Compose coverage, findings, risks, opportunities, gaps]
+  H --> I[Save visualization_snapshot]
+  I --> E
 ```
 
 ### Chat Consultant Flow
 
 ```mermaid
 flowchart TD
-  A[User sends chat message or slash command] --> B[FastAPI Chat Endpoint]
-  B --> C[Save user chat_message]
-  C --> D[OpenAI Agent SDK Orchestrator]
-  D --> E[Select relevant sources]
-  E --> F[Query SQL artifacts and metadata]
-  E --> G[Retrieve PDF chunks from ChromaDB]
-  D --> H[Run analysis tools when needed]
-  F --> I[Company Strategy Consultant response]
-  G --> I
-  H --> I
-  I --> J[Create assistant chat_message]
-  I --> K[Save agent_tool_call summaries]
-  I --> L[Save message_source_citation rows]
-  I --> M[Record Langfuse trace]
-  M --> N[Attach trace_id to assistant message]
-  J --> O[Return response, sources, tool calls, trace]
+  A[User sends chat message] --> B[POST /chat/messages/stream]
+  B --> C{session_id?}
+  C -->|Missing| D[Lazy create Chat Session]
+  C -->|Present| E[Validate session Workspace]
+  D --> F[Save user chat_message completed]
+  E --> F
+  F --> G[Create assistant chat_message streaming]
+  G --> H[Build context: conversation summary + recent raw messages + current message]
+  H --> I[Reserve output budget]
+  I --> J[Retrieve company knowledge]
+  J --> K[SQL eligible ready Sources]
+  K --> L[ChromaDB source_content search]
+  L --> M[Validate, dedupe, rerank, diversity-cap, and quality-gate evidence]
+  M --> N{Local evidence sufficient?}
+  N -->|Yes| O[Stream sources_used]
+  N -->|Weak/empty and web-capable| P[Tavily web search]
+  N -->|Weak/empty not web-capable| Q[Answer with gaps]
+  P --> R[Stream web_sources_used]
+  O --> S[Stream text_delta answer]
+  R --> S
+  Q --> S
+  S --> T[Validate used citation IDs]
+  T --> U[Save final assistant content]
+  U --> V[Save citations actually used]
+  V --> W[Record tool calls and optional trace]
+  W --> X[Mark assistant completed and stream DONE]
 ```
 
 ### Decision Brief Draft Flow
 
 ```mermaid
 flowchart TD
-  A[User runs /decision-brief] --> B[Command Endpoint]
-  B --> C[Load current chat session context]
-  C --> D[Load relevant citations and artifacts]
-  D --> E[Decision Brief Generator]
-  E --> F[Generate structured content_json]
-  F --> G[Save assistant message with message_type decision_brief]
-  G --> H[Create decision_brief row]
-  H --> I[Default approval_status: draft]
-  I --> J[Render formatted brief in chat]
-  K[User runs /brief-status approved] --> L[Update latest brief approval_status]
+  A[User runs /decision-brief] --> B[POST /chat/messages/stream]
+  B --> C[Load all messages in Chat Session]
+  C --> D[Load all citations used in session]
+  D --> E{Enough context and evidence?}
+  E -->|No| F[Return command_result: not enough context]
+  E -->|Yes| G[Structured LLM: extract decision context]
+  G --> H[Structured LLM: assess cited evidence]
+  H --> I[Structured LLM: draft content_json]
+  I --> J[Code validates citation IDs]
+  J --> K[Save assistant message with message_type decision_brief]
+  K --> L[Create decision_brief row with sequence_number and context_cutoff_message_id]
+  L --> M[Default approval_status: draft]
+  M --> N[Render formatted brief card in chat]
+  O[User clicks card status action] --> P[PATCH /decision-briefs/{brief_id}/status]
 ```
 
 ### Data Model Relationship
@@ -527,21 +685,23 @@ erDiagram
   CHAT_MESSAGE ||--o| DECISION_BRIEF : renders
 ```
 
+`MESSAGE_SOURCE_CITATION` can also store web citations directly through URL/title/provider fields without a separate web source table.
+
 ## Testing Decisions
 
 Good tests should verify external behavior, not implementation details. Tests should assert what users and API consumers can observe: successful uploads create source records, processing status transitions correctly, CSV profiling returns expected visualization metadata, PDF indexing makes relevant text retrievable, chat responses include required structure and citations, and Decision Brief generation includes required sections.
 
 Modules to test:
 
-- Source Data Management should be tested with API-level tests for creating sources, listing sources, filtering by labels and period, and status visibility.
+- Source Data Management should be tested with API-level tests for creating sources, listing sources, filtering by labels and month range, and status visibility.
 - Source Processing Pipeline should be tested with service-level tests for status transitions, failure handling, and retry behavior.
-- CSV Profiler and Visualization Generator should be tested as a deep module with sample CSV inputs and expected visualization metadata outputs.
-- PDF Ingestion and Knowledge Indexer should be tested as a deep module with small sample PDFs or extracted text fixtures and expected summary/retrieval outputs.
+- CSV Extractor and Normalizer should be tested as a deep module with sample CSV inputs and expected normalized Source Artifacts.
+- PDF Extractor and Normalizer should be tested as a deep module with small sample PDFs or extracted text fixtures and expected normalized Source Artifacts.
 - Company Knowledge Retrieval should be tested with mixed source metadata to ensure relevant sources are selected by question, team, category, and period.
 - AI Consultant Orchestrator should be tested with mocked model and tool calls to verify source-grounded response structure, insufficient-data behavior, and trace reference creation.
 - Decision Brief Generator should be tested with fixed evidence inputs to verify all required sections are present.
 - Frontend Source Data page should be tested for table rendering, upload dialog fields, labels, categories, period selection, and processing status display.
-- Frontend Visualization Data page should be tested for rendering CSV visual story sections and Document Insight sections from API responses.
+- Frontend Visualization Data page should be tested for rendering period-based Visualization Snapshot sections from API responses.
 - Frontend Chat page should be tested for message rendering, semi-structured AI responses, View Sources, View Trace, and Decision Brief formatting.
 
 Prior art in the current codebase:
@@ -565,7 +725,7 @@ Prior art in the current codebase:
 - Advanced role-based access control.
 - Production-grade billing, subscription, organization settings, or audit logs.
 - Advanced BI dashboard builder with manual chart editing.
-- Full live web research or competitor crawling.
+- Full live web research, competitor crawling, or autonomous web investigation beyond bounded Tavily fallback search for weak local evidence.
 - Fully automated final decision-making without human review.
 - Production deployment hardening beyond what is needed for the final assignment demo.
 
@@ -578,4 +738,4 @@ Prior art in the current codebase:
 - The Chat page is for discussion, strategy, recommendation, assumption challenging, source-grounded analysis, and Decision Brief generation.
 - The MVP should prioritize a polished end-to-end demo over broad integrations.
 - A future demo scenario should be added later with a fictional company, sample CSV files, and sample PDF documents.
-- The course requirement for agents with tools, vector database/embeddings, code execution, observability, and optional multi-agent behavior is satisfied by OpenAI Agent SDK tools, ChromaDB PDF retrieval, internal CSV analysis tools, Langfuse traces, and the Company Strategy Consultant orchestration.
+- The course requirement for agents/tools, vector database/embeddings, code execution, observability, and optional multi-agent behavior is satisfied by the Company Strategy Consultant orchestration, guarded retrieval and Tavily tools, ChromaDB retrieval over `source_content`, internal CSV analysis tools, and Langfuse traces.

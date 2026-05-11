@@ -1,7 +1,19 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Plus, RefreshCw, Search, Trash2, Upload } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, ChevronsUpDown, FileSpreadsheet, FileText, Plus, RefreshCw, Search, Trash2, Upload } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useState } from 'react'
+import { useId, useState } from 'react'
+import { Button } from '../components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog'
+import { Input } from '../components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
+import {
+  CATEGORY_LABEL_OPTIONS,
+  formatSourceOptionLabel,
+  PROCESSING_STATUS_OPTIONS,
+  SOURCE_FILE_TYPE_OPTIONS,
+  TEAM_LABEL_OPTIONS,
+} from '../constants/source-options'
 import { useCreateSource, useDeleteSource, useRetrySource, useSources } from '../features/source-data/hooks'
 import { useActiveWorkspace } from '../features/workspaces/hooks/use-active-workspace'
 import type { CategoryLabel, TeamLabel } from '../types/common'
@@ -76,22 +88,11 @@ function SourceDataPage() {
                 className="w-full rounded-lg border border-border bg-background py-2 pl-10 pr-4 text-sm text-foreground placeholder-text-hint focus:border-primary focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
-            <FilterDropdown label="Team" options={['Marketing', 'Product', 'Data Analysis', 'Business']} />
-            <FilterDropdown
-              label="Category"
-              options={[
-                'Analytics Metrics',
-                'Market Research',
-                'Product Feature',
-                'Customer Insight',
-                'Business Model',
-                'Competitor Analysis',
-                'Revenue Sales',
-              ]}
-            />
+            <FilterDropdown label="Team" options={TEAM_LABEL_OPTIONS.map((option) => option.label)} />
+            <FilterDropdown label="Category" options={CATEGORY_LABEL_OPTIONS.map((option) => option.label)} />
             <FilterDropdown label="Period" options={['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026']} />
-            <FilterDropdown label="Type" options={['CSV', 'PDF']} />
-            <FilterDropdown label="Status" options={['Ready', 'Processing', 'Uploaded', 'Failed']} />
+            <FilterDropdown label="Type" options={SOURCE_FILE_TYPE_OPTIONS.map((option) => option.label)} />
+            <FilterDropdown label="Status" options={PROCESSING_STATUS_OPTIONS.map((option) => option.label)} />
           </div>
 
           {/* Table */}
@@ -236,8 +237,8 @@ function SourceTable({
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-4 text-foreground">{formatLabel(source.teamLabel)}</td>
-                <td className="px-4 py-4 text-muted-foreground">{source.categoryLabels.map(formatLabel).join(', ')}</td>
+                <td className="px-4 py-4 text-foreground">{formatSourceOptionLabel(source.teamLabel)}</td>
+                <td className="px-4 py-4 text-muted-foreground">{source.categoryLabels.map(formatSourceOptionLabel).join(', ')}</td>
                 <td className="px-4 py-4 text-muted-foreground">
                   {source.periodLabel || [source.periodStart, source.periodEnd].filter(Boolean).join(' → ') || '—'}
                 </td>
@@ -303,136 +304,145 @@ function AddSourceDialog({
   const [periodStart, setPeriodStart] = useState('')
   const [periodEnd, setPeriodEnd] = useState('')
   const [periodLabel, setPeriodLabel] = useState('')
+  const [isCategoryOpen, setIsCategoryOpen] = useState(false)
+  const titleId = useId()
+  const fileId = useId()
+  const periodStartId = useId()
+  const periodEndId = useId()
+  const periodLabelId = useId()
+  const teamLabelId = useId()
+  const categoryLabelId = useId()
+
+  const selectedCategoryLabel = categoryLabels.length ? categoryLabels.map(formatSourceOptionLabel).join(', ') : 'Select one or more categories'
+
+  function toggleCategory(category: CategoryLabel) {
+    setCategoryLabels((current) => {
+      if (current.includes(category)) {
+        const next = current.filter((item) => item !== category)
+        return next.length ? next : current
+      }
+      return [...current, category]
+    })
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4">
-      <form
-        onSubmit={(event) => {
-          event.preventDefault()
-          if (!file) return
-          onSubmit({ workspaceId, title, file, teamLabel, categoryLabels, periodStart, periodEnd, periodLabel })
-        }}
-        className="w-full max-w-2xl rounded-2xl bg-background p-6 shadow-xl"
-      >
-        <div className="mb-5 flex items-start justify-between gap-4">
-          <div>
-            <h3 className="font-heading text-xl font-semibold text-foreground">Add New Data</h3>
-            <p className="mt-1 text-sm text-muted-foreground">Upload one CSV or PDF Source for this Workspace.</p>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-2xl rounded-2xl p-0 sm:max-w-2xl">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (!file) return
+            onSubmit({ workspaceId, title, file, teamLabel, categoryLabels, periodStart, periodEnd, periodLabel })
+          }}
+        >
+          <DialogHeader className="border-b border-border px-6 py-5">
+            <DialogTitle className="font-heading text-xl">Add New Data</DialogTitle>
+            <DialogDescription>Upload one CSV or PDF Source for this Workspace.</DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 px-6 py-5 sm:grid-cols-2">
+            <div className="space-y-1.5 sm:col-span-2">
+              <label htmlFor={titleId} className="text-sm font-medium text-foreground">
+                Title
+              </label>
+              <Input id={titleId} required value={title} onChange={(event) => setTitle(event.target.value)} />
+            </div>
+
+            <div className="space-y-1.5 sm:col-span-2">
+              <label htmlFor={fileId} className="text-sm font-medium text-foreground">
+                File
+              </label>
+              <Input id={fileId} required accept=".csv,.pdf" type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor={periodStartId} className="text-sm font-medium text-foreground">
+                Period Start
+              </label>
+              <Input id={periodStartId} type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor={periodEndId} className="text-sm font-medium text-foreground">
+                Period End
+              </label>
+              <Input id={periodEndId} type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} />
+            </div>
+
+            <div className="space-y-1.5 sm:col-span-2">
+              <label htmlFor={periodLabelId} className="text-sm font-medium text-foreground">
+                Period Label
+              </label>
+              <Input
+                id={periodLabelId}
+                value={periodLabel}
+                onChange={(event) => setPeriodLabel(event.target.value)}
+                placeholder="Q1 2026, April 2026, etc."
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor={teamLabelId} className="text-sm font-medium text-foreground">
+                Team Label
+              </label>
+              <Select value={teamLabel} onValueChange={(value) => setTeamLabel(value as TeamLabel)}>
+                <SelectTrigger id={teamLabelId} className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TEAM_LABEL_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor={categoryLabelId} className="text-sm font-medium text-foreground">
+                Category Labels
+              </label>
+              <Popover open={isCategoryOpen} onOpenChange={setIsCategoryOpen}>
+                <PopoverTrigger asChild>
+                  <div className="relative">
+                    <Input id={categoryLabelId} readOnly value={selectedCategoryLabel} className="cursor-pointer pr-9" />
+                    <ChevronsUpDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-1">
+                  {CATEGORY_LABEL_OPTIONS.map((option) => {
+                    const checked = categoryLabels.includes(option.value)
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => toggleCategory(option.value)}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                      >
+                        <span className="grid h-4 w-4 place-items-center rounded border border-border">
+                          {checked && <Check className="h-3 w-3 text-primary" />}
+                        </span>
+                        {option.label}
+                      </button>
+                    )
+                  })}
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1 text-muted-foreground hover:bg-surface-subtle transition">
-            ✕
-          </button>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="text-sm font-medium text-foreground sm:col-span-2">
-            Title
-            <input
-              required
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground placeholder-text-hint focus:border-primary focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-          </label>
-          <label className="text-sm font-medium text-foreground sm:col-span-2">
-            File
-            <input
-              required
-              accept=".csv,.pdf"
-              type="file"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-          </label>
-          <label className="text-sm font-medium text-foreground">
-            Team Label
-            <select
-              value={teamLabel}
-              onChange={(e) => setTeamLabel(e.target.value as TeamLabel)}
-              className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-ring"
-            >
-              {TEAM_LABELS.map((label) => (
-                <option key={label} value={label}>
-                  {formatLabel(label)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm font-medium text-foreground">
-            Category Labels
-            <select
-              multiple
-              value={categoryLabels}
-              onChange={(e) => setCategoryLabels(Array.from(e.target.selectedOptions, (option) => option.value as CategoryLabel))}
-              className="mt-1 min-h-28 w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-ring"
-            >
-              {CATEGORY_LABELS.map((label) => (
-                <option key={label} value={label}>
-                  {formatLabel(label)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm font-medium text-foreground">
-            Period Start
-            <input
-              type="date"
-              value={periodStart}
-              onChange={(e) => setPeriodStart(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-          </label>
-          <label className="text-sm font-medium text-foreground">
-            Period End
-            <input
-              type="date"
-              value={periodEnd}
-              onChange={(e) => setPeriodEnd(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-          </label>
-          <label className="text-sm font-medium text-foreground sm:col-span-2">
-            Period Label
-            <input
-              value={periodLabel}
-              onChange={(e) => setPeriodLabel(e.target.value)}
-              placeholder="Q1 2026, April 2026, etc."
-              className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground placeholder-text-hint focus:border-primary focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-          </label>
-        </div>
-        <div className="mt-6 flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition hover:bg-surface-subtle"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary-hover disabled:opacity-50"
-          >
-            <Upload className="h-4 w-4" />
-            {isSubmitting ? 'Uploading...' : 'Upload Source'}
-          </button>
-        </div>
-      </form>
-    </div>
+
+          <DialogFooter className="border-t border-border px-6 py-4">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              <Upload className="h-4 w-4" />
+              {isSubmitting ? 'Uploading...' : 'Upload Source'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
-}
-
-const TEAM_LABELS: TeamLabel[] = ['marketing', 'product', 'data_analysis', 'business']
-const CATEGORY_LABELS: CategoryLabel[] = [
-  'analytics_metrics',
-  'market_research',
-  'product_feature',
-  'customer_insight',
-  'business_model',
-  'competitor_analysis',
-  'revenue_sales',
-]
-
-function formatLabel(value: string) {
-  return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 }

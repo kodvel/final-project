@@ -29,8 +29,12 @@ A Source hidden from normal Source Data lists and future retrieval, while retain
 _Avoid_: Permanently removed source
 
 **Source Artifact**:
-A generated output from processing a Source, used by Visualization Data, Chat, citations, or Decision Brief Drafts.
+A normalized knowledge output from processing a Source. Source Artifacts use common types across file formats: `source_summary`, `source_content`, and optional `source_insight`.
 _Avoid_: Raw uploaded file, visualization widget
+
+**Source Content**:
+The searchable and citation-ready artifact chunks generated from a Source and indexed into ChromaDB when indexable.
+_Avoid_: Treating VectorDB as the source of truth
 
 **Source Citation**:
 A reference from an assistant answer or Decision Brief Draft back to the Source or Source Artifact that supports it.
@@ -41,8 +45,12 @@ The workspace, team, category, period, or specific Source constraints used to ch
 _Avoid_: Permanent chat filter, manual source configuration
 
 **Visualization Data**:
-The product page/menu where users inspect generated Source Artifacts from ready Sources.
-_Avoid_: Manual BI dashboard, raw data table
+The product page/menu where users inspect a cached, period-based intelligence view composed from ready Source Artifacts.
+_Avoid_: Manual BI dashboard, raw data table, per-Source artifact viewer
+
+**Visualization Snapshot**:
+A rebuildable cached view for one Workspace and one month range, generated from ready Source Artifacts.
+_Avoid_: Source of truth, final report
 
 **Chat Session**:
 A conversation thread scoped to exactly one Workspace.
@@ -74,8 +82,10 @@ _Avoid_: Required chat output, user-facing evidence
 - A **Source** can exist before processing succeeds; failed processing does not mean the uploaded Source should disappear.
 - A **Deleted Source** is excluded from new analysis but remains available to explain past citations and Decision Brief Drafts.
 - A **Deleted Source** may retain its original file when past **Source Citations** or **Decision Brief Drafts** need audit history.
-- A **Source** produces zero or more **Source Artifacts** after processing.
-- **Visualization Data** shows generated **Source Artifacts** for ready Sources and failed states for failed Sources.
+- A **Source** produces normalized **Source Artifacts** after processing.
+- A ready **Source** must have a `source_summary` artifact and indexable `source_content` stored in SQL and indexed in ChromaDB.
+- `source_insight` is recommended but optional; missing insight should be represented as a warning or gap, not invented certainty.
+- **Visualization Data** shows a cached **Visualization Snapshot** for a selected month range, composed from overlapping ready Sources.
 - A **Source Citation** supports an assistant answer or **Decision Brief Draft** with a referenced Source, Source Artifact, quote, or page reference where available.
 - Chat uses all relevant Sources by default and can narrow **Source Scope** from the user's natural-language request.
 - API requests that need workspace scope receive an explicit `workspace_id` from the client-selected **Active Workspace**.
@@ -111,3 +121,6 @@ _Avoid_: Required chat output, user-facing evidence
 - Decision status language was overloaded; resolved: **Recommendation Status** is AI-generated direction, while **Approval Status** is human review state.
 - Chat source selection was ambiguous; resolved: Chat auto-selects relevant Sources by default and treats natural-language constraints as per-message **Source Scope**.
 - Observability was ambiguous with evidence; resolved: **Trace References** are optional debugging/observability links, while **Source Citations** are evidence.
+- CSV-specific artifact names (`csv_profile`, `chart_spec`, `insight_card`) made the product model file-type-driven; resolved: all Source types produce `source_summary`, `source_content`, and optional `source_insight`.
+- Visualization was previously treated as a per-Source artifact; resolved: **Visualization Data** is a period-based composed **Visualization Snapshot**.
+- Date-level Source periods and manual period labels created too many cache variants; resolved: Sources use `period_start_month` and `period_end_month`, and display labels are derived.
