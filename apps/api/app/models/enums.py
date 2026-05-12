@@ -56,8 +56,27 @@ class DecisionApprovalStatus(StrEnum):
 
 
 class ArtifactType(StrEnum):
-    CSV_PROFILE = "csv_profile"
-    CHART_SPEC = "chart_spec"
-    INSIGHT_CARD = "insight_card"
     SOURCE_SUMMARY = "source_summary"
+    SOURCE_CONTENT = "source_content"
     SOURCE_INSIGHT = "source_insight"
+
+
+class MessageStatus(StrEnum):
+    PENDING = "pending"
+    STREAMING = "streaming"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    INTERRUPTED = "interrupted"
+
+
+class CitationType(StrEnum):
+    UPLOADED_SOURCE = "uploaded_source"
+    WEB = "web"
+
+
+class CitationStatus(StrEnum):
+    AVAILABLE = "available"
+    SOURCE_DELETED = "source_deleted"
+    SOURCE_FAILED = "source_failed"
+    ARTIFACT_MISSING = "artifact_missing"
+    WEB_UNAVAILABLE = "web_unavailable"

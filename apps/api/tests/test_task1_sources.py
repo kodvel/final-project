@@ -16,7 +16,8 @@ def upload_source(client, workspace_id: int, filename: str = "metrics.csv", titl
             "title": title,
             "team_label": "marketing",
             "category_labels": ["analytics_metrics", "revenue_sales"],
-            "period_label": "April 2026",
+            "period_start_month": "2026-04",
+            "period_end_month": "2026-04",
         },
         files={"file": (filename, b"month,revenue\n2026-04,100\n", "text/csv")},
     )
@@ -33,6 +34,8 @@ def upload_invalid_csv(client, workspace_id: int) -> dict:
             "title": "Bad CSV",
             "team_label": "data_analysis",
             "category_labels": ["analytics_metrics"],
+            "period_start_month": "2026-01",
+            "period_end_month": "2026-01",
         },
         files={"file": ("bad.csv", b"", "text/csv")},
     )
@@ -72,6 +75,8 @@ def test_upload_pdf_source(client) -> None:
             "title": "Competitor brief",
             "team_label": "business",
             "category_labels": ["competitor_analysis"],
+            "period_start_month": "2026-01",
+            "period_end_month": "2026-03",
         },
         files={"file": ("brief.pdf", b"%PDF-1.4", "application/pdf")},
     )
@@ -89,7 +94,7 @@ def test_reject_unsupported_file_type(client) -> None:
         files={"file": ("notes.txt", b"hello", "text/plain")},
     )
 
-    assert response.status_code == 400
+    assert response.status_code == 422
 
 
 def test_sources_are_scoped_by_workspace(client) -> None:
@@ -150,3 +155,127 @@ def test_get_deleted_source_returns_404(client) -> None:
     response = client.get(f"/sources/{source['id']}")
 
     assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Period month validation tests
+# ---------------------------------------------------------------------------
+
+
+def test_source_with_valid_period_months(client) -> None:
+    workspace = create_workspace(client)
+
+    response = client.post(
+        "/sources",
+        data={
+            "workspace_id": str(workspace["id"]),
+            "title": "Quarterly metrics",
+            "team_label": "marketing",
+            "category_labels": ["analytics_metrics"],
+            "period_start_month": "2026-01",
+            "period_end_month": "2026-03",
+        },
+        files={"file": ("data.csv", b"col1,col2\n1,2\n", "text/csv")},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["period_start_month"] == "2026-01"
+    assert data["period_end_month"] == "2026-03"
+    assert data["period_label"] == "January – March 2026"
+
+
+def test_source_derives_period_label_single_month(client) -> None:
+    workspace = create_workspace(client)
+
+    response = client.post(
+        "/sources",
+        data={
+            "workspace_id": str(workspace["id"]),
+            "title": "Single month",
+            "team_label": "marketing",
+            "category_labels": ["analytics_metrics"],
+            "period_start_month": "2026-04",
+            "period_end_month": "2026-04",
+        },
+        files={"file": ("data.csv", b"col1,col2\n1,2\n", "text/csv")},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["period_label"] == "April 2026"
+
+
+def test_source_rejects_invalid_month_format(client) -> None:
+    workspace = create_workspace(client)
+
+    response = client.post(
+        "/sources",
+        data={
+            "workspace_id": str(workspace["id"]),
+            "title": "Bad month",
+            "team_label": "marketing",
+            "category_labels": ["analytics_metrics"],
+            "period_start_month": "2026-13",
+            "period_end_month": "2026-12",
+        },
+        files={"file": ("data.csv", b"col1,col2\n1,2\n", "text/csv")},
+    )
+
+    assert response.status_code == 422
+    assert "period_start_month" in response.json()["detail"]
+
+
+def test_source_rejects_invalid_month_text(client) -> None:
+    workspace = create_workspace(client)
+
+    response = client.post(
+        "/sources",
+        data={
+            "workspace_id": str(workspace["id"]),
+            "title": "Bad month text",
+            "team_label": "marketing",
+            "category_labels": ["analytics_metrics"],
+            "period_start_month": "not-a-month",
+        },
+        files={"file": ("data.csv", b"col1,col2\n1,2\n", "text/csv")},
+    )
+
+    assert response.status_code == 422
+
+
+def test_source_rejects_start_after_end(client) -> None:
+    workspace = create_workspace(client)
+
+    response = client.post(
+        "/sources",
+        data={
+            "workspace_id": str(workspace["id"]),
+            "title": "Reversed period",
+            "team_label": "marketing",
+            "category_labels": ["analytics_metrics"],
+            "period_start_month": "2026-06",
+            "period_end_month": "2026-01",
+        },
+        files={"file": ("data.csv", b"col1,col2\n1,2\n", "text/csv")},
+    )
+
+    assert response.status_code == 422
+    assert "must be <=" in response.json()["detail"]
+
+
+def test_source_without_period_is_rejected(client) -> None:
+    workspace = create_workspace(client)
+
+    response = client.post(
+        "/sources",
+        data={
+            "workspace_id": str(workspace["id"]),
+            "title": "No period",
+            "team_label": "marketing",
+            "category_labels": ["analytics_metrics"],
+        },
+        files={"file": ("data.csv", b"col1,col2\n1,2\n", "text/csv")},
+    )
+
+    assert response.status_code == 422

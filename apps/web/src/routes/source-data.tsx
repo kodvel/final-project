@@ -240,7 +240,7 @@ function SourceTable({
                 <td className="px-4 py-4 text-foreground">{formatSourceOptionLabel(source.teamLabel)}</td>
                 <td className="px-4 py-4 text-muted-foreground">{source.categoryLabels.map(formatSourceOptionLabel).join(', ')}</td>
                 <td className="px-4 py-4 text-muted-foreground">
-                  {source.periodLabel || [source.periodStart, source.periodEnd].filter(Boolean).join(' → ') || '—'}
+                  {source.periodLabel || [source.periodStartMonth, source.periodEndMonth].filter(Boolean).join(' → ') || '—'}
                 </td>
                 <td className="px-4 py-4">
                   <StatusBadge status={source.processingStatus} />
@@ -301,15 +301,13 @@ function AddSourceDialog({
   const [file, setFile] = useState<File | null>(null)
   const [teamLabel, setTeamLabel] = useState<TeamLabel>('marketing')
   const [categoryLabels, setCategoryLabels] = useState<CategoryLabel[]>(['analytics_metrics'])
-  const [periodStart, setPeriodStart] = useState('')
-  const [periodEnd, setPeriodEnd] = useState('')
-  const [periodLabel, setPeriodLabel] = useState('')
+  const [periodStartMonth, setPeriodStartMonth] = useState('')
+  const [periodEndMonth, setPeriodEndMonth] = useState('')
   const [isCategoryOpen, setIsCategoryOpen] = useState(false)
   const titleId = useId()
   const fileId = useId()
-  const periodStartId = useId()
-  const periodEndId = useId()
-  const periodLabelId = useId()
+  const periodStartMonthId = useId()
+  const periodEndMonthId = useId()
   const teamLabelId = useId()
   const categoryLabelId = useId()
 
@@ -329,11 +327,11 @@ function AddSourceDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-2xl rounded-2xl p-0 sm:max-w-2xl">
         <form
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (!file) return
-            onSubmit({ workspaceId, title, file, teamLabel, categoryLabels, periodStart, periodEnd, periodLabel })
-          }}
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (!file) return
+              onSubmit({ workspaceId, title, file, teamLabel, categoryLabels, periodStartMonth, periodEndMonth })
+            }}
         >
           <DialogHeader className="border-b border-border px-6 py-5">
             <DialogTitle className="font-heading text-xl">Add New Data</DialogTitle>
@@ -356,29 +354,17 @@ function AddSourceDialog({
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor={periodStartId} className="text-sm font-medium text-foreground">
-                Period Start
+              <label htmlFor={periodStartMonthId} className="text-sm font-medium text-foreground">
+                Period Start Month
               </label>
-              <Input id={periodStartId} type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} />
+              <Input id={periodStartMonthId} type="month" value={periodStartMonth} onChange={(event) => setPeriodStartMonth(event.target.value)} placeholder="YYYY-MM" />
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor={periodEndId} className="text-sm font-medium text-foreground">
-                Period End
+              <label htmlFor={periodEndMonthId} className="text-sm font-medium text-foreground">
+                Period End Month
               </label>
-              <Input id={periodEndId} type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} />
-            </div>
-
-            <div className="space-y-1.5 sm:col-span-2">
-              <label htmlFor={periodLabelId} className="text-sm font-medium text-foreground">
-                Period Label
-              </label>
-              <Input
-                id={periodLabelId}
-                value={periodLabel}
-                onChange={(event) => setPeriodLabel(event.target.value)}
-                placeholder="Q1 2026, April 2026, etc."
-              />
+              <Input id={periodEndMonthId} type="month" value={periodEndMonth} onChange={(event) => setPeriodEndMonth(event.target.value)} placeholder="YYYY-MM" />
             </div>
 
             <div className="space-y-1.5">

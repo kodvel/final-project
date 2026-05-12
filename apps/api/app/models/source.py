@@ -17,9 +17,8 @@ class SourceData(SQLModel, table=True):
     file_type: SourceFileType
     original_filename: str
     storage_path: str
-    period_start: datetime | None = None
-    period_end: datetime | None = None
-    period_label: str | None = None
+    period_start_month: str
+    period_end_month: str
     processing_status: ProcessingStatus = ProcessingStatus.UPLOADED
     processing_error: str | None = None
     deleted_at: datetime | None = Field(default=None, index=True)

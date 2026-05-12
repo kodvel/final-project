@@ -7,15 +7,15 @@ import base64
 import json
 import logging
 import re
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from app.core.config import get_settings
 from app.models.enums import ArtifactType
-from app.models.source import SourceArtifact, SourceData
+from app.models.source import SourceData
+from app.services.artifacts import get_source_artifact, upsert_source_artifact
 
 logger = logging.getLogger(__name__)
 
@@ -301,43 +301,6 @@ def _aggregate_metadata(
 
 
 # ---------------------------------------------------------------------------
-# Artifact upsert helpers
-# ---------------------------------------------------------------------------
-
-
-def _upsert_artifact(
-    session: Session,
-    source_id: int,
-    artifact_type: str,
-    title: str,
-    content_json: dict,
-) -> SourceArtifact:
-    """Upsert a source artifact by type (replace if exists)."""
-    existing = session.exec(
-        select(SourceArtifact).where(
-            SourceArtifact.source_id == source_id,
-            SourceArtifact.artifact_type == artifact_type,
-        )
-    ).first()
-
-    if existing:
-        existing.title = title
-        existing.content_json = content_json
-        existing.updated_at = datetime.utcnow()
-        session.add(existing)
-        return existing
-
-    artifact = SourceArtifact(
-        source_id=source_id,
-        artifact_type=artifact_type,
-        title=title,
-        content_json=content_json,
-    )
-    session.add(artifact)
-    return artifact
-
-
-# ---------------------------------------------------------------------------
 # Main PDF processing
 # ---------------------------------------------------------------------------
 
@@ -386,9 +349,22 @@ def process_pdf(session: Session, source: SourceData) -> None:
     # Check for meaningful text
     meaningful_chars = _count_meaningful_text(markdown)
     if meaningful_chars < 500:
-        # Short OCR: create only source_summary with warning, skip insight
+        # Short OCR: create source_summary and minimal source_content with warning
         warnings = [f"OCR extracted only {meaningful_chars} meaningful characters (threshold: 500). Document may be image-heavy or empty."]
-        _upsert_artifact(
+
+        # Build minimal source_content from whatever text we have
+        short_chunks: list[dict] = []
+        if markdown.strip():
+            short_chunks.append({
+                "chunk_id": "pdf-short-0",
+                "text": markdown[:2000].strip(),
+                "content_type": "raw_text",
+                "document_section": "unknown",
+                "chunk_index": 0,
+                "page_numbers": [1],
+            })
+
+        upsert_source_artifact(
             session,
             source_id,
             ArtifactType.SOURCE_SUMMARY,
@@ -403,14 +379,32 @@ def process_pdf(session: Session, source: SourceData) -> None:
                 "warnings": warnings,
             },
         )
+
+        # Create source_content even for short OCR (required for Ready gate)
+        if short_chunks:
+            upsert_source_artifact(
+                session,
+                source_id,
+                ArtifactType.SOURCE_CONTENT,
+                f"Content: {source.title}",
+                {
+                    "summary": f"Minimal content extracted ({meaningful_chars} chars).",
+                    "statistics": {
+                        "page_count": page_count,
+                        "chunk_count": len(short_chunks),
+                    },
+                    "chunks": short_chunks,
+                    "warnings": warnings,
+                    "metadata": {
+                        "ocr_model": "mistral-ocr-latest",
+                        "extracted_markdown_path": str(ocr_md_path),
+                    },
+                },
+            )
+
         chunks_path.write_text(json.dumps([], indent=2), encoding="utf-8")
         # Remove any existing source_insight artifact
-        existing_insight = session.exec(
-            select(SourceArtifact).where(
-                SourceArtifact.source_id == source.id,
-                SourceArtifact.artifact_type == ArtifactType.SOURCE_INSIGHT,
-            )
-        ).first()
+        existing_insight = get_source_artifact(session, source_id, ArtifactType.SOURCE_INSIGHT)
         if existing_insight:
             session.delete(existing_insight)
         session.commit()
@@ -441,15 +435,62 @@ def process_pdf(session: Session, source: SourceData) -> None:
         settings.rag_openai_api_key,
     )
 
-    # Upsert artifacts
-    _upsert_artifact(
+    # Upsert artifacts via centralized service
+    upsert_source_artifact(
         session,
         source_id,
         ArtifactType.SOURCE_SUMMARY,
         f"Summary: {source.title}",
         source_summary,
     )
-    _upsert_artifact(
+
+    # Build source_content from labeled chunks with page references
+    content_chunks: list[dict] = []
+    for idx, cm in enumerate(chunk_metadata):
+        chunk_text = cm.get("chunk_text", "")
+        page_numbers = cm.get("page_numbers", [])
+        quote = None
+        notable_quotes = cm.get("notable_quotes", [])
+        if notable_quotes and isinstance(notable_quotes, list):
+            first_quote = notable_quotes[0] if notable_quotes else {}
+            quote = first_quote.get("quote") if isinstance(first_quote, dict) else None
+        content_chunks.append({
+            "chunk_id": f"pdf-chunk-{idx}",
+            "text": chunk_text,
+            "quote": quote,
+            "page_number": page_numbers[0] if page_numbers else None,
+            "page_numbers": page_numbers,
+            "content_type": cm.get("content_type", "raw_text"),
+            "document_section": cm.get("document_section", "unknown"),
+            "chunk_index": idx,
+            "topics": cm.get("topics", []),
+            "entities": cm.get("entities", []),
+            "time_periods": cm.get("time_periods", []),
+        })
+
+    upsert_source_artifact(
+        session,
+        source_id,
+        ArtifactType.SOURCE_CONTENT,
+        f"Content: {source.title}",
+        {
+            "summary": source_summary.get("summary", ""),
+            "statistics": {
+                "page_count": page_count,
+                "chunk_count": len(content_chunks),
+            },
+            "chunks": content_chunks,
+            "warnings": [],
+            "metadata": {
+                "ocr_model": "mistral-ocr-latest",
+                "structuring_model": settings.rag_openai_model,
+                "extracted_markdown_path": str(ocr_md_path),
+                "chunk_metadata_path": str(chunks_path),
+            },
+        },
+    )
+
+    upsert_source_artifact(
         session,
         source_id,
         ArtifactType.SOURCE_INSIGHT,

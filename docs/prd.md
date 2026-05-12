@@ -141,8 +141,8 @@ The backend uses FastAPI as the API layer, Python for AI/RAG/data processing, SQ
 - Chat responses are semi-structured by default: Direct Answer, Evidence, Interpretation, Recommendation / Next Step, and Confidence + Gaps.
 - Chat answers must be source-grounded. If data is insufficient, the AI must say so and ask for missing information or label assumptions clearly.
 - Chat may use Tavily web search only when uploaded Source evidence is weak or empty and the question is public, current, market-facing, or generally answerable from the web. Web evidence must be labeled separately from uploaded Source evidence.
-- Chat responses should expose View Sources and View Trace actions.
-- View Trace links to or references Langfuse trace information.
+- Chat responses should expose View Sources. They may expose View Trace when Langfuse trace information exists.
+- View Trace links to or references Langfuse trace information. The trace slash command is not part of the MVP.
 - Decision Briefs are generated as formatted chat responses, not as a separate MVP page.
 - Decision Brief generation is explicit through `/decision-brief`. It uses the current Chat Session conversation and citations already used in that session. It does not auto-save conversation memory and does not run broad retrieval across all Sources again for the MVP.
 - Decision Brief generation uses a deterministic backend workflow with structured LLM calls for extraction, evidence assessment, and drafting. It is not an autonomous agent workflow for the MVP.
@@ -463,12 +463,11 @@ rejected = locked
 
 ### Slash Commands
 
-The Chat page supports MVP slash commands:
+The Chat page supports one MVP slash command:
 
 - `/decision-brief`: generates a Decision Brief Draft from the current chat context and citations already used in that session.
-- `/trace`: shows the latest Langfuse trace reference.
-
 Decision Brief status changes are not slash commands in the MVP. They are actions on the Decision Brief card in Chat and call `PATCH /decision-briefs/{brief_id}/status`.
+Trace references are optional links/actions on assistant messages when Langfuse is available; they are not slash commands.
 
 Decision Briefs represent AI-generated decision drafts, not final company decisions. The AI recommendation status and human approval status must remain separate.
 
@@ -555,11 +554,11 @@ The PRD expects high-level API contracts, not final OpenAPI definitions.
 - `GET /chat/sessions/{session_id}`
   - Returns chat messages, tool call summaries, source citations, and trace references.
 - `POST /chat/messages/stream`
-  - Sends a user message or supported slash command and streams the assistant response through DeltaKit-compatible SSE.
+  - Sends a user message or supported MVP slash command and streams the assistant response through DeltaKit-compatible SSE.
   - Request body includes explicit `workspace_id`, optional `session_id`, and `message`.
   - If `session_id` is missing, the backend lazily creates a Chat Session for the Workspace and derives its title from the first user message.
   - If `session_id` is present, the backend validates that the Chat Session belongs to the requested Workspace.
-  - The endpoint handles normal chat and supported MVP slash commands such as `/decision-brief` and `/trace`.
+  - The endpoint handles normal chat and the supported MVP slash command `/decision-brief`.
 
 Chat auto-selects relevant Sources by default. User messages may narrow Source Scope by mentioning team, category, period, or source constraints in natural language; this scope is evaluated per message and is not a persistent chat filter in MVP.
 

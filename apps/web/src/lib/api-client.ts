@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 
 export async function apiFetch<TResponse>(path: string, init?: RequestInit): Promise<TResponse> {
   const headers = new Headers(init?.headers)

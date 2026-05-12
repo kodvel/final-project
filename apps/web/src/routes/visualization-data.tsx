@@ -1,20 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { ArrowRight, ChevronDown, Download, FileText, Lightbulb, Maximize2, TrendingDown, TrendingUp } from 'lucide-react'
+import { AlertTriangle, CalendarDays, CircleHelp, FileText, Lightbulb, RefreshCw, Sparkles } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useState } from 'react'
-import { CATEGORY_LABEL_OPTIONS, TEAM_LABEL_OPTIONS } from '../constants/source-options'
-import {
-  getSourceInsightArtifact,
-  getSourceSummaryArtifact,
-  isChartSpec,
-  isInsightCard,
-  isSourceInsight,
-  isSourceSummary,
-} from '../features/visualization-data/api'
-import { useInsightCards, useKpiCards, usePrimaryChart, useVisualizationArtifacts } from '../features/visualization-data/hooks'
+import { useEffect, useId, useMemo, useState } from 'react'
+import { Badge } from '../components/ui/badge'
+import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
+import { useRefreshVisualizationSnapshot, useVisualizationSnapshot } from '../features/visualization-data/hooks'
 import { useActiveWorkspace } from '../features/workspaces/hooks/use-active-workspace'
-import type { CategoryLabel, TeamLabel } from '../types/common'
-import type { ChartSpecContent, CitationItem, VisualizationArtifact } from '../types/visualization'
+import type { VisualizationEvidenceRef, VisualizationSnapshotListItem, VisualizationSourceCard } from '../types/visualization'
 
 export const Route = createFileRoute('/visualization-data')({
   component: VisualizationDataPage,
@@ -24,33 +17,29 @@ function VisualizationDataPage() {
   const { activeWorkspace } = useActiveWorkspace()
   const workspaceId = activeWorkspace?.id ?? 0
 
-  const [teamFilter, setTeamFilter] = useState<TeamLabel | ''>('')
-  const [categoryFilter, setCategoryFilter] = useState<CategoryLabel | ''>('')
-  const [periodStart, setPeriodStart] = useState('')
-  const [periodEnd, setPeriodEnd] = useState('')
+  const [periodStartMonth, setPeriodStartMonth] = useState('')
+  const [periodEndMonth, setPeriodEndMonth] = useState('')
 
-  const filters = {
-    workspaceId,
-    ...(teamFilter && { teamLabel: teamFilter }),
-    ...(categoryFilter && { categoryLabel: categoryFilter }),
-    ...(periodStart && { periodStart }),
-    ...(periodEnd && { periodEnd }),
-  }
+  useEffect(() => {
+    const now = new Date()
+    const defaultEnd = toMonthInputValue(now)
+    const defaultStart = toMonthInputValue(new Date(now.getFullYear(), now.getMonth() - 5, 1))
+    setPeriodStartMonth((value) => value || defaultStart)
+    setPeriodEndMonth((value) => value || defaultEnd)
+  }, [])
 
-  const { data: artifacts = [], isLoading, error } = useVisualizationArtifacts(filters)
-  const { data: kpis = [] } = useKpiCards(filters)
-  const { data: primaryChart } = usePrimaryChart(filters)
-  const { data: insights = [] } = useInsightCards(filters)
+  const hasValidRange = periodStartMonth.length > 0 && periodEndMonth.length > 0 && periodStartMonth <= periodEndMonth
+  const queryParams = useMemo(
+    () => ({
+      workspaceId,
+      periodStartMonth,
+      periodEndMonth,
+    }),
+    [periodEndMonth, periodStartMonth, workspaceId],
+  )
 
-  // Separate CSV vs PDF artifacts
-  const csvArtifacts = artifacts.filter((a) => a.sourceFileType !== 'pdf')
-  const pdfArtifacts = artifacts.filter((a) => a.sourceFileType === 'pdf')
-  const pdfArtifactGroups = groupArtifactsBySource(pdfArtifacts)
-
-  // CSV-only KPIs, chart, and insights
-  const csvKpis = kpis.filter((k) => !k.sourceTitle?.endsWith('.pdf'))
-  const chartArtifact = primaryChart
-  const csvInsights = insights
+  const { data: snapshot, isLoading, error, isFetching } = useVisualizationSnapshot(queryParams)
+  const refreshSnapshot = useRefreshVisualizationSnapshot()
 
   if (!activeWorkspace) {
     return (
@@ -60,10 +49,13 @@ function VisualizationDataPage() {
     )
   }
 
-  if (isLoading) {
+  if (!hasValidRange) {
     return (
       <div className="h-full overflow-auto p-8">
-        <LoadingState />
+        <EmptyState
+          title="Pick a valid month range"
+          description="Visualization Data now loads a cached snapshot for one Workspace and one month range."
+        />
       </div>
     )
   }
@@ -71,507 +63,351 @@ function VisualizationDataPage() {
   if (error) {
     return (
       <div className="h-full overflow-auto p-8">
-        <ErrorState message="Could not load visualizations. Check that the API is running." />
+        <ErrorState message="Could not load the Visualization Snapshot. Check that the API is running." />
       </div>
     )
   }
 
-  // Show empty state when no ready CSV/PDF artifacts exist
-  const hasCsvArtifacts = csvArtifacts.length > 0
-  const hasPdfArtifacts = pdfArtifactGroups.length > 0
+  if (isLoading && !snapshot) {
+    return (
+      <div className="h-full overflow-auto p-8">
+        <LoadingState />
+      </div>
+    )
+  }
+
+  const content = snapshot?.contentJson
+  const coverage = content?.coverage
+  const sourceCards = content?.source_cards ?? []
+  const keyFindings = content?.key_findings ?? []
+  const risksAssumptions = content?.risks_assumptions ?? []
+  const opportunities = content?.opportunities ?? []
+  const gaps = content?.gaps ?? []
+  const sourceCount = sourceCards.length || snapshot?.sourceIds?.length || coverage?.readySources || 0
+  const refreshPending = refreshSnapshot.isPending || isFetching
 
   return (
     <div className="h-full overflow-auto p-8 text-foreground">
-      <header className="mb-8 flex items-start justify-between gap-6">
-        <div>
-          <h1 className="font-heading text-2xl font-semibold tracking-tight text-foreground">AI-Curated Insight Board</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {hasCsvArtifacts || hasPdfArtifacts
-              ? 'Synthesized intelligence from connected CSV and PDF data sources.'
-              : 'Upload CSV or PDF sources and wait for processing to see insights here.'}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <FilterSelect label="Team" value={teamFilter} onChange={setTeamFilter} options={TEAM_LABEL_OPTIONS} />
-          <FilterSelect label="Category" value={categoryFilter} onChange={setCategoryFilter} options={CATEGORY_LABEL_OPTIONS} />
-          <PeriodFilter periodStart={periodStart} periodEnd={periodEnd} onStartChange={setPeriodStart} onEndChange={setPeriodEnd} />
-        </div>
-      </header>
-
-      {!hasCsvArtifacts && !hasPdfArtifacts ? (
-        <EmptyState
-          title="No Ready Sources"
-          description="Upload CSV or PDF sources in Source Data and wait for processing to see visualizations here."
-        />
-      ) : (
-        <>
-          {/* KPI cards — only render if we have real CSV KPIs */}
-          {csvKpis.length > 0 && (
-            <section className="mb-8 grid grid-cols-3 gap-5">
-              {csvKpis.slice(0, 3).map((kpi) => (
-                <KpiCard
-                  key={kpi.label}
-                  label={kpi.label}
-                  value={kpi.value}
-                  delta={kpi.delta ?? ''}
-                  trend={kpi.trend ?? 'up'}
-                  description=""
-                  source={kpi.sourceTitle ?? ''}
-                />
-              ))}
-            </section>
-          )}
-
-          {/* Chart section — only render if we have real chart data */}
-          {chartArtifact && isChartSpec(chartArtifact.contentJson) && (
-            <section className="mb-8 rounded-2xl border border-border bg-background p-6 shadow-sm">
-              <div className="mb-6 flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="font-heading text-lg font-semibold text-foreground">{chartArtifact.contentJson.title || 'Data Visualization'}</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">{chartArtifact.contentJson.description ?? 'Chart from your data'}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <IconButton label="Download">
-                    <Download className="h-4 w-4" />
-                  </IconButton>
-                  <IconButton label="Expand">
-                    <Maximize2 className="h-4 w-4" />
-                  </IconButton>
-                </div>
-              </div>
-
-              <ChartSpecChart spec={chartArtifact.contentJson} />
-
-              {chartArtifact.contentJson.insights && chartArtifact.contentJson.insights.length > 0 && (
-                <div className="mt-6 flex items-center justify-between rounded-xl border border-accent bg-accent p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-background text-primary">
-                      <Lightbulb className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">Key Insight</p>
-                      <p className="mt-1 text-sm leading-6 text-muted-foreground">{chartArtifact.contentJson.insights[0]}</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="ml-6 inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-primary hover:text-primary-hover"
-                  >
-                    Ask in Chat <ArrowRight className="h-4 w-4" />
-                  </button>
-                </div>
-              )}
-            </section>
-          )}
-
-          {/* Insight cards from CSV sources */}
-          {csvInsights.length > 0 && (
-            <section className="mb-8 grid grid-cols-2 gap-5">
-              {csvInsights.slice(0, 4).map((artifact) => {
-                if (!isInsightCard(artifact.contentJson)) return null
-                return <InsightCard key={artifact.id} artifact={artifact} />
-              })}
-            </section>
-          )}
-
-          {/* Document Insight — render one board per processed PDF Source */}
-          {hasPdfArtifacts ? (
-            <section className="space-y-6">
-              {pdfArtifactGroups.map((group) => (
-                <DocumentInsightBoard key={group.sourceId} artifacts={group.artifacts} />
-              ))}
-            </section>
-          ) : (
-            <DocumentInsightBoardMock />
-          )}
-        </>
-      )}
-    </div>
-  )
-}
-
-function InsightCard({ artifact }: { artifact: VisualizationArtifact }) {
-  if (!isInsightCard(artifact.contentJson)) return null
-  const content = artifact.contentJson
-  const tone =
-    content.insight_type === 'anomaly' || content.insight_type === 'risk'
-      ? 'risk'
-      : content.insight_type === 'opportunity'
-        ? 'opportunity'
-        : 'neutral'
-
-  return (
-    <article
-      className={`rounded-2xl border border-border bg-background p-5 shadow-sm ${tone === 'risk' ? 'border-l-4 border-l-status-failed' : tone === 'opportunity' ? 'border-l-4 border-l-status-ready' : ''}`}
-    >
-      <div className="mb-2 flex items-center gap-2">
-        <span
-          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
-            tone === 'risk'
-              ? 'bg-status-failed text-status-failed-foreground'
-              : tone === 'opportunity'
-                ? 'bg-status-ready text-status-ready-foreground'
-                : 'bg-surface-subtle text-muted-foreground'
-          }`}
-        >
-          {content.insight_type}
-        </span>
-        {artifact.sourceTitle && <span className="font-mono text-[10px] text-text-hint">{artifact.sourceTitle}</span>}
-      </div>
-      <h3 className="mb-2 font-heading text-base font-semibold text-foreground">{content.title}</h3>
-      <p className="text-sm leading-6 text-muted-foreground">{content.description}</p>
-      {content.recommendation && <p className="mt-3 text-xs font-semibold text-primary">{content.recommendation}</p>}
-    </article>
-  )
-}
-
-function ChartSpecChart({ spec }: { spec: ChartSpecContent }) {
-  const dataPoints = spec.data_points
-  const hasData = dataPoints && dataPoints.length > 0 && dataPoints[0].values && dataPoints[0].values.length > 0
-
-  if (!hasData) {
-    return (
-      <div className="relative h-72 overflow-hidden rounded-xl border border-border bg-surface-subtle flex items-center justify-center">
-        <p className="text-sm text-text-hint">Chart visualization will appear here once data is processed.</p>
-      </div>
-    )
-  }
-
-  const bars = dataPoints[0].values.map((value, i) => ({
-    label: dataPoints.length > i ? String(dataPoints[i].label) : `M${i + 1}`,
-    height: value,
-  }))
-
-  return (
-    <div className="relative h-72 overflow-hidden rounded-xl border border-border bg-surface-subtle p-6">
-      <div className="absolute inset-x-6 top-6 bottom-12 flex flex-col justify-between">
-        {['top', 'upper', 'middle', 'lower'].map((line) => (
-          <div key={line} className="border-t border-dashed border-border" />
-        ))}
-      </div>
-      <div className="relative z-10 flex h-full items-end gap-4 pb-8">
-        {bars.map((bar) => (
-          <div key={bar.label} className="flex flex-1 flex-col items-center gap-2">
-            <div className="w-full max-w-10 rounded-t-lg bg-gradient-to-t from-primary to-highlight shadow-sm" style={{ height: `${bar.height}%` }} />
-            <span className="font-mono text-[10px] text-text-hint">{bar.label}</span>
-          </div>
-        ))}
-      </div>
-      <svg
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-6 bottom-12 h-[calc(100%-72px)] w-[calc(100%-48px)]"
-        preserveAspectRatio="none"
-        viewBox="0 0 100 100"
-      >
-        <path
-          d="M0 70 C10 64 18 66 27 58 C38 48 45 52 55 42 C66 30 75 37 84 26 C91 18 95 20 100 12"
-          fill="none"
-          stroke="foreground"
-          strokeDasharray="4 4"
-          strokeWidth="1.5"
-        />
-      </svg>
-    </div>
-  )
-}
-
-function DocumentInsightBoard({ artifacts }: { artifacts: VisualizationArtifact[] }) {
-  const summaryArtifact = getSourceSummaryArtifact(artifacts)
-  const insightArtifact = getSourceInsightArtifact(artifacts)
-
-  const summaryContent = summaryArtifact && isSourceSummary(summaryArtifact.contentJson) ? summaryArtifact.contentJson : null
-  const insightContent = insightArtifact && isSourceInsight(insightArtifact.contentJson) ? insightArtifact.contentJson : null
-
-  const title = summaryArtifact?.title ?? insightArtifact?.title ?? 'Document Insight'
-  const sourceTitle = summaryArtifact?.sourceTitle ?? insightArtifact?.sourceTitle
-
-  // Extract arrays — handle string (backward compat) or CitationItem objects
-  const keyFindings = insightContent?.key_findings ?? []
-  const risks = insightContent?.risks ?? []
-  const opportunities = insightContent?.opportunities ?? []
-  const assumptions = insightContent?.assumptions ?? []
-  const sourceQuotes = insightContent?.source_quotes ?? []
-
-  const hasInsightArrays = keyFindings.length > 0 || risks.length > 0 || opportunities.length > 0 || assumptions.length > 0 || sourceQuotes.length > 0
-
-  return (
-    <section className="rounded-2xl border border-border border-l-[3px] border-l-primary bg-background p-6 shadow-sm">
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-lg bg-accent text-primary">
-            <FileText className="h-5 w-5" />
+      <div className="mb-8 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div className="max-w-2xl space-y-3">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <CalendarDays className="h-4 w-4" />
+            Visualization Snapshot
           </div>
           <div>
-            <h2 className="font-heading text-lg font-semibold text-foreground">{title}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Document Insight</p>
+            <h1 className="font-heading text-2xl font-semibold tracking-tight text-foreground">AI-Curated Insight Board</h1>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Cached intelligence for {formatMonthRange(periodStartMonth, periodEndMonth)} across the active Workspace.
+            </p>
           </div>
+          {snapshot?.status && (
+            <Badge variant="outline" className="w-fit border-border bg-surface-subtle text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+              {snapshot.status}
+            </Badge>
+          )}
         </div>
-        {sourceTitle && (
-          <span className="rounded-full bg-muted px-3 py-1 font-mono text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Source: {sourceTitle}
-          </span>
-        )}
+
+        <div className="flex flex-col gap-3 lg:items-end">
+          <div className="flex flex-wrap items-end gap-3">
+            <MonthInput label="Start month" value={periodStartMonth} onChange={setPeriodStartMonth} />
+            <MonthInput label="End month" value={periodEndMonth} onChange={setPeriodEndMonth} />
+            <Button
+              variant="outline"
+              onClick={() => refreshSnapshot.mutate(queryParams)}
+              disabled={!hasValidRange || refreshPending}
+              className="border-border bg-background"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshPending ? 'animate-spin' : ''}`} />
+              {refreshPending ? 'Refreshing' : 'Refresh'}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {snapshot?.generatedAt
+              ? `Updated ${formatTimestamp(snapshot.generatedAt)}`
+              : 'Snapshot regenerates on demand for the selected month range.'}
+          </p>
+        </div>
       </div>
 
-      {/* Summary section from source_summary */}
-      {summaryContent && (
-        <div className="mb-6">
-          <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Summary</p>
-          <p className="text-sm leading-6 text-foreground">{summaryContent.summary}</p>
-          {summaryContent.page_count != null && <p className="mt-2 text-xs text-text-hint">{summaryContent.page_count} page(s) extracted</p>}
-          {summaryContent.warnings && summaryContent.warnings.length > 0 && (
-            <div className="mt-3 rounded-xl border border-status-failed bg-status-failed-light p-3">
-              <p className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-status-failed">Warnings</p>
-              <ul className="list-disc pl-4 text-sm leading-6 text-foreground">
-                {summaryContent.warnings.map((w) => (
-                  <li key={w}>{w}</li>
-                ))}
-              </ul>
+      <div className="space-y-6">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <MetricCard
+            label="Coverage"
+            value={String(coverage?.totalSources ?? sourceCount)}
+            helper={coverage?.summary ?? 'Ready sources only'}
+            accent="indigo"
+          />
+          <MetricCard
+            label="Ready Sources"
+            value={String(coverage?.readySources ?? sourceCount)}
+            helper="Composed into the snapshot"
+            accent="emerald"
+          />
+          <MetricCard label="Excluded" value={String(coverage?.excludedSources ?? 0)} helper="Filtered out by scope or readiness" accent="amber" />
+          <MetricCard label="Range" value={formatMonthRange(periodStartMonth, periodEndMonth)} helper="Workspace-scoped and cached" accent="slate" />
+        </section>
+
+        <section className="rounded-2xl border border-border bg-background p-6 shadow-sm">
+          <SectionHeader
+            eyebrow="Coverage overview"
+            title="What this snapshot includes"
+            description={coverage?.summary ?? 'Ready sources overlapping the selected month range are composed into one cached intelligence view.'}
+          />
+          {coverage?.notes && coverage.notes.length > 0 && (
+            <ul className="mt-4 space-y-2 text-sm leading-6 text-muted-foreground">
+              {coverage.notes.map((note) => (
+                <li key={note} className="flex gap-3">
+                  <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                  <span>{note}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-border bg-background p-6 shadow-sm">
+          <SectionHeader
+            eyebrow="Source cards"
+            title="Ready sources in range"
+            description="Each card summarizes one source used to build the snapshot."
+          />
+          {sourceCards.length > 0 ? (
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              {sourceCards.map((card) => (
+                <SourceCard key={card.sourceId} card={card} />
+              ))}
             </div>
+          ) : (
+            <EmptyInline title="No source cards" description="The selected range did not return any ready overlapping sources." />
           )}
-        </div>
-      )}
+        </section>
 
-      {hasInsightArrays ? (
-        <div className="grid grid-cols-[1.2fr_1fr] gap-6">
-          <div>
-            <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Key Findings</p>
-            {keyFindings.length > 0 ? (
-              <ul className="space-y-3 text-sm leading-6 text-foreground">
-                {keyFindings.map((item, i) => (
-                  <li key={typeof item === 'string' ? `${i}-${item}` : i} className="flex gap-3">
-                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-                    <CitationText item={item} />
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-text-hint">No key findings available.</p>
-            )}
-          </div>
+        <section className="grid gap-6 xl:grid-cols-2">
+          <section className="rounded-2xl border border-border bg-background p-6 shadow-sm">
+            <SectionHeader
+              eyebrow="Key findings"
+              title="Most important takeaways"
+              description="Snapshot-level conclusions grounded in the underlying sources."
+              icon={<Sparkles className="h-4 w-4" />}
+            />
+            <ItemList
+              items={keyFindings}
+              emptyTitle="No key findings"
+              emptyDescription="The snapshot did not surface any key findings for this range."
+              className="mt-5"
+            />
+          </section>
 
-          <div className="space-y-4">
-            {risks.length > 0 && (
-              <InsightBox tone="risk" title="Identified Risks">
-                <CitationList items={risks} />
-              </InsightBox>
-            )}
-            {opportunities.length > 0 && (
-              <InsightBox tone="opportunity" title="Opportunities">
-                <CitationList items={opportunities} />
-              </InsightBox>
-            )}
-            {assumptions.length > 0 && (
-              <div className="rounded-xl border border-border bg-surface-subtle p-4">
-                <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Assumptions</p>
-                <CitationList items={assumptions} />
-              </div>
-            )}
-            {sourceQuotes.length > 0 && (
-              <div className="rounded-xl border border-border bg-surface-subtle p-4">
-                <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Source Quotes</p>
-                <CitationList items={sourceQuotes} />
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-xl border border-dashed border-border p-6 text-center">
-          <p className="text-sm text-text-hint">
-            {summaryContent
-              ? 'Summary generated. Document insights will appear here once extracted.'
-              : 'Processing complete — insights will appear here once extracted.'}
-          </p>
-        </div>
-      )}
-    </section>
-  )
-}
+          <section className="rounded-2xl border border-border bg-background p-6 shadow-sm">
+            <SectionHeader
+              eyebrow="Risks / assumptions"
+              title="What could be wrong"
+              description="Risks and assumptions are shown together so gaps stay visible in context."
+              icon={<AlertTriangle className="h-4 w-4" />}
+            />
+            <ItemList
+              items={risksAssumptions}
+              emptyTitle="No risks or assumptions"
+              emptyDescription="The snapshot did not include explicit risks or assumptions."
+              className="mt-5"
+            />
+          </section>
+        </section>
 
-function DocumentInsightBoardMock() {
-  return (
-    <section className="rounded-2xl border border-border border-l-[3px] border-l-muted bg-background p-6 shadow-sm opacity-60">
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-lg bg-surface-subtle text-muted-foreground">
-            <FileText className="h-5 w-5" />
-          </div>
-          <div>
-            <h2 className="font-heading text-lg font-semibold text-foreground">Document Insight</h2>
-            <p className="mt-1 text-sm text-muted-foreground">No document sources processed yet</p>
-          </div>
-        </div>
-        <span className="rounded-full bg-surface-subtle px-3 py-1 font-mono text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          [placeholder]
-        </span>
+        <section className="grid gap-6 xl:grid-cols-2">
+          <section className="rounded-2xl border border-border bg-background p-6 shadow-sm">
+            <SectionHeader
+              eyebrow="Opportunities"
+              title="Potential moves"
+              description="Concrete opportunities highlighted by the snapshot."
+              icon={<Lightbulb className="h-4 w-4" />}
+            />
+            <ItemList
+              items={opportunities}
+              emptyTitle="No opportunities"
+              emptyDescription="The snapshot did not include opportunity items for this range."
+              className="mt-5"
+            />
+          </section>
+
+          <section className="rounded-2xl border border-border bg-background p-6 shadow-sm">
+            <SectionHeader
+              eyebrow="Gaps"
+              title="Missing evidence"
+              description="Explicit gaps help show where the current snapshot is incomplete."
+              icon={<CircleHelp className="h-4 w-4" />}
+            />
+            <ItemList
+              items={gaps}
+              emptyTitle="No gaps"
+              emptyDescription="The snapshot did not surface missing evidence or unresolved questions."
+              className="mt-5"
+            />
+          </section>
+        </section>
       </div>
-      <p className="text-sm text-text-hint">Upload a PDF source and wait for processing to see document insights here.</p>
-    </section>
-  )
-}
-
-function groupArtifactsBySource(artifacts: VisualizationArtifact[]): Array<{ sourceId: number; artifacts: VisualizationArtifact[] }> {
-  const groups = new Map<number, VisualizationArtifact[]>()
-  for (const artifact of artifacts) {
-    const current = groups.get(artifact.sourceId) ?? []
-    current.push(artifact)
-    groups.set(artifact.sourceId, current)
-  }
-  return Array.from(groups.entries()).map(([sourceId, sourceArtifacts]) => ({ sourceId, artifacts: sourceArtifacts }))
-}
-
-function FilterSelect<T extends string>({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string
-  value: T | ''
-  onChange: (v: T | '') => void
-  options: Array<{ value: T; label: string }>
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange((e.target.value || '') as T | '')}
-      className="appearance-none rounded-lg border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-ring"
-    >
-      <option value="">{label}</option>
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
-  )
-}
-
-function PeriodFilter({
-  periodStart,
-  periodEnd,
-  onStartChange,
-  onEndChange,
-}: {
-  periodStart: string
-  periodEnd: string
-  onStartChange: (v: string) => void
-  onEndChange: (v: string) => void
-}) {
-  const hasPeriod = periodStart || periodEnd
-  const label = hasPeriod ? `${periodStart || '...'} → ${periodEnd || '...'}` : 'Period'
-
-  return (
-    <div className="relative inline-flex items-center gap-1">
-      <select
-        value=""
-        onChange={() => {}}
-        className="appearance-none rounded-lg border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-ring"
-      >
-        <option value="">{label}</option>
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-2 h-4 w-4 text-text-hint" />
-      {hasPeriod && (
-        <button
-          type="button"
-          onClick={() => {
-            onStartChange('')
-            onEndChange('')
-          }}
-          className="ml-1 text-xs text-muted-foreground hover:text-foreground"
-        >
-          ×
-        </button>
-      )}
     </div>
   )
 }
 
-function KpiCard({
+function SectionHeader({ eyebrow, title, description, icon }: { eyebrow: string; title: string; description: string; icon?: ReactNode }) {
+  return (
+    <div className="flex items-start gap-3">
+      {icon ? <div className="mt-0.5 text-muted-foreground">{icon}</div> : null}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{eyebrow}</p>
+        <h2 className="mt-1 font-heading text-lg font-semibold text-foreground">{title}</h2>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>
+      </div>
+    </div>
+  )
+}
+
+function MetricCard({
   label,
   value,
-  delta,
-  trend,
-  description,
-  source,
+  helper,
+  accent,
 }: {
   label: string
   value: string
-  delta: string
-  trend: 'up' | 'down'
-  description: string
-  source: string
+  helper: string
+  accent: 'indigo' | 'emerald' | 'amber' | 'slate'
 }) {
-  const TrendIcon = trend === 'up' ? TrendingUp : TrendingDown
-  const trendClass = trend === 'up' ? 'text-status-ready-foreground' : 'text-status-failed-foreground'
-  const accentClass = trend === 'up' ? 'bg-status-ready' : 'bg-status-failed'
-  return (
-    <article className="rounded-2xl border border-border bg-background p-5 shadow-sm relative overflow-hidden">
-      <div className={`absolute left-0 top-0 bottom-0 w-1 ${accentClass}`} />
-      <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-      <div className="mb-4 flex items-end gap-3">
-        <p className="font-heading text-3xl font-semibold tracking-tight text-foreground">{value}</p>
-        {delta && (
-          <span className={`mb-1 inline-flex items-center gap-1 text-sm font-semibold ${trendClass}`}>
-            <TrendIcon className="h-4 w-4" />
-            {delta}
-          </span>
-        )}
-      </div>
-      <p className="min-h-[48px] pl-2 text-sm leading-6 text-muted-foreground">{description}</p>
-      <div className="mt-5 flex items-center justify-between pl-2 border-t border-border-subtle pt-4 text-xs">
-        {source && <span className="font-mono text-text-hint">{source}</span>}
-        <button type="button" className="font-semibold text-primary hover:text-primary-hover">
-          Ask Chat
-        </button>
-      </div>
-    </article>
-  )
-}
+  const accentMap = {
+    indigo: 'border-l-primary bg-primary/5',
+    emerald: 'border-l-emerald-500 bg-emerald-500/5',
+    amber: 'border-l-amber-500 bg-amber-500/5',
+    slate: 'border-l-slate-400 bg-slate-400/5',
+  }
 
-function IconButton({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <button
-      type="button"
-      aria-label={label}
-      className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-background text-muted-foreground hover:bg-surface-subtle hover:text-primary"
-    >
-      {children}
-    </button>
-  )
-}
-
-function InsightBox({ tone, title, children }: { tone: 'risk' | 'opportunity'; title: string; children: ReactNode }) {
-  const styles = tone === 'risk' ? 'bg-status-failed text-status-failed-foreground' : 'bg-status-ready text-status-ready-foreground'
-  return (
-    <div className={`rounded-xl p-4 ${styles}`}>
-      <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em]">{title}</p>
-      <div className="text-sm leading-6 text-foreground">{children}</div>
+    <div className={`rounded-2xl border border-border border-l-4 p-5 shadow-sm ${accentMap[accent]}`}>
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+      <p className="mt-3 font-heading text-2xl font-semibold text-foreground">{value}</p>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">{helper}</p>
     </div>
   )
 }
 
-function CitationText({ item }: { item: string | CitationItem }) {
-  if (typeof item === 'string') return <span>{item}</span>
-  const display = item.text ?? item.quote ?? ''
+function MonthInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  const inputId = useId()
+
   return (
-    <span>
-      {display}
-      {item.page_number != null && <span className="ml-2 font-mono text-[10px] text-text-hint">p.{item.page_number}</span>}
-      {item.quote && item.text && <span className="mt-1 block text-xs italic text-muted-foreground">"{item.quote}"</span>}
-    </span>
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={inputId} className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        {label}
+      </label>
+      <Input id={inputId} type="month" value={value} onChange={(event) => onChange(event.target.value)} className="w-[170px] bg-background" />
+    </div>
   )
 }
 
-function CitationList({ items }: { items: Array<string | CitationItem> }) {
+function SourceCard({ card }: { card: VisualizationSourceCard }) {
   return (
-    <ul className="space-y-1 text-sm leading-6 text-foreground">
-      {items.map((item, i) => (
-        <li key={typeof item === 'string' ? `${i}-${item.slice(0, 40)}` : `${i}-${(item.text ?? item.quote ?? '').slice(0, 40)}`}>
-          <CitationText item={item} />
-        </li>
+    <article className="rounded-2xl border border-border bg-surface-subtle p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="border-border bg-background text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+              {card.sourceFileType ?? 'source'}
+            </Badge>
+            {card.periodLabel && (
+              <Badge variant="outline" className="border-border bg-background text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                {card.periodLabel}
+              </Badge>
+            )}
+          </div>
+          <h3 className="font-heading text-base font-semibold text-foreground">{card.title}</h3>
+        </div>
+        <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
+        {card.teamLabel && (
+          <Badge variant="secondary" className="bg-primary/10 text-primary">
+            {formatLabel(card.teamLabel)}
+          </Badge>
+        )}
+        {card.categoryLabels?.map((category) => (
+          <Badge key={category} variant="outline" className="border-border bg-background text-muted-foreground">
+            {formatLabel(category)}
+          </Badge>
+        ))}
+      </div>
+
+      {card.summary && <p className="mt-4 text-sm leading-6 text-muted-foreground">{card.summary}</p>}
+
+      {card.evidenceRefs && card.evidenceRefs.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {card.evidenceRefs.map((ref) => (
+            <EvidenceBadge key={evidenceRefKey(ref)} refItem={ref} />
+          ))}
+        </div>
+      )}
+    </article>
+  )
+}
+
+function ItemList({
+  items,
+  emptyTitle,
+  emptyDescription,
+  className,
+}: {
+  items: VisualizationSnapshotListItem[]
+  emptyTitle: string
+  emptyDescription: string
+  className?: string
+}) {
+  if (items.length === 0) {
+    return <EmptyInline className={className} title={emptyTitle} description={emptyDescription} />
+  }
+
+  return (
+    <div className={`space-y-3 ${className ?? ''}`}>
+      {items.map((item) => (
+        <div key={itemKey(item)} className="rounded-xl border border-border bg-surface-subtle p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-1">
+              {item.kind && (
+                <Badge variant="outline" className="border-border bg-background text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                  {item.kind}
+                </Badge>
+              )}
+              <p className="text-sm leading-6 text-foreground">{item.title ?? item.text ?? item.detail ?? item.description ?? 'Untitled item'}</p>
+            </div>
+            {typeof item.confidence === 'number' && <span className="text-xs text-muted-foreground">{Math.round(item.confidence * 100)}%</span>}
+          </div>
+          {item.evidenceRefs && item.evidenceRefs.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {item.evidenceRefs.map((ref) => (
+                <EvidenceBadge key={evidenceRefKey(ref)} refItem={ref} />
+              ))}
+            </div>
+          )}
+        </div>
       ))}
-    </ul>
+    </div>
+  )
+}
+
+function EvidenceBadge({ refItem }: { refItem: VisualizationEvidenceRef }) {
+  const label =
+    refItem.quote ?? (refItem.pageNumber != null ? `p.${refItem.pageNumber}` : (refItem.sourceTitle ?? `Source ${refItem.sourceId ?? 'ref'}`))
+  return (
+    <Badge variant="outline" className="max-w-full border-border bg-background text-[11px] font-normal text-muted-foreground">
+      <span className="truncate">{label}</span>
+    </Badge>
+  )
+}
+
+function EmptyInline({ title, description, className }: { title: string; description: string; className?: string }) {
+  return (
+    <div className={`rounded-xl border border-dashed border-border p-5 text-center ${className ?? ''}`}>
+      <p className="text-sm font-medium text-foreground">{title}</p>
+      <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>
+    </div>
   )
 }
 
@@ -596,4 +432,37 @@ function ErrorState({ message }: { message: string }) {
   return (
     <section className="rounded-2xl border border-status-failed bg-status-failed-light p-8 text-sm text-status-failed shadow-sm">{message}</section>
   )
+}
+
+function toMonthInputValue(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
+function formatMonthRange(startMonth: string, endMonth: string) {
+  return startMonth && endMonth ? `${startMonth} → ${endMonth}` : 'Select a month range'
+}
+
+function formatTimestamp(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  return new Intl.DateTimeFormat('en', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date)
+}
+
+function formatLabel(value: string) {
+  return value
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function itemKey(item: VisualizationSnapshotListItem) {
+  return [item.kind, item.title ?? item.text ?? item.detail ?? item.description ?? 'item', item.confidence ?? ''].join('|')
+}
+
+function evidenceRefKey(ref: VisualizationEvidenceRef) {
+  return [ref.sourceId ?? '', ref.sourceTitle ?? '', ref.pageNumber ?? '', ref.quote ?? ''].join('|')
 }

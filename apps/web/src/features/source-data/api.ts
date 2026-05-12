@@ -11,8 +11,8 @@ function fromApi(source: SourceDataApi): SourceData {
     fileType: source.file_type,
     originalFilename: source.original_filename,
     storagePath: source.storage_path,
-    periodStart: source.period_start,
-    periodEnd: source.period_end,
+    periodStartMonth: source.period_start_month,
+    periodEndMonth: source.period_end_month,
     periodLabel: source.period_label,
     processingStatus: source.processing_status,
     processingError: source.processing_error,
@@ -40,9 +40,8 @@ export async function createSource(input: CreateSourceInput): Promise<SourceData
   for (const cat of input.categoryLabels) {
     formData.append('category_labels', cat)
   }
-  if (input.periodStart) formData.append('period_start', input.periodStart)
-  if (input.periodEnd) formData.append('period_end', input.periodEnd)
-  if (input.periodLabel) formData.append('period_label', input.periodLabel)
+  if (input.periodStartMonth) formData.append('period_start_month', input.periodStartMonth)
+  if (input.periodEndMonth) formData.append('period_end_month', input.periodEndMonth)
 
   return fromApi(
     await apiFetch<SourceDataApi>('/sources', {

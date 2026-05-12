@@ -1,135 +1,85 @@
-import type { CategoryLabel, TeamLabel } from './common'
+import type { CategoryLabel, IsoDateTime, TeamLabel } from './common'
 
-export type VisualizationArtifactType = 'csv_profile' | 'chart_spec' | 'insight_card' | 'source_summary' | 'source_insight'
-
-export type VisualizationArtifact = {
-  id: number
-  sourceId: number
-  artifactType: VisualizationArtifactType
-  title: string
-  contentJson: VisualizationArtifactContent
-  // Optional source metadata when included by the API
+export type VisualizationEvidenceRef = {
+  sourceId?: number
   sourceTitle?: string
+  artifactId?: number
+  quote?: string
+  pageNumber?: number | null
+}
+
+export type VisualizationCoverageSection = {
+  totalSources?: number
+  readySources?: number
+  excludedSources?: number
+  summary?: string
+  notes?: string[]
+}
+
+export type VisualizationSourceCard = {
+  sourceId: number
+  title: string
+  summary?: string
   sourceFileType?: 'csv' | 'pdf'
   teamLabel?: TeamLabel
   categoryLabels?: CategoryLabel[]
+  periodLabel?: string | null
+  evidenceRefs?: VisualizationEvidenceRef[]
 }
 
-export type VisualizationArtifactApi = {
-  id: number
-  source_id: number
-  artifact_type: VisualizationArtifactType
-  title: string
-  content_json: Record<string, unknown>
-  // Extended response shape includes source metadata
-  source_title?: string
-  source_file_type?: 'csv' | 'pdf'
-  team_label?: TeamLabel
-  category_labels?: CategoryLabel[]
-}
-
-// CSV Profile content
-export type CsvProfileContent = {
-  total_rows: number
-  total_columns: number
-  columns: Array<{
-    name: string
-    type: 'numeric' | 'categorical' | 'date' | 'text'
-    null_count: number
-    unique_count: number
-    min?: string | number
-    max?: string | number
-    sample_values?: string[]
-  }>
-  summary?: {
-    numeric_columns: string[]
-    categorical_columns: string[]
-    date_columns: string[]
-  }
-}
-
-// Chart spec content
-export type ChartSpecContent = {
-  chart_type: 'bar' | 'line' | 'scatter' | 'area' | 'combo'
-  title: string
-  x_axis: string
-  y_axis: string
-  y_axis_2?: string
-  description?: string
-  kpis?: Array<{
-    label: string
-    value: string
-    delta?: string
-    trend?: 'up' | 'down'
-  }>
-  data_points?: Array<{
-    label: string
-    values: number[]
-  }>
-  insights?: string[]
-}
-
-// Insight card content
-export type InsightCardContent = {
-  insight_type: 'anomaly' | 'trend' | 'risk' | 'opportunity' | 'summary'
-  title: string
-  description: string
-  confidence?: number
-  evidence?: string[]
-  recommendation?: string
-}
-
-// Citation-ready object used in source_insight arrays
-export type CitationItem = {
+export type VisualizationSnapshotListItem = {
+  title?: string
   text?: string
-  quote?: string
-  page_number?: number | null
+  detail?: string
+  description?: string
+  kind?: 'finding' | 'risk' | 'assumption' | 'opportunity' | 'gap'
+  confidence?: number
+  evidenceRefs?: VisualizationEvidenceRef[]
 }
 
-// Source insight content for Document Insight
-export type SourceInsightContent = {
-  key_findings: Array<string | CitationItem>
-  assumptions?: Array<string | CitationItem>
-  risks: Array<string | CitationItem>
-  opportunities: Array<string | CitationItem>
-  source_quotes?: Array<string | CitationItem>
+export type VisualizationRiskAssumptionItem = VisualizationSnapshotListItem & {
+  kind?: 'risk' | 'assumption'
 }
 
-// Source summary content for Document Insight
-export type SourceSummaryContent = {
-  summary: string
-  page_count?: number
-  ocr_model?: string
-  structuring_model?: string
-  extracted_markdown_path?: string
-  chunk_metadata_path?: string
-  warnings?: string[]
+export type VisualizationSnapshotContent = {
+  coverage: VisualizationCoverageSection
+  source_cards: VisualizationSourceCard[]
+  key_findings: VisualizationSnapshotListItem[]
+  risks_assumptions: VisualizationRiskAssumptionItem[]
+  opportunities: VisualizationSnapshotListItem[]
+  gaps: VisualizationSnapshotListItem[]
 }
 
-// Union type for artifact content
-export type VisualizationArtifactContent =
-  | CsvProfileContent
-  | ChartSpecContent
-  | InsightCardContent
-  | SourceSummaryContent
-  | SourceInsightContent
-  | Record<string, unknown>
-
-// Artifact grouped by source for list view
-export type VisualizationSourceGroup = {
-  sourceId: number
-  sourceTitle: string
-  sourceFileType: 'csv' | 'pdf'
-  teamLabel?: TeamLabel
-  categoryLabels?: CategoryLabel[]
-  artifacts: VisualizationArtifact[]
+export type VisualizationSnapshotApi = {
+  id: number
+  workspace_id: number
+  period_start_month: string
+  period_end_month: string
+  content_json: VisualizationSnapshotContent
+  source_ids_json?: number[]
+  artifact_ids_json?: number[]
+  status?: string
+  generation_error?: string | null
+  generated_at?: IsoDateTime | null
+  updated_at?: IsoDateTime | null
 }
 
-// Filter params for list endpoint
-export type VisualizationFilters = {
+export type VisualizationSnapshot = {
+  id: number
   workspaceId: number
-  teamLabel?: TeamLabel
-  categoryLabel?: CategoryLabel
-  periodStart?: string
-  periodEnd?: string
+  periodStartMonth: string
+  periodEndMonth: string
+  contentJson: VisualizationSnapshotContent
+  sourceIds?: number[]
+  artifactIds?: number[]
+  status?: string
+  generationError?: string | null
+  generatedAt?: IsoDateTime | null
+  updatedAt?: IsoDateTime | null
+}
+
+export type VisualizationSnapshotQueryParams = {
+  workspaceId: number
+  periodStartMonth: string
+  periodEndMonth: string
 }

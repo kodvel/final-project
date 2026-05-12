@@ -4,6 +4,10 @@ This task breakdown is derived from `docs/prd.md`.
 
 For Source Data processing architecture, use `docs/architecture.md` as the implementation source of truth.
 
+## Current priority for coding agents
+
+The implementation has been realigned with the latest Source, Visualization Data, and Chat streaming architecture. Continue with the remaining product tasks in the recommended order at the end of this file.
+
 The project will be implemented by 3 developers. Each task below explains:
 
 - the user-facing flow it supports
@@ -18,224 +22,6 @@ Developer shorthand used in tasks:
 - **Developer A:** Backend / data foundation
 - **Developer B:** Frontend / product UI
 - **Developer C:** AI / integration / demo
-
-## Migration checklist: align current code with latest architecture
-
-Use this temporary checklist before coding against the latest architecture. It highlights current-code gaps after the architecture update. It is not a source of truth.
-
-Source of truth remains:
-
-- Product and domain language: `docs/CONTEXT.md` and `docs/prd.md`
-- Source processing and retrieval architecture: `docs/architecture.md`
-- API contract: backend schemas and `/openapi.json`
-- UI/UX: `docs/designs/*/DESIGN.md`
-- Architecture decisions: `docs/adr/*`
-
-Remove this section once implementation matches the latest architecture. The current implementation was built against earlier assumptions: old CSV visualization artifacts, per-artifact Visualization Data responses, non-streaming Chat, dummy assistant responses, source-only citations, and older Source artifact/period models.
-
-### Source Data processing and Visualization files that must be updated
-
-Use `docs/architecture.md` as the source of truth for this section. The target architecture is: upload Source → extract → normalize → save `source_summary`, `source_content`, optional `source_insight` → index `source_content.chunks` in ChromaDB → mark Source Ready → compose cached period-based Visualization Snapshots.
-
-Backend models, enums, and schemas:
-
-- `apps/api/app/models/enums.py`
-  - Current implementation still exposes retired artifact values: `csv_profile`, `chart_spec`, and `insight_card`.
-  - Add active artifact value `source_content`.
-  - New Source processing work should target `source_summary`, `source_content`, and optional `source_insight`; old artifact values should only remain as backward-compatibility shims if migration requires it.
-- `apps/api/app/models/source.py`
-  - Current implementation stores `period_start` and `period_end` as `datetime` plus `period_label`.
-  - Align to month-level period fields (`period_start_month`, `period_end_month`) and derive display labels server-side.
-- `apps/api/app/models/visualization_snapshot.py` (new)
-  - Add cached snapshot model keyed by `workspace_id + period_start_month + period_end_month`.
-  - Store `scope_hash`, `title`, `content_json`, `source_ids_json`, `artifact_ids_json`, `status`, `generation_error`, and `generated_at`.
-- `apps/api/app/schemas/visualization.py`
-  - Current schema returns flat `VisualizationArtifactRead` items.
-  - Replace/add `VisualizationSnapshotRead` for period-based snapshot responses.
-
-Backend services and missing modules:
-
-- `apps/api/app/services/source_processing.py`
-  - Current CSV path creates `csv_profile`, `chart_spec`, and `insight_card`; this is the old architecture.
-  - Refactor coordinator so Ready requires required SQL artifacts and ChromaDB indexing success.
-- `apps/api/app/services/csv_profiler.py`
-  - Current implementation is deterministic profiling only.
-  - Split into `services/extractors/csv_extractor.py` and `services/normalizers/csv_normalizer.py`.
-  - CSV normalizer must create `source_summary`, `source_content` chunks, and optional `source_insight`; do not index raw rows blindly.
-- `apps/api/app/services/pdf_extractor.py`
-  - Current implementation creates `source_summary` and `source_insight` only.
-  - Add `source_content` artifact from labeled chunks with page references, or split extraction/normalization into `services/extractors/pdf_extractor.py` and `services/normalizers/pdf_normalizer.py`.
-- `apps/api/app/services/artifacts.py` (new)
-  - Centralize Source Artifact upsert/fetch/replace behavior by `artifact_type` so CSV/PDF retry does not duplicate artifacts.
-- `apps/api/app/services/periods.py` (new)
-  - Centralize month parsing, range validation, label derivation, and overlap checks.
-- `apps/api/app/knowledge/indexing.py` (new)
-  - Index every `source_content.chunks` item into ChromaDB collection `company_knowledge` with stable vector IDs and metadata.
-  - Delete old vectors on retry and exclude/delete vectors for soft-deleted Sources as required by retrieval/snapshot behavior.
-- `apps/api/app/knowledge/chroma.py`, `apps/api/app/knowledge/embeddings.py`, and `apps/api/app/knowledge/retrieval.py`
-  - These are currently stubs and must be implemented before Chat or Visualization can depend on indexed Source knowledge.
-- `apps/api/app/services/visualizations.py`
-  - Current implementation lists individual Source Artifacts with team/category/period filters.
-  - Replace with Visualization Composer: find ready, non-deleted Sources overlapping the month range; load `source_summary` and `source_insight`; compose coverage, source cards, findings, risks, assumptions, opportunities, and gaps; cache in `visualization_snapshot`.
-- `apps/api/app/routes/visualizations.py`
-  - Current route accepts team/category/date filters and returns flat artifacts.
-  - New route should require `workspace_id`, `period_start_month`, and `period_end_month`.
-  - Add `POST /visualizations/refresh` for forced snapshot regeneration.
-
-Frontend files likely impacted:
-
-- `apps/web/src/types/visualization.ts`
-  - Current types still include retired `CsvProfileContent`, `ChartSpecContent`, and `InsightCardContent`.
-  - Add `source_content` and `VisualizationSnapshot` types; remove retired artifact types from new UI paths.
-- `apps/web/src/features/visualization-data/api.ts`
-  - Current API client calls flat `GET /visualizations` and derives KPIs/charts from `chart_spec`.
-  - Replace with snapshot fetch by Workspace + month range and add `refreshVisualizationSnapshot()`.
-- `apps/web/src/features/visualization-data/hooks/index.ts`
-  - Replace artifact-derived hooks (`useKpiCards`, `usePrimaryChart`, `useInsightCards`) with snapshot-based hooks.
-- `apps/web/src/routes/visualization-data.tsx`
-  - Current page renders old CSV KPI/chart/insight cards and per-PDF Document Insight boards.
-  - Replace with period-based snapshot sections.
-  - Remove team/category/file-type filters from Visualization Data; keep only month range controls.
-  - Add Refresh action wired to `POST /visualizations/refresh`.
-- `apps/web/src/routes/source-data.tsx` and `apps/web/src/types/source.ts`
-  - Align upload form and types to month-level period fields once backend period contract changes.
-
-Tests that must be updated or added for Source/Visualization:
-
-- `apps/api/tests/test_task1_sources.py`
-  - Update period expectations to `period_start_month`/`period_end_month` and derived labels.
-- `apps/api/tests/test_task2_visualizations.py`
-  - Current assertions likely target flat artifacts and old CSV artifact names. Replace with snapshot behavior and normalized artifact expectations.
-- `apps/api/tests/test_task3_pdf_pipeline.py`
-  - Add assertions that PDF processing saves `source_content` and indexes chunks with page metadata.
-- `apps/api/tests/test_task10_contract.py`
-  - Update OpenAPI expectations for `source_content`, month-level period fields, and Visualization Snapshot schemas.
-- Add/extend tests for CSV `source_summary`, CSV `source_content`, no raw-row Chroma indexing, stable vector IDs, retry vector replacement, soft-delete exclusion, snapshot cache hit/miss, and refresh regeneration.
-
-Non-negotiable Source/Visualization constraints for coding agents:
-
-- SQL remains the source of truth; ChromaDB is a derived index and must be rebuildable.
-- A Source is Ready only after required normalized artifacts exist and required `source_content` chunks are indexed.
-- `source_content` is the bridge to ChromaDB and Chat evidence.
-- Visualization Data is a cached period-based composed view, not a raw per-Source artifact browser.
-- Visualization Data MVP has no team/category/file-type filters; those labels appear inside snapshot content as grouping/context.
-- Retired artifact names (`csv_profile`, `chart_spec`, `insight_card`, `visualization_spec`) must not be used for new architecture work.
-
-### Chat and Decision Brief files that must be updated
-
-Backend models and enums:
-
-- `apps/api/app/models/enums.py`
-  - Add `MessageStatus`: `pending`, `streaming`, `completed`, `failed`, `interrupted`.
-  - Add `CitationType`: `uploaded_source`, `web`.
-  - Add `CitationStatus`: `available`, `source_deleted`, `source_failed`, `artifact_missing`, `web_unavailable`.
-  - Add active artifact value `source_content`; legacy artifact values (`csv_profile`, `chart_spec`, `insight_card`) are retired by architecture docs and should only remain for backward compatibility if needed.
-- `apps/api/app/models/chat.py`
-  - Extend `ChatSession` with `last_message_at`, `conversation_summary`, `summary_cutoff_message_id`, and `summary_updated_at`.
-  - Extend `ChatMessage` with lifecycle fields: `status`, `error_message`, `metadata_json`, `updated_at`, and `completed_at`.
-  - Extend `AgentToolCall` with `input_json` and `output_json`.
-  - Evolve `MessageSourceCitation` into a polymorphic citation model that supports uploaded Source citations and Tavily web citations. `source_id` must become nullable for web citations.
-- `apps/api/app/models/decision_brief.py`
-  - Add `sequence_number`, `context_cutoff_message_id`, `objective`, and `status_updated_at`.
-
-Backend schemas and routes:
-
-- `apps/api/app/schemas/chat.py`
-  - Add stream request schema for `POST /chat/messages/stream`: `workspace_id`, optional `session_id`, and `message`.
-  - Add/extend read schemas for message status, session summary fields, polymorphic citations, and tool-call JSON fields.
-  - Deprecate JSON pair response assumptions from `ChatMessagePairRead` once streaming is the primary path.
-- `apps/api/app/schemas/decision_brief.py`
-  - Add `DecisionBriefStatusUpdate`.
-  - Extend `DecisionBriefRead` with point-in-time fields.
-- `apps/api/app/routes/chat.py`
-  - Add `POST /chat/messages/stream` returning DeltaKit-compatible `text/event-stream`.
-  - Add `limit` and `offset` to `GET /chat/sessions` for latest-5 + Show More history.
-  - Keep `GET /chat/sessions/{session_id}` Workspace-scoped and include messages, citations, tool calls, and Decision Brief card data as needed.
-  - Retire or keep legacy non-streaming endpoints only as compatibility shims; new work should target the stream endpoint.
-- `apps/api/app/routes/decision_briefs.py`
-  - Implement `GET /decision-briefs/{brief_id}`.
-  - Implement `PATCH /decision-briefs/{brief_id}/status` with valid transition checks and Workspace validation.
-
-Backend services and missing modules:
-
-- `apps/api/app/services/chat.py`
-  - Replace `_dummy_assistant_response()` and single JSON pair response flow.
-  - Support lazy session creation, message lifecycle transitions, `last_message_at`, interrupted partial content, citation persistence, and DeltaKit stream orchestration.
-- `apps/api/app/services/context_builder.py` (new)
-  - Build budgeted model context from `conversation_summary`, recent raw messages, current user message, uploaded Source EvidenceBundle, optional Tavily evidence, and reserved output tokens.
-  - Refresh `conversation_summary` around 70-80% context capacity.
-  - Treat summary as context, not evidence.
-- `apps/api/app/knowledge/retrieval.py`
-  - Implement the company knowledge retrieval facade: SQL eligible Sources, ChromaDB search, SQL validation/hydration, dedupe, rerank, per-Source diversity cap, quality gate, compact EvidenceBundle.
-  - Return stable citation IDs and validate model `used_citation_ids` before persistence.
-- `apps/api/app/knowledge/chroma.py`
-  - Implement `company_knowledge` collection setup, chunk indexing, filtered search, and source vector deletion.
-- `apps/api/app/knowledge/embeddings.py`
-  - Implement configured embedding calls.
-- `apps/api/app/services/tavily.py` (new)
-  - Implement bounded Tavily fallback search and map results to web citation fields.
-  - Enforce: use Tavily only when local evidence is weak/empty and the question is public/current/web-answerable.
-- `apps/api/app/agents/consultant.py`
-  - Implement grounded consultant LLM call/streaming using prepared context and EvidenceBundle.
-  - Return final content plus `used_citation_ids`, confidence, and gaps.
-- `apps/api/app/agents/prompts.py`
-  - Add grounding/system prompt, conversation summary prompt, and structured Decision Brief workflow prompts.
-- `apps/api/app/agents/tools.py`
-  - Keep tool definitions as guarded service calls, not raw DB access.
-- `apps/api/app/services/decision_briefs.py`
-  - Implement deterministic `/decision-brief` workflow: insufficient-context gate, structured extraction, evidence mapping, draft JSON generation, citation ID validation, `sequence_number`, and status updates.
-
-Source architecture prerequisites that affect Chat:
-
-- `apps/api/app/models/source.py`
-  - Current implementation still needs alignment to month-level `period_start_month` and `period_end_month` if not already done. `period_label` should be derived by backend.
-- `apps/api/app/schemas/source.py`, source routes/services, and frontend Source upload types must follow the month-level period contract.
-- Source processing must produce `source_summary`, `source_content`, and optional `source_insight`; Chat/RAG depends on `source_content` chunks being indexed in ChromaDB.
-
-Frontend files likely impacted:
-
-- `apps/web/src/routes/chat.tsx` and/or `apps/web/src/features/chat/*`
-  - Replace dummy/local or non-streaming interaction with DeltaKit stream consumption.
-  - Use `POST /chat/messages/stream`.
-  - Render `sources_used`, `web_sources_used`, tool call summaries, interrupted/failed states, and Decision Brief cards.
-  - Chat history belongs in a top dropdown: latest 5 first, Show More by offset.
-- `apps/web/src/features/decision-briefs/*`
-  - Add status card actions: Mark Reviewed, Approve, Reject.
-  - Call `PATCH /decision-briefs/{brief_id}/status`.
-- `apps/web/src/types/chat.ts` and `apps/web/src/types/decision-brief.ts`
-  - Align with backend schemas and `/openapi.json`.
-
-### Tests that must be updated or added
-
-- `apps/api/tests/test_task5_chat.py`
-  - Current tests target explicit `POST /chat/sessions`, non-streaming `POST /chat/sessions/{session_id}/messages`, and dummy assistant text.
-  - Update tests to parse DeltaKit SSE events from `POST /chat/messages/stream`.
-  - Add coverage for lazy session creation, existing-session continuation, wrong Workspace rejection, stream interruption, message status transitions, and history pagination.
-- `apps/api/tests/test_task10_contract.py`
-  - Add new enum expectations for `MessageStatus`, `CitationType`, and `CitationStatus`.
-  - Update expected fields for Chat, citation, and Decision Brief read schemas.
-- Source tests such as `apps/api/tests/test_task1_sources.py` may need updates for `period_start_month` and `period_end_month`.
-- Visualization/source artifact tests may need updates if they still assert retired artifact types.
-- Add retrieval tests for SQL validation, dedupe, rerank, diversity cap, quality gate, and compact EvidenceBundle shape.
-- Add citation tests for uploaded Source citations, Tavily web citations, deleted Source warning status, and invalid `used_citation_ids` rejection.
-- Add Decision Brief tests for insufficient context, repeated drafts with incrementing `sequence_number`, `context_cutoff_message_id`, valid/invalid approval status transitions, and locked approved/rejected states.
-
-### Non-negotiable constraints for coding agents
-
-- Do not use `.env*` or secret files. Use config objects and test overrides.
-- No server-global Active Workspace. Every scoped API call uses explicit `workspace_id` and validates ownership.
-- Chat Session Workspace never changes after creation.
-- DeltaKit stream format is SSE `data:` JSON with a `type` field plus `data: [DONE]`; do not use named SSE `event:` fields.
-- SQL is the source of truth. ChromaDB candidates must be SQL-validated before use.
-- `conversation_summary` is context, not evidence.
-- Internal company claims require uploaded Source citations.
-- Tavily web citations support public/current/external context only.
-- Save only citations actually used in the final answer.
-- Validate all model-returned `used_citation_ids` against the provided EvidenceBundle.
-- Each `/decision-brief` creates a new point-in-time draft. Do not overwrite prior drafts.
-- Decision Brief status changes are card actions, not `/brief-status` commands.
-
----
 
 ## Task 0: Architecture skeleton and dependency baseline
 
@@ -475,8 +261,8 @@ Current UI implementation status:
 - [x] Chat page is design-faithful with local mock interaction only.
 - [x] Source Data page is design-aligned and keeps existing backend hooks.
 - [x] Visualization Data page is design-faithful with mock/presentational content only.
-- [ ] Replace Chat mock interaction with backend chat sessions/messages when the API is ready.
-- [ ] Replace Visualization Data mock content with backend Visualization Snapshot responses when the API is ready.
+- [x] Replace Chat mock interaction with backend chat sessions/messages when the API is ready.
+- [x] Replace Visualization Data mock content with backend Visualization Snapshot responses when the API is ready.
 - [ ] Wire Source Data filter/stats/pagination UI to backend-supported response shapes when available.
 
 ### Repository cleanup
@@ -602,7 +388,6 @@ storage/uploads/{workspace_id}/{source_id}/original.{ext}
   - expanded state shows icons and labels
   - collapsed state shows icons only
   - icon clicks still navigate or open the Workspace switcher
-- Current implementation: Workspace switch/create is available from the bottom-left nav control; the old top header is removed.
 - Build Source Data page.
 - Build source table with columns:
   - title
@@ -622,7 +407,6 @@ storage/uploads/{workspace_id}/{source_id}/original.{ext}
   - period end month
 - Add loading, empty, success, and error states.
 - Add delete confirmation.
-- Current implementation: Source Data is design-aligned and still uses existing backend hooks for list/upload/delete/retry. Filter controls, stats fallback values, and pagination are presentational until backend response shapes support them.
 
 ### Tests
 
@@ -658,7 +442,7 @@ storage/uploads/{workspace_id}/{source_id}/original.{ext}
 - [ ] Deleted source file is removed from server-side file storage only when no citation or Decision Brief Draft needs it for audit.
 - [x] User can retry processing for a Failed Source.
 - [x] No edit or replace-file UI exists in MVP.
-- [ ] Source upload stores month-level periods only and derives display labels from month range.
+- [x] Source upload stores month-level periods only and derives display labels from month range.
 
 ---
 
@@ -705,7 +489,6 @@ User uploads a CSV in Source Data. Processing computes reliable facts from the C
 - Render period-based Visualization Snapshot responses once Task 5 is available.
 - Add empty state when no ready CSV/PDF exists.
 - Add failed-source state if processing failed.
-- Current implementation note: older CSV-specific artifact names are superseded by `source_summary`, `source_content`, and `source_insight`.
 
 ### Tests
 
@@ -718,11 +501,11 @@ User uploads a CSV in Source Data. Processing computes reliable facts from the C
 ### Acceptance criteria
 
 - [x] Uploaded CSV is processed from server-side file storage.
-- [ ] `source_summary` artifact is saved for CSV Sources.
-- [ ] `source_content` artifact is saved for CSV Sources.
-- [ ] CSV `source_content` chunks are indexed in ChromaDB.
-- [ ] `source_insight` artifact is saved when useful insight exists.
-- [ ] CSV Ready status requires required artifacts and indexing.
+- [x] `source_summary` artifact is saved for CSV Sources.
+- [x] `source_content` artifact is saved for CSV Sources.
+- [x] CSV `source_content` chunks are indexed in ChromaDB.
+- [x] `source_insight` artifact is saved when useful insight exists.
+- [x] CSV Ready status requires required artifacts and indexing.
 
 ---
 
@@ -817,7 +600,6 @@ storage/extracted/{workspace_id}/{source_id}/chunks.json
   - Opportunities
   - Source Quotes
 - Keep PDF visuals different from CSV visuals.
-- Current implementation note: per-PDF Document Insight rendering is superseded by period-based Visualization Snapshots.
 
 ### Tests
 
@@ -830,13 +612,13 @@ storage/extracted/{workspace_id}/{source_id}/chunks.json
 
 - [x] Uploaded PDF is processed from server-side file storage.
 - [x] `source_summary` artifact is saved.
-- [ ] `source_content` artifact is saved.
+- [x] `source_content` artifact is saved.
 - [x] `source_insight` artifact is saved when enough useful text is extracted.
-- [ ] PDF `source_content` chunks are indexed in ChromaDB.
+- [x] PDF `source_content` chunks are indexed in ChromaDB.
 - [x] Extracted OCR markdown is saved to `storage/extracted/{workspace_id}/{source_id}/ocr.md`.
 - [x] Chunk metadata is saved to `storage/extracted/{workspace_id}/{source_id}/chunks.json`.
 - [x] Short OCR text creates a Ready Source with `source_summary` warnings and no `source_insight`.
-- [ ] PDF Ready status requires required artifacts and indexing.
+- [x] PDF Ready status requires required artifacts and indexing.
 
 ---
 
@@ -915,12 +697,12 @@ company_knowledge
 
 ### Acceptance criteria
 
-- [ ] `source_content` chunks are indexed into ChromaDB.
-- [ ] Chroma metadata is rich enough for filtered retrieval.
-- [ ] Retrieval service returns source references.
-- [ ] Retrieval service returns compact citation-ready EvidenceBundle items.
-- [ ] Retrieval service quality-gates weak evidence.
-- [ ] Retrieval can be used by Chat task later.
+- [x] `source_content` chunks are indexed into ChromaDB.
+- [x] Chroma metadata is rich enough for filtered retrieval.
+- [x] Retrieval service returns source references.
+- [x] Retrieval service returns compact citation-ready EvidenceBundle items.
+- [x] Retrieval service quality-gates weak evidence.
+- [x] Retrieval can be used by Chat task later.
 
 ---
 
@@ -982,11 +764,10 @@ User opens **Visualization Data**, chooses a month range, and sees a cached inte
 
 ### Acceptance criteria
 
-- [ ] Visualization Data is scoped by Workspace and month range only.
-- [ ] Snapshot is cached by `workspace_id + period_start_month + period_end_month`.
-- [ ] Snapshot can be regenerated from Source Artifacts.
-- [ ] Visualization Data does not rely on per-Source `visualization_spec` artifacts.
-- [ ] Snapshot items include evidence references where they make claims.
+- [x] Visualization Data is scoped by Workspace and month range only.
+- [x] Snapshot is cached by `workspace_id + period_start_month + period_end_month`.
+- [x] Snapshot can be regenerated from Source Artifacts.
+- [x] Snapshot items include evidence references where they make claims.
 
 ---
 
@@ -1055,7 +836,6 @@ User opens **Chat**, sees a GPT-like interface, sends a message, receives a basi
   - right Sources Used panel
   - pinned input bar
   - assistant response card with evidence, interpretation, recommended action, View Sources, View Trace, and Generate Decision Brief actions
-- Local mock chat interaction is allowed before backend chat persistence is ready. Replace mock content with backend messages and citations once API responses are available.
 - Load existing session messages.
 - Send message to backend through DeltaKit streaming.
 - Render user and assistant messages.
@@ -1063,7 +843,6 @@ User opens **Chat**, sees a GPT-like interface, sends a message, receives a basi
 - Render command result message type if available.
 - Chat history should be available from a top dropdown, not the app sidebar and not a Chat left panel.
 - Chat history initially shows the latest 5 sessions and supports Show More.
-- Current implementation: Chat is design-faithful and wired to backend Chat Sessions/messages with a Task 5 dummy assistant response. Real source-grounded AI responses, citations, Tavily fallback, slash commands, Decision Brief generation, and traces are still later tasks.
 
 ### Tests
 
@@ -1089,12 +868,12 @@ User opens **Chat**, sees a GPT-like interface, sends a message, receives a basi
 - [x] Assistant response is persisted.
 - [x] Chat history reloads correctly.
 - [x] No AI source-grounding required yet.
-- [ ] Chat Session is lazily created on first message.
-- [ ] Chat messages include lifecycle status.
-- [ ] Chat Session can store conversation summary state.
-- [ ] ContextBuilder preserves session continuity within token budget.
-- [ ] Chat stream is DeltaKit-compatible.
-- [ ] Chat history dropdown shows latest 5 and supports Show More.
+- [x] Chat Session is lazily created on first message.
+- [x] Chat messages include lifecycle status.
+- [x] Chat Session can store conversation summary state.
+- [x] ContextBuilder preserves session continuity within token budget.
+- [x] Chat stream is DeltaKit-compatible.
+- [x] Chat history dropdown shows latest 5 and supports Show More.
 
 ---
 
@@ -1480,19 +1259,16 @@ Langfuse is implemented last. Core chat and AI Consultant must work without Lang
   - Decision Brief generation
 - Store `trace_id` on assistant chat messages.
 - Treat trace references as optional observability, not evidence.
-- Add `/trace` command.
 - Ensure graceful fallback if Langfuse is disabled or unavailable.
 
 ### Frontend work
 
 - Show View Trace or trace reference on assistant response when available.
-- Render `/trace` command result.
 - Hide or disable trace UI when trace is unavailable.
 
 ### Tests
 
 - Test assistant message can store trace ID.
-- Test `/trace` returns latest trace when available.
 - Test chat still works if Langfuse is unavailable.
 
 ### Acceptance criteria
@@ -1500,35 +1276,21 @@ Langfuse is implemented last. Core chat and AI Consultant must work without Lang
 - [ ] AI consultant runs create Langfuse traces.
 - [ ] Assistant messages store trace ID.
 - [ ] User can view trace reference.
-- [ ] `/trace` command works.
 - [ ] Core app still works without Langfuse.
 
 ---
 
 ## Recommended Implementation Order
 
-0. Task 0: Architecture skeleton and dependency baseline
-1. Task 1: Workspace + Source Data CRUD vertical slice
-2. Task 5: Chat sessions and GPT-like chat UI
-3. Task 2: CSV extraction into normalized Source Artifacts
-4. Task 3: PDF processing into Insight Board
-5. Task 4: ChromaDB indexing and source retrieval
-6. Task 6: Source-grounded AI Consultant responses
-7. Task 8: Decision Brief Draft generation
-8. Task 9: Decision Brief approval status actions
-9. Task 10: API contract alignment
-10. Task 11: Demo seed data and presentation scenario
-11. Task 12: Langfuse observability integration
+Completed foundation and migration work: Task 0, Task 1, Task 2, Task 3, Task 4 indexing, Task 4A, Task 5, and Task 10 baseline alignment.
 
-## Parallelization Notes for 3 Developers
+Continue remaining work in this order:
 
-- Task 0 should be done first because it removes package confusion and creates clear homes for backend, frontend, RAG, agents, jobs, and storage.
-- Task 1 should start immediately after Task 0 because many tasks depend on source data.
-- Task 5 can start in parallel with Task 1 after Task 0 because basic chat does not depend on source processing.
-- Task 2 and Task 3 can start after Task 1.
-- Task 4 depends on Task 3 because PDF extraction must exist before indexing.
-- Task 6 depends on Task 2, Task 4, and Task 5 because AI needs data artifacts, PDF retrieval, and chat UI/API.
-- Task 8 and Task 9 are best done after Task 6.
-- Task 10 should run continuously as API shapes stabilize, not as a blocking package task.
-- Task 11 should be prepared near the end but sample data can be drafted earlier.
-- Task 12 must be last because Langfuse will be added after the core web app is complete.
+1. Finish Task 4 retrieval facade: SQL validation, Chroma search, dedupe, rerank, diversity cap, quality gate, compact EvidenceBundle.
+2. Task 6: Source-grounded AI Consultant responses.
+3. Task 8: Decision Brief Draft generation.
+4. Task 9: Decision Brief approval status actions.
+5. Task 11: Demo seed data and presentation scenario.
+6. Task 12: Langfuse observability integration.
+
+Run Task 10 API contract alignment continuously as schemas change.

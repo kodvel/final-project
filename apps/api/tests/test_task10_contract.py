@@ -5,8 +5,11 @@ from app.models.enums import (
     CategoryLabel,
     ChatMessageRole,
     ChatMessageType,
+    CitationStatus,
+    CitationType,
     DecisionApprovalStatus,
     DecisionRecommendationStatus,
+    MessageStatus,
     ProcessingStatus,
     SourceFileType,
     TeamLabel,
@@ -55,13 +58,11 @@ def test_source_file_type_wire_values() -> None:
 
 
 def test_artifact_type_wire_values() -> None:
-    assert ArtifactType.CSV_PROFILE == "csv_profile"
-    assert ArtifactType.CHART_SPEC == "chart_spec"
-    assert ArtifactType.INSIGHT_CARD == "insight_card"
     assert ArtifactType.SOURCE_SUMMARY == "source_summary"
+    assert ArtifactType.SOURCE_CONTENT == "source_content"
     assert ArtifactType.SOURCE_INSIGHT == "source_insight"
     assert set(ArtifactType) == {
-        "csv_profile", "chart_spec", "insight_card", "source_summary", "source_insight"
+        "source_summary", "source_content", "source_insight"
     }
 
 
@@ -92,6 +93,30 @@ def test_decision_approval_status_wire_values() -> None:
     assert DecisionApprovalStatus.APPROVED == "approved"
     assert DecisionApprovalStatus.REJECTED == "rejected"
     assert set(DecisionApprovalStatus) == {"draft", "reviewed", "approved", "rejected"}
+
+
+def test_message_status_wire_values() -> None:
+    assert MessageStatus.PENDING == "pending"
+    assert MessageStatus.STREAMING == "streaming"
+    assert MessageStatus.COMPLETED == "completed"
+    assert MessageStatus.FAILED == "failed"
+    assert MessageStatus.INTERRUPTED == "interrupted"
+    assert set(MessageStatus) == {"pending", "streaming", "completed", "failed", "interrupted"}
+
+
+def test_citation_type_wire_values() -> None:
+    assert CitationType.UPLOADED_SOURCE == "uploaded_source"
+    assert CitationType.WEB == "web"
+    assert set(CitationType) == {"uploaded_source", "web"}
+
+
+def test_citation_status_wire_values() -> None:
+    assert CitationStatus.AVAILABLE == "available"
+    assert CitationStatus.SOURCE_DELETED == "source_deleted"
+    assert CitationStatus.SOURCE_FAILED == "source_failed"
+    assert CitationStatus.ARTIFACT_MISSING == "artifact_missing"
+    assert CitationStatus.WEB_UNAVAILABLE == "web_unavailable"
+    assert set(CitationStatus) == {"available", "source_deleted", "source_failed", "artifact_missing", "web_unavailable"}
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +169,8 @@ def upload_csv_source(client, workspace_id: int) -> dict:
             "title": "Contract Test Source",
             "team_label": "product",
             "category_labels": ["product_feature"],
-            "period_label": "Q1 2026",
+            "period_start_month": "2026-01",
+            "period_end_month": "2026-03",
         },
         files={"file": ("data.csv", csv_content.encode(), "text/csv")},
     )
@@ -192,17 +218,16 @@ def test_visualization_response_includes_source_metadata(client) -> None:
 
 
 def test_visualization_list_response_includes_source_metadata(client) -> None:
-    """GET /visualizations?workspace_id=X returns source metadata on each artifact."""
+    """GET /visualizations?workspace_id=X&period_start_month=Y&period_end_month=Z returns snapshot."""
     workspace = create_workspace(client)
     upload_csv_source(client, workspace["id"])
 
-    artifacts = client.get(f"/visualizations?workspace_id={workspace['id']}").json()
-    assert len(artifacts) > 0
-
-    for artifact in artifacts:
-        assert artifact["source_title"] is not None
-        assert artifact["team_label"] == "product"
-        assert artifact["category_labels"] is not None
+    snapshot = client.get(
+        f"/visualizations?workspace_id={workspace['id']}&period_start_month=2026-01&period_end_month=2026-03"
+    ).json()
+    assert snapshot["status"] == "ready"
+    assert snapshot["workspace_id"] == workspace["id"]
+    assert len(snapshot["source_ids_json"]) > 0
 
 
 def test_openapi_schema_exposes_all_enums(client) -> None:
@@ -223,6 +248,9 @@ def test_openapi_schema_exposes_all_enums(client) -> None:
         "ArtifactType",
         "ChatMessageRole",
         "ChatMessageType",
+        "MessageStatus",
     }
+    # CitationType and CitationStatus will appear once citation read schemas
+    # are wired into route responses (Task 6+).
     missing = active_enums - set(schemas.keys())
     assert not missing, f"Missing enum schemas in OpenAPI spec: {missing}"

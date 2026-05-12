@@ -9,8 +9,8 @@ export type SourceData = {
   fileType: SourceFileType
   originalFilename: string
   storagePath?: string
-  periodStart?: IsoDateTime | null
-  periodEnd?: IsoDateTime | null
+  periodStartMonth?: string | null
+  periodEndMonth?: string | null
   periodLabel?: string | null
   processingStatus: ProcessingStatus
   processingError?: string | null
@@ -25,9 +25,8 @@ export type CreateSourceInput = {
   file: File
   teamLabel: TeamLabel
   categoryLabels: CategoryLabel[]
-  periodStart?: string
-  periodEnd?: string
-  periodLabel?: string
+  periodStartMonth?: string
+  periodEndMonth?: string
 }
 
 export type SourceDataApi = {
@@ -39,8 +38,8 @@ export type SourceDataApi = {
   file_type: SourceFileType
   original_filename: string
   storage_path: string
-  period_start?: IsoDateTime | null
-  period_end?: IsoDateTime | null
+  period_start_month?: string | null
+  period_end_month?: string | null
   period_label?: string | null
   processing_status: ProcessingStatus
   processing_error?: string | null

@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Bot, ChevronRight, Eye, FileSpreadsheet, FileText, Lightbulb, Mic, Paperclip, Send, Workflow, X } from 'lucide-react'
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
-import { useChatSession, useChatSessions, useCreateChatSession, useSendChatMessage } from '../features/chat/hooks'
+import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { useChatSession, useChatSessions, useStreamChat } from '../features/chat/hooks'
 import { useActiveWorkspace } from '../features/workspaces/hooks/use-active-workspace'
 import type { ChatMessage } from '../types/chat'
 
@@ -9,49 +9,141 @@ export const Route = createFileRoute('/chat')({
   component: ChatPage,
 })
 
+// ---------------------------------------------------------------------------
+// Optimistic message types (local-only, never persisted as-is)
+// ---------------------------------------------------------------------------
+
+type OptimisticUserMessage = {
+  __optimistic: true
+  id: string
+  role: 'user'
+  content: string
+}
+
+type OptimisticAssistantMessage = {
+  __optimistic: true
+  id: string
+  role: 'assistant'
+  content: string
+}
+
+type DisplayMessage = ChatMessage | OptimisticUserMessage | OptimisticAssistantMessage
+
+function isOptimistic(msg: DisplayMessage): msg is OptimisticUserMessage | OptimisticAssistantMessage {
+  return '__optimistic' in msg && msg.__optimistic === true
+}
+
+// ---------------------------------------------------------------------------
+// Chat Page
+// ---------------------------------------------------------------------------
+
 export function ChatPage() {
   const { activeWorkspace } = useActiveWorkspace()
   const workspaceId = activeWorkspace?.id ?? null
   const { data: sessions = [], isLoading: isLoadingSessions, error: sessionsError } = useChatSessions(workspaceId)
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null)
   const { data: activeSession, isLoading: isLoadingSession } = useChatSession(activeSessionId, workspaceId)
-  const createSession = useCreateChatSession()
-  const sendMessage = useSendChatMessage()
-  const [input, setInput] = useState('')
-  const isThinking = createSession.isPending || sendMessage.isPending
-  const messages = activeSession?.messages ?? []
+  const { sendMessage, isStreaming: streamingRef } = useStreamChat()
 
+  const [input, setInput] = useState('')
+  const [isThinking, setIsThinking] = useState(false)
+  const [optimisticMessages, setOptimisticMessages] = useState<DisplayMessage[]>([])
+  const [streamingText, setStreamingText] = useState('')
+  const optIdCounter = useRef(0)
+
+  const persistedMessages: ChatMessage[] = activeSession?.messages ?? []
+
+  // Compose displayed messages: persisted + any optimistic that aren't replaced yet
+  const messages: DisplayMessage[] = [
+    ...persistedMessages,
+    ...optimisticMessages.filter(
+      (om) => !isOptimistic(om) || !persistedMessages.some((pm) => pm.content === om.content && pm.role === om.role),
+    ),
+  ]
+
+  // If we have streaming text, append a streaming assistant message
+  const streamingMessage: OptimisticAssistantMessage | null = streamingText
+    ? { __optimistic: true, id: `opt-stream-${Date.now()}`, role: 'assistant', content: streamingText }
+    : null
+  const displayMessages: DisplayMessage[] = streamingMessage ? [...messages, streamingMessage] : messages
+
+  // Reset on workspace change
   useEffect(() => {
     if (activeSession?.workspaceId !== workspaceId) {
       setActiveSessionId(null)
     }
   }, [activeSession?.workspaceId, workspaceId])
 
+  // Auto-select first session
   useEffect(() => {
     if (activeSessionId === null && sessions.length > 0) {
       setActiveSessionId(sessions[0].id)
     }
   }, [activeSessionId, sessions])
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const value = input.trim()
-    if (!value || isThinking || !activeWorkspace) return
+  const handleSubmit = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      const value = input.trim()
+      if (!value || isThinking || !workspaceId) return
 
-    try {
-      const sessionId = activeSessionId ?? (await createSession.mutateAsync({ workspaceId: activeWorkspace.id })).id
-      setActiveSessionId(sessionId)
-      await sendMessage.mutateAsync({ sessionId, workspaceId: activeWorkspace.id, content: value })
+      const userOptId = `opt-user-${++optIdCounter.current}` as const
+      const assistantOptId = `opt-assistant-${++optIdCounter.current}` as const
+
+      // Optimistically render user message + empty assistant placeholder
+      setOptimisticMessages((prev) => [
+        ...prev,
+        { __optimistic: true, id: userOptId, role: 'user', content: value },
+        { __optimistic: true, id: assistantOptId, role: 'assistant', content: '' },
+      ])
+      setStreamingText('')
+      setIsThinking(true)
       setInput('')
-    } catch {
-      setInput(value)
-    }
-  }
 
-  async function handleNewChat() {
-    if (!activeWorkspace || createSession.isPending) return
-    const session = await createSession.mutateAsync({ workspaceId: activeWorkspace.id })
-    setActiveSessionId(session.id)
+      await sendMessage(
+        {
+          workspaceId,
+          sessionId: activeSessionId,
+          message: value,
+        },
+        {
+          onSessionCreated: (event) => {
+            setActiveSessionId(event.session.id)
+          },
+          onUserMessageSaved: () => {
+            // Backend persisted user message; optimistic one will be hidden once session refetches
+          },
+          onAssistantStarted: () => {
+            // Assistant placeholder already shown
+          },
+          onTextDelta: (event) => {
+            setStreamingText((prev) => prev + event.delta)
+          },
+          onAssistantCompleted: () => {
+            // Refetch happens inside useStreamChat; clear optimistic state
+            setStreamingText('')
+            setOptimisticMessages([])
+            setIsThinking(false)
+          },
+          onError: (event) => {
+            console.error('Stream error:', event.error)
+            setStreamingText('')
+            setOptimisticMessages([])
+            setIsThinking(false)
+            // Restore input so user can retry
+            setInput(value)
+          },
+        },
+      )
+    },
+    [input, isThinking, workspaceId, activeSessionId, sendMessage],
+  )
+
+  function handleNewChat() {
+    // New Chat = local draft only: clear active session, no backend POST
+    setActiveSessionId(null)
+    setOptimisticMessages([])
+    setStreamingText('')
   }
 
   return (
@@ -81,14 +173,12 @@ export function ChatPage() {
               />
             ) : sessionsError ? (
               <EmptyChatState title="Could not load Chat" description="Check that the API is running, then try again." />
-            ) : createSession.error || sendMessage.error ? (
-              <EmptyChatState title="Message was not sent" description="The draft is still in the input. Check the API connection and try again." />
             ) : isLoadingSessions || isLoadingSession ? (
               <EmptyChatState title="Loading Chat" description="Fetching persisted Chat Sessions and messages." />
-            ) : messages.length === 0 ? (
+            ) : displayMessages.length === 0 ? (
               <EmptyChatState title="Ask a strategic question" description="Messages will be persisted to this Workspace-scoped Chat Session." />
             ) : (
-              messages.map((message) =>
+              displayMessages.map((message) =>
                 message.role === 'user' ? (
                   <UserBubble key={message.id} content={message.content} />
                 ) : (
@@ -97,7 +187,7 @@ export function ChatPage() {
               )
             )}
 
-            {isThinking && (
+            {isThinking && !streamingText && (
               <div className="flex items-center gap-3 text-sm text-muted-foreground">
                 <div className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-primary">
                   <Bot className="h-4 w-4" />
@@ -133,9 +223,7 @@ export function ChatPage() {
               </button>
             </div>
             <div className="mt-3 flex items-center gap-3 text-xs text-text-hint">
-              <CommandChip command="/brief" label="Generate Brief" />
-              <CommandChip command="/sources" label="View Sources" />
-              <CommandChip command="/trace" label="View Trace" />
+              <CommandChip command="/decision-brief" label="Generate Brief" />
               <span className="ml-auto">Copilot can make mistakes. Consider verifying.</span>
             </div>
           </div>
@@ -147,6 +235,10 @@ export function ChatPage() {
   )
 }
 
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
 function UserBubble({ content }: { content: string }) {
   return (
     <div className="flex justify-end">
@@ -155,7 +247,7 @@ function UserBubble({ content }: { content: string }) {
   )
 }
 
-function AssistantCard({ message }: { message: ChatMessage }) {
+function AssistantCard({ message }: { message: DisplayMessage }) {
   return (
     <article>
       <div className="mb-5 flex items-center gap-3">
@@ -169,41 +261,46 @@ function AssistantCard({ message }: { message: ChatMessage }) {
         <div className="border-l-4 border-highlight pl-7">
           <p className="whitespace-pre-line text-sm leading-7 text-foreground">{message.content}</p>
 
-          <div className="mt-7 rounded-xl border border-border bg-surface-subtle p-5">
-            <div className="mb-4 flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <FileText className="h-4 w-4" />
-              Cited Evidence
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <EvidenceChip icon="csv" label="Pending Task 6" />
-            </div>
-          </div>
+          {/* Only show evidence / action sections when content is non-empty (i.e. not the streaming placeholder) */}
+          {message.content.length > 0 && !isOptimistic(message) && (
+            <>
+              <div className="mt-7 rounded-xl border border-border bg-surface-subtle p-5">
+                <div className="mb-4 flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <FileText className="h-4 w-4" />
+                  Cited Evidence
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <EvidenceChip icon="csv" label="Pending Task 6" />
+                </div>
+              </div>
 
-          <p className="mt-7 text-sm leading-7 text-foreground">
-            This response is persisted. Source-grounded evidence, citations, and confidence gaps are added in Task 6.
-          </p>
+              <p className="mt-7 text-sm leading-7 text-foreground">
+                This response is persisted. Source-grounded evidence, citations, and confidence gaps are added in Task 6.
+              </p>
 
-          <div className="mt-7 rounded-xl border border-highlight-soft bg-accent p-5">
-            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-primary">
-              <Lightbulb className="h-4 w-4" />
-              Recommended Action
-            </div>
-            <p className="text-sm leading-6 text-foreground">
-              Continue the discussion here; this Chat Session remains scoped to its original Workspace.
-            </p>
-          </div>
+              <div className="mt-7 rounded-xl border border-highlight-soft bg-accent p-5">
+                <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-primary">
+                  <Lightbulb className="h-4 w-4" />
+                  Recommended Action
+                </div>
+                <p className="text-sm leading-6 text-foreground">
+                  Continue the discussion here; this Chat Session remains scoped to its original Workspace.
+                </p>
+              </div>
 
-          <div className="mt-7 grid grid-cols-3 gap-3">
-            <ActionButton icon={<Eye className="h-4 w-4" />} label="View Sources" />
-            <ActionButton icon={<Workflow className="h-4 w-4" />} label="View Trace" />
-            <button
-              type="button"
-              className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
-            >
-              <FileText className="h-4 w-4" />
-              Generate Decision Brief
-            </button>
-          </div>
+              <div className="mt-7 grid grid-cols-3 gap-3">
+                <ActionButton icon={<Eye className="h-4 w-4" />} label="View Sources" />
+                <ActionButton icon={<Workflow className="h-4 w-4" />} label="View Trace" />
+                <button
+                  type="button"
+                  className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
+                >
+                  <FileText className="h-4 w-4" />
+                  Generate Decision Brief
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </article>
@@ -330,7 +427,7 @@ function SourceCard({ type, name, badge, quote }: { type: 'pdf' | 'csv'; name: s
         </div>
         <span className="rounded bg-chip-gray px-2 py-1 font-mono text-[11px] text-text-hint">{badge}</span>
       </div>
-      <blockquote className="border-l-2 border-border pl-4 text-sm italic leading-6 text-muted-foreground">“{quote}”</blockquote>
+      <blockquote className="border-l-2 border-border pl-4 text-sm italic leading-6 text-muted-foreground">"{quote}"</blockquote>
     </article>
   )
 }

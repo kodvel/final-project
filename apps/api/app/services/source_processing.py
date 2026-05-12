@@ -4,18 +4,23 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-from sqlmodel import Session, select
+from sqlmodel import Session
 
-from app.models.enums import ProcessingStatus, SourceFileType
-from app.models.source import SourceArtifact, SourceData
+from app.models.enums import ArtifactType, ProcessingStatus, SourceFileType
+from app.models.source import SourceData
 from app.services import csv_profiler
+from app.services.artifacts import (
+    list_source_artifacts,
+    replace_source_artifacts,
+    upsert_source_artifact,
+)
 
 
 def process_source(session: Session, source_id: int) -> SourceData:
-    """Process a source file and generate visualization artifacts.
+    """Process a source file and generate Source Artifacts.
 
-    - For CSV: profile, generate chart specs and insight cards.
-    - For PDF: OCR, chunk, label, aggregate into source_summary and source_insight.
+    - For CSV: profile → source_summary, source_content, source_insight.
+    - For PDF: OCR, chunk, label, aggregate → source_summary, source_content, source_insight.
 
     Sets processing_status to Processing -> Ready (or Failed on error).
     """
@@ -31,6 +36,11 @@ def process_source(session: Session, source_id: int) -> SourceData:
     session.refresh(source)
 
     try:
+        # Delete old ChromaDB vectors before reprocessing
+        from app.knowledge.indexing import delete_source_vectors
+
+        delete_source_vectors(source_id)
+
         if source.file_type == SourceFileType.CSV:
             _process_csv(session, source)
         elif source.file_type == SourceFileType.PDF:
@@ -38,14 +48,22 @@ def process_source(session: Session, source_id: int) -> SourceData:
         else:
             raise ValueError(f"Unsupported file type: {source.file_type}")
 
-        # Ensure we have at least one artifact before marking Ready
-        artifacts = _get_artifacts_for_source(session, source_id)
-        if source.file_type == SourceFileType.CSV and not artifacts:
-            raise ValueError("No artifacts generated during CSV processing")
-        if artifacts:
+        # Require both source_summary and source_content for Ready status
+        artifacts = list_source_artifacts(session, source_id)
+        artifact_types = {a.artifact_type for a in artifacts}
+        required = {str(ArtifactType.SOURCE_SUMMARY), str(ArtifactType.SOURCE_CONTENT)}
+        if required.issubset(artifact_types):
+            # Index source_content chunks into ChromaDB before marking Ready
+            from app.knowledge.indexing import index_source_content
+
+            index_source_content(session, source_id)
+
             source.processing_status = ProcessingStatus.READY
             source.processed_at = datetime.utcnow()
             source.processing_error = None
+        else:
+            missing = required - artifact_types
+            raise ValueError(f"Missing required artifacts for Ready: {missing}")
         session.add(source)
         session.commit()
 
@@ -66,72 +84,54 @@ def _process_pdf(session: Session, source: SourceData) -> None:
 
     process_pdf(session, source)
 
-    # Mark ready if artifacts were generated
-    artifacts = _get_artifacts_for_source(session, source.id)
-    if artifacts:
-        source.processing_status = ProcessingStatus.READY
-        source.processed_at = datetime.utcnow()
-        source.processing_error = None
-        session.add(source)
-        session.commit()
-
 
 def _process_csv(session: Session, source: SourceData) -> None:
-    """Profile a CSV source and generate all artifact types."""
+    """Profile a CSV source and generate source_summary, source_content, source_insight artifacts."""
     storage_path = Path(source.storage_path)
     if not storage_path.exists():
         raise FileNotFoundError(f"CSV file not found at: {storage_path}")
 
-    # Delete existing CSV artifacts for this source (replace behavior)
-    existing = session.exec(
-        select(SourceArtifact).where(SourceArtifact.source_id == source.id)
-    ).all()
-    for art in existing:
-        session.delete(art)
-    session.commit()
-
     # Profile the CSV
     profile = csv_profiler.profile_csv_from_path(storage_path)
 
-    # 1. csv_profile artifact (required)
-    profile_artifact = SourceArtifact(
+    # Build new artifact set
+    new_artifacts: list[SourceArtifact] = []
+
+    # 1. source_summary artifact (required) — dataset overview
+    from app.models.source import SourceArtifact  # local import to keep top-level clean
+
+    summary_data = csv_profiler.build_source_summary(profile)
+    new_artifacts.append(SourceArtifact(
         source_id=source.id,
-        artifact_type="csv_profile",
-        title=f"Profile: {source.title}",
-        content_json=profile.to_dict(),
-    )
-    session.add(profile_artifact)
+        artifact_type=ArtifactType.SOURCE_SUMMARY,
+        title=f"Summary: {source.title}",
+        content_json=summary_data,
+    ))
 
-    # 2. chart_spec artifacts when useful inputs exist
-    chart_specs = csv_profiler.build_chart_spec(profile)
-    for spec in chart_specs:
-        chart_artifact = SourceArtifact(
+    # 2. source_content artifact — column-level profiling data
+    content_data = csv_profiler.build_source_content(profile)
+    new_artifacts.append(SourceArtifact(
+        source_id=source.id,
+        artifact_type=ArtifactType.SOURCE_CONTENT,
+        title=f"Content: {source.title}",
+        content_json=content_data,
+    ))
+
+    # 3. source_insight artifact — statistical insights (optional)
+    insight_data = csv_profiler.build_source_insight(profile)
+    if insight_data.get("findings") or insight_data.get("risks"):
+        new_artifacts.append(SourceArtifact(
             source_id=source.id,
-            artifact_type="chart_spec",
-            title=spec.get("display_title", spec.get("title", "Chart")),
-            content_json=spec,
-        )
-        session.add(chart_artifact)
+            artifact_type=ArtifactType.SOURCE_INSIGHT,
+            title=f"Insight: {source.title}",
+            content_json=insight_data,
+        ))
 
-    # 3. insight_card artifacts when identifiable insights exist
-    insight_cards = csv_profiler.build_insight_card(profile)
-    for insight in insight_cards:
-        insight_artifact = SourceArtifact(
-            source_id=source.id,
-            artifact_type="insight_card",
-            title=insight.get("title", "Insight"),
-            content_json=insight,
-        )
-        session.add(insight_artifact)
-
+    # Replace all existing artifacts for this source
+    replace_source_artifacts(session, source.id, new_artifacts)
     session.commit()
 
 
-def _get_artifacts_for_source(session: Session, source_id: int) -> list[SourceArtifact]:
-    """Fetch all artifacts for a source."""
-    return list(session.exec(select(SourceArtifact).where(SourceArtifact.source_id == source_id)).all())
-
-
-def get_artifacts_by_source(session: Session, source_id: int) -> list[SourceArtifact]:
+def get_artifacts_by_source(session: Session, source_id: int) -> list:
     """Public interface: get all artifacts for a source (excludes soft-deleted sources)."""
-    return _get_artifacts_for_source(session, source_id)
+    return list_source_artifacts(session, source_id)

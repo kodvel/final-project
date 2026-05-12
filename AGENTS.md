@@ -7,15 +7,15 @@ This project is **Company Intelligence Copilot**: a chat-first company intellige
 The MVP has three main product areas:
 
 - **Chat** — GPT-style strategy workspace with a Company Strategy Consultant that answers with source-grounded evidence, interpretation, recommendations, confidence, and gaps.
-- **Visualization Data** — generated Source Artifact views for uploaded CSV and PDF Sources.
+- **Visualization Data** — cached, period-based intelligence snapshots composed from ready Source Artifacts.
 - **Source Data** — the source management page for uploading, labeling, tracking, retrying, and soft-deleting Sources.
 
 Core stack:
 
 - Frontend: TanStack Start, TanStack Router, React, TypeScript.
 - Backend: FastAPI, Python, SQLModel, Alembic.
-- Processing: Redis, Celery.
-- Knowledge retrieval: ChromaDB for PDF chunks; SQL Source Artifacts for CSV/PDF generated outputs.
+- Processing: synchronous by default for demo reliability; Redis/Celery are optional later infrastructure.
+- Knowledge retrieval: ChromaDB indexes `source_content` chunks from CSV/PDF Sources; SQL Source Artifacts remain the source of truth.
 - AI/observability: OpenAI Agent SDK and Langfuse.
 
 ## Read first before implementing
@@ -76,6 +76,7 @@ Current UI alignment decisions:
 
 ## Implementation guardrails
 
+- Current implementation may lag behind the latest architecture. Before building remaining features, use the migration checklist in `docs/todo.md` to align period fields, artifact types, Source processing, ChromaDB indexing, Visualization Snapshots, and Chat streaming contracts.
 - Match existing project patterns before adding new conventions.
 - Keep backend FastAPI/Pydantic/SQLModel schemas as the validation source of truth.
 - Keep frontend TypeScript types under `apps/web/src/types` by domain.
@@ -83,5 +84,8 @@ Current UI alignment decisions:
 - Do not reintroduce `packages/contracts` as active MVP architecture.
 - Keep Celery task files thin; place testable business logic in services.
 - Use `knowledge/` for retrieval/vector work, not `rag/`.
+- Use `source_summary`, `source_content`, and optional `source_insight` for new Source Artifact work. Do not use retired artifact types (`csv_profile`, `chart_spec`, `insight_card`, `visualization_spec`) for new architecture work.
+- Visualization Data is a `Visualization Snapshot`, not a per-Source artifact browser.
+- `/decision-brief` is the only MVP slash command. The trace slash command is not implemented in the MVP; trace references are optional links/actions when Langfuse is available.
 - Decision Brief Drafts are generated chat artifacts, not final decisions and not a separate MVP page.
 - If source-grounded evidence is insufficient, label gaps or assumptions instead of inventing certainty.

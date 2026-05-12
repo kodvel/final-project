@@ -1,8 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
 from app.db.session import get_session
-from app.schemas.chat import ChatMessageCreate, ChatMessagePairRead, ChatMessageRead, ChatSessionCreate, ChatSessionDetail, ChatSessionRead
+from app.schemas.chat import (
+    ChatMessageCreate,
+    ChatMessagePairRead,
+    ChatMessageRead,
+    ChatSessionCreate,
+    ChatSessionDetail,
+    ChatSessionRead,
+    ChatStreamRequest,
+)
 from app.services import chat as chat_service
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -23,10 +32,15 @@ def create_chat_session(
 @router.get("/sessions", response_model=list[ChatSessionRead])
 def list_chat_sessions(
     workspace_id: int = Query(..., description="Workspace ID from client-selected active workspace"),
+    limit: int = Query(5, ge=1, le=100, description="Max sessions to return"),
+    offset: int = Query(0, ge=0, description="Number of sessions to skip"),
     session: Session = Depends(get_session),
 ) -> list[ChatSessionRead]:
-    """List Chat Sessions for one Workspace."""
-    return [ChatSessionRead.model_validate(chat_session) for chat_session in chat_service.list_sessions(session, workspace_id)]
+    """List Chat Sessions for one Workspace, newest first, with pagination."""
+    return [
+        ChatSessionRead.model_validate(chat_session)
+        for chat_session in chat_service.list_sessions(session, workspace_id, limit=limit, offset=offset)
+    ]
 
 
 @router.get("/sessions/{session_id}", response_model=ChatSessionDetail)
@@ -45,6 +59,10 @@ def get_chat_session(
         title=chat_session.title,
         created_at=chat_session.created_at,
         updated_at=chat_session.updated_at,
+        last_message_at=chat_session.last_message_at,
+        conversation_summary=chat_session.conversation_summary,
+        summary_cutoff_message_id=chat_session.summary_cutoff_message_id,
+        summary_updated_at=chat_session.summary_updated_at,
         messages=[ChatMessageRead.model_validate(message) for message in chat_service.list_messages(session, session_id)],
     )
 
@@ -66,4 +84,25 @@ def send_chat_message(
     return ChatMessagePairRead(
         user_message=ChatMessageRead.model_validate(user_message),
         assistant_message=ChatMessageRead.model_validate(assistant_message),
+    )
+
+
+@router.post("/messages/stream")
+def stream_chat_message(
+    payload: ChatStreamRequest,
+    session: Session = Depends(get_session),
+) -> StreamingResponse:
+    """Stream a chat interaction via SSE.
+
+    Supports lazy session creation (no session_id → new session).
+    Returns ``text/event-stream`` with DeltaKit-compatible SSE events.
+    """
+    return StreamingResponse(
+        chat_service.stream_chat(session, payload.workspace_id, payload.session_id, payload.message),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )

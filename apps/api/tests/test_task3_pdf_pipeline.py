@@ -1,4 +1,4 @@
-"""Task 3 tests: PDF processing into source_summary and source_insight artifacts."""
+"""Task 3 tests: PDF processing into source_summary, source_content, and source_insight artifacts."""
 
 import json
 from pathlib import Path
@@ -111,23 +111,23 @@ def test_check_file_size_exceeds_limit():
 
 
 def test_upsert_artifact_creates_new():
-    from app.services.pdf_extractor import _upsert_artifact
+    from app.services.artifacts import upsert_source_artifact
 
     session = MagicMock()
     session.exec.return_value.first.return_value = None
 
-    _upsert_artifact(session, 1, "source_summary", "Title", {"key": "val"})
+    upsert_source_artifact(session, 1, "source_summary", "Title", {"key": "val"})
     session.add.assert_called_once()
 
 
 def test_upsert_artifact_updates_existing():
-    from app.services.pdf_extractor import _upsert_artifact
+    from app.services.artifacts import upsert_source_artifact
 
     session = MagicMock()
     existing = MagicMock()
     session.exec.return_value.first.return_value = existing
 
-    _upsert_artifact(session, 1, "source_summary", "New Title", {"key": "new_val"})
+    upsert_source_artifact(session, 1, "source_summary", "New Title", {"key": "new_val"})
     assert existing.title == "New Title"
     assert existing.content_json == {"key": "new_val"}
     session.add.assert_called_once_with(existing)
@@ -146,6 +146,8 @@ def _upload_pdf_source(client, workspace_id: int, pdf_content: bytes = b"%PDF-1.
             "title": "Test PDF Report",
             "team_label": "business",
             "category_labels": ["competitor_analysis"],
+            "period_start_month": "2026-01",
+            "period_end_month": "2026-03",
         },
         files={"file": ("report.pdf", pdf_content, "application/pdf")},
     )
@@ -160,7 +162,7 @@ def _upload_pdf_source(client, workspace_id: int, pdf_content: bytes = b"%PDF-1.
 def test_pdf_creates_source_summary_and_insight_artifacts(
     mock_settings_fn, mock_ocr, mock_chunk, mock_litellm, client
 ):
-    """PDF with sufficient OCR text creates both source_summary and source_insight artifacts."""
+    """PDF with sufficient OCR text creates source_summary, source_content, and source_insight artifacts."""
     mock_settings_fn.return_value = _mock_settings()
 
     # Mock OCR: 3 pages with meaningful content (>500 chars total after stripping whitespace)
@@ -251,15 +253,30 @@ def test_pdf_creates_source_summary_and_insight_artifacts(
     viz = client.get(f"/visualizations/{source['id']}").json()
     artifact_types = {a["artifact_type"] for a in viz}
     assert "source_summary" in artifact_types
+    assert "source_content" in artifact_types
     assert "source_insight" in artifact_types
 
-    # Verify artifact content
+    # Verify source_summary content
     summary = next(a for a in viz if a["artifact_type"] == "source_summary")
     assert "summary" in summary["content_json"]
     assert summary["content_json"]["page_count"] == 3
     assert Path(summary["content_json"]["extracted_markdown_path"]).exists()
     assert Path(summary["content_json"]["chunk_metadata_path"]).exists()
 
+    # Verify source_content has chunks with proper structure
+    content = next(a for a in viz if a["artifact_type"] == "source_content")
+    assert "chunks" in content["content_json"]
+    assert len(content["content_json"]["chunks"]) == 2
+    first_chunk = content["content_json"]["chunks"][0]
+    assert "chunk_id" in first_chunk
+    assert first_chunk["chunk_id"] == "pdf-chunk-0"
+    assert "text" in first_chunk
+    assert "document_section" in first_chunk
+    assert "content_type" in first_chunk
+    assert "chunk_index" in first_chunk
+    assert first_chunk["chunk_index"] == 0
+
+    # Verify source_insight
     insight = next(a for a in viz if a["artifact_type"] == "source_insight")
     assert "key_findings" in insight["content_json"]
     assert "document_summary" not in insight["content_json"]
@@ -269,15 +286,15 @@ def test_pdf_creates_source_summary_and_insight_artifacts(
 @patch("app.services.pdf_extractor._chunk_markdown")
 @patch("app.services.pdf_extractor._run_mistral_ocr")
 @patch("app.services.pdf_extractor.get_settings")
-def test_short_ocr_creates_summary_warning_no_insight(
+def test_short_ocr_creates_summary_and_content_warning_no_insight(
     mock_settings_fn, mock_ocr, mock_chunk, mock_litellm, client
 ):
-    """PDF with <500 meaningful chars creates only source_summary with warning."""
+    """PDF with <500 meaningful chars creates source_summary and source_content with warning, no source_insight."""
     mock_settings_fn.return_value = _mock_settings()
 
-    # Mock OCR: page with very short content
+    # Mock OCR: page with short but non-empty content
     mock_ocr.return_value = [
-        {"markdown": "Short", "index": 1},
+        {"markdown": "Short text", "index": 1},
     ]
 
     workspace = create_workspace(client)
@@ -285,10 +302,11 @@ def test_short_ocr_creates_summary_warning_no_insight(
 
     assert source["processing_status"] == ProcessingStatus.READY, source.get("processing_error")
 
-    # Check artifacts: only source_summary, no source_insight
+    # Check artifacts: source_summary and source_content, no source_insight
     viz = client.get(f"/visualizations/{source['id']}").json()
     artifact_types = {a["artifact_type"] for a in viz}
     assert "source_summary" in artifact_types
+    assert "source_content" in artifact_types
     assert "source_insight" not in artifact_types
 
     summary = next(a for a in viz if a["artifact_type"] == "source_summary")
@@ -297,6 +315,10 @@ def test_short_ocr_creates_summary_warning_no_insight(
     assert Path(summary["content_json"]["extracted_markdown_path"]).exists()
     assert Path(summary["content_json"]["chunk_metadata_path"]).exists()
     assert json.loads(Path(summary["content_json"]["chunk_metadata_path"]).read_text()) == []
+
+    content = next(a for a in viz if a["artifact_type"] == "source_content")
+    assert "chunks" in content["content_json"]
+    assert len(content["content_json"]["chunks"]) > 0
 
 
 @patch("app.services.pdf_extractor._run_mistral_ocr")
@@ -405,6 +427,13 @@ def test_ocr_handles_page_objects_with_attributes(
 
     assert source["processing_status"] == ProcessingStatus.READY, source.get("processing_error")
 
+    # Verify source_content was created with chunks from labeled pages
+    viz = client.get(f"/visualizations/{source['id']}").json()
+    artifact_types = {a["artifact_type"] for a in viz}
+    assert "source_content" in artifact_types
+    content = next(a for a in viz if a["artifact_type"] == "source_content")
+    assert len(content["content_json"]["chunks"]) == 1
+
 
 # ---------------------------------------------------------------------------
 # Enum contract tests (ensure updated values)
@@ -420,7 +449,84 @@ def test_artifact_type_source_insight_value():
 
 
 def test_no_legacy_pdf_enums():
-    """Ensure old PDF_SUMMARY and PDF_INSIGHT_BOARD are removed."""
+    """Ensure old PDF_SUMMARY, PDF_INSIGHT_BOARD, and retired CSV enums are removed."""
     member_names = {m.name for m in ArtifactType}
     assert "PDF_SUMMARY" not in member_names
     assert "PDF_INSIGHT_BOARD" not in member_names
+    assert "CSV_PROFILE" not in member_names
+    assert "CHART_SPEC" not in member_names
+    assert "INSIGHT_CARD" not in member_names
+
+
+# ---------------------------------------------------------------------------
+# Ready gate tests
+# ---------------------------------------------------------------------------
+
+
+def test_ready_gate_requires_source_content_csv(client) -> None:
+    """CSV source must have both source_summary and source_content to be Ready."""
+    from unittest.mock import patch
+
+    workspace = create_workspace(client)
+
+    # Upload valid CSV
+    response = client.post(
+        "/sources",
+        data={
+            "workspace_id": str(workspace["id"]),
+            "title": "Gate test",
+            "team_label": "marketing",
+            "category_labels": ["analytics_metrics"],
+            "period_start_month": "2026-01",
+            "period_end_month": "2026-01",
+        },
+        files={"file": ("data.csv", b"col1,col2\n1,2\n3,4\n", "text/csv")},
+    )
+    assert response.status_code == 201
+    source = response.json()
+    assert source["processing_status"] == ProcessingStatus.READY
+
+    # Verify both artifacts exist
+    viz = client.get(f"/visualizations/{source['id']}").json()
+    artifact_types = {a["artifact_type"] for a in viz}
+    assert "source_summary" in artifact_types
+    assert "source_content" in artifact_types
+
+
+def test_csv_source_content_chunks_have_stable_ids(client) -> None:
+    """CSV source_content chunks should have stable chunk_ids and column references."""
+    workspace = create_workspace(client)
+    csv_content = "month,revenue,region\n2026-01,1000,North\n2026-02,1500,South\n"
+    response = client.post(
+        "/sources",
+        data={
+            "workspace_id": str(workspace["id"]),
+            "title": "Chunk ID test",
+            "team_label": "marketing",
+            "category_labels": ["analytics_metrics"],
+            "period_start_month": "2026-01",
+            "period_end_month": "2026-02",
+        },
+        files={"file": ("data.csv", csv_content.encode(), "text/csv")},
+    )
+    assert response.status_code == 201
+    source = response.json()
+    assert source["processing_status"] == ProcessingStatus.READY
+
+    viz = client.get(f"/visualizations/{source['id']}").json()
+    content = next(a for a in viz if a["artifact_type"] == "source_content")
+    chunks = content["content_json"]["chunks"]
+
+    # Each chunk should have a stable chunk_id
+    chunk_ids = [c["chunk_id"] for c in chunks]
+    assert all(cid.startswith("csv-profile-") for cid in chunk_ids)
+    # Chunk IDs should be unique
+    assert len(chunk_ids) == len(set(chunk_ids))
+    # Each chunk should have chunk_index, text, content_type, document_section
+    for chunk in chunks:
+        assert "chunk_id" in chunk
+        assert "text" in chunk
+        assert "content_type" in chunk
+        assert "document_section" in chunk
+        assert "chunk_index" in chunk
+        assert "columns" in chunk

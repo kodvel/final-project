@@ -9,6 +9,7 @@ from app.models.enums import CategoryLabel, ProcessingStatus, SourceFileType, Te
 from app.models.source import SourceCategory, SourceData
 from app.models.workspace import Workspace
 from app.schemas.source import SourceCreate
+from app.services.periods import validate_month, validate_period_range
 from app.storage.local import save_upload
 
 # Allowed file extensions
@@ -30,6 +31,11 @@ def create_source(session: Session, data: SourceCreate, file_content: bytes) -> 
     if session.get(Workspace, data.workspace_id) is None:
         raise ValueError(f"Workspace {data.workspace_id} not found")
 
+    # Validate period month fields
+    start_month = validate_month(data.period_start_month, "period_start_month")
+    end_month = validate_month(data.period_end_month, "period_end_month")
+    validate_period_range(start_month, end_month)
+
     # Create source record first to get ID for storage path
     source = SourceData(
         workspace_id=data.workspace_id,
@@ -39,9 +45,8 @@ def create_source(session: Session, data: SourceCreate, file_content: bytes) -> 
         original_filename=data.original_filename,
         storage_path="",  # Will update after we have ID
         processing_status=ProcessingStatus.UPLOADED,
-        period_start=data.period_start,
-        period_end=data.period_end,
-        period_label=data.period_label,
+        period_start_month=start_month,
+        period_end_month=end_month,
     )
     session.add(source)
     session.flush()  # Get ID without committing
@@ -148,7 +153,7 @@ def get_source_for_audit(session: Session, source_id: int) -> SourceData | None:
 
 
 def soft_delete_source(session: Session, source_id: int) -> SourceData | None:
-    """Soft-delete a source (sets deleted_at)."""
+    """Soft-delete a source (sets deleted_at). Also removes ChromaDB vectors."""
     source = session.get(SourceData, source_id)
     if not source:
         return None
@@ -156,6 +161,15 @@ def soft_delete_source(session: Session, source_id: int) -> SourceData | None:
     session.add(source)
     session.commit()
     session.refresh(source)
+
+    # Best-effort: remove ChromaDB vectors for this source
+    try:
+        from app.knowledge.indexing import delete_source_vectors
+
+        delete_source_vectors(source_id)
+    except Exception:
+        pass  # soft delete must not fail due to vector store issues
+
     return source
 
 

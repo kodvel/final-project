@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlmodel import Session
 
@@ -7,6 +5,7 @@ from app.db.session import get_session
 from app.models.enums import CategoryLabel, SourceFileType, TeamLabel
 from app.schemas.source import SourceCreate, SourceRead
 from app.services import sources as source_service
+from app.services.periods import derive_period_label
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 
@@ -17,9 +16,8 @@ def create_source(
     title: str = Form(...),
     team_label: TeamLabel = Form(...),
     category_labels: list[CategoryLabel] = Form(...),
-    period_start: datetime | None = Form(None),
-    period_end: datetime | None = Form(None),
-    period_label: str | None = Form(None),
+    period_start_month: str = Form(...),
+    period_end_month: str = Form(...),
     file: UploadFile = File(...),
     session: Session = Depends(get_session),
 ) -> SourceRead:
@@ -38,15 +36,20 @@ def create_source(
         category_labels=category_labels,
         file_type=file_type,
         original_filename=filename,
-        period_start=period_start,
-        period_end=period_end,
-        period_label=period_label,
+        period_start_month=period_start_month,
+        period_end_month=period_end_month,
     )
 
     try:
         source = source_service.create_source(session, data, file.file.read())
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        detail = str(exc)
+        validation_status = (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+            if "period_" in detail or "YYYY-MM" in detail
+            else status.HTTP_400_BAD_REQUEST
+        )
+        raise HTTPException(status_code=validation_status, detail=detail) from exc
 
     return _source_to_read(source, session)
 
@@ -119,9 +122,9 @@ def _source_to_read(source, session: Session) -> SourceRead:
         processing_error=source.processing_error,
         original_filename=source.original_filename,
         storage_path=source.storage_path,
-        period_start=source.period_start,
-        period_end=source.period_end,
-        period_label=source.period_label,
+        period_start_month=source.period_start_month,
+        period_end_month=source.period_end_month,
+        period_label=derive_period_label(source.period_start_month, source.period_end_month),
         uploaded_at=source.uploaded_at,
         processed_at=source.processed_at,
         deleted_at=source.deleted_at,

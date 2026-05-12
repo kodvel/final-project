@@ -326,7 +326,7 @@ The white card uses its full internal width. No column split.
 ```
 +----------------------------------------------------------+
 |  [clip] [mic]  Ask a strategic question or type '/'  [^] |
-|  [/decision-brief]  [/trace]                              |
+|  [/decision-brief]                                         |
 +----------------------------------------------------------+
   Copilot can make mistakes. Consider verifying.
 ```

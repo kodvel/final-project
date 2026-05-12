@@ -51,8 +51,8 @@ class CSVProfile:
         }
 
 
-# Re-export for convenience
-ArtifactTypes = {"csv_profile", "chart_spec", "insight_card"}
+# Re-export for convenience — active artifact types only
+ArtifactTypes = {"source_summary", "source_content", "source_insight"}
 
 
 def infer_column_type(values: list[str]) -> str:
@@ -212,94 +212,194 @@ def profile_csv_from_text(content: str, file_path: str | None = None) -> CSVProf
     )
 
 
-def build_chart_spec(profile: CSVProfile) -> list[dict]:
-    """Build chart_spec artifacts from a CSVProfile when useful inputs exist.
+# ---------------------------------------------------------------------------
+# Common artifact envelope helpers
+# ---------------------------------------------------------------------------
 
-    Returns a list of chart spec dicts with keys: type, title, x_col, y_col(s), series_col, display_title.
+
+def _empty_envelope() -> dict:
+    """Return the common top-level artifact envelope with empty defaults."""
+    return {
+        "summary": "",
+        "statistics": {
+            "row_count": None,
+            "column_count": None,
+            "page_count": None,
+            "chunk_count": None,
+        },
+        "columns": [],
+        "sections": [],
+        "findings": [],
+        "risks": [],
+        "opportunities": [],
+        "assumptions": [],
+        "quotes": [],
+        "chunks": [],
+        "warnings": [],
+        "metadata": {},
+    }
+
+
+# ---------------------------------------------------------------------------
+# Active artifact builders (source_summary, source_content, source_insight)
+# ---------------------------------------------------------------------------
+
+
+def build_source_summary(profile: CSVProfile) -> dict:
+    """Build a source_summary artifact from a CSVProfile.
+
+    High-level dataset overview using the common envelope.
     """
-    specs: list[dict] = []
+    col_names = [c.name for c in profile.columns]
+    type_breakdown: dict[str, list[str]] = {}
+    for col in profile.columns:
+        type_breakdown.setdefault(col.inferred_type, []).append(col.name)
 
-    # Find date + numeric -> trend chart
-    date_cols = [c for c in profile.columns if c.inferred_type == "date"]
-    numeric_cols = [c for c in profile.columns if c.inferred_type == "numeric"]
+    summary_parts = [
+        f"Dataset with {profile.row_count} rows and {profile.column_count} columns",
+    ]
+    if type_breakdown.get("numeric"):
+        summary_parts.append(f"Numeric columns: {', '.join(type_breakdown['numeric'])}")
+    if type_breakdown.get("date"):
+        summary_parts.append(f"Date columns: {', '.join(type_breakdown['date'])}")
+    if type_breakdown.get("categorical"):
+        summary_parts.append(f"Categorical columns: {', '.join(type_breakdown['categorical'])}")
 
-    for date_col in date_cols:
-        for num_col in numeric_cols:
-            if len(specs) >= 3:
-                break
-            specs.append({
-                "chart_type": "line",
-                "title": f"{num_col.name} over {date_col.name}",
-                "x_col": date_col.name,
-                "y_cols": [num_col.name],
-                "series_col": None,
-                "display_title": f"Trend: {num_col.name} vs {date_col.name}",
-                "description": f"Line chart showing {num_col.name} trend over {date_col.name}",
-            })
-
-    # Find categorical + numeric -> segment/bar chart
-    cat_cols = [c for c in profile.columns if c.inferred_type == "categorical"]
-    for cat_col in cat_cols:
-        for num_col in numeric_cols:
-            if len(specs) >= 6:
-                break
-            specs.append({
-                "chart_type": "bar",
-                "title": f"{num_col.name} by {cat_col.name}",
-                "x_col": cat_col.name,
-                "y_cols": [num_col.name],
-                "series_col": None,
-                "display_title": f"Breakdown: {num_col.name} by {cat_col.name}",
-                "description": f"Bar chart showing {num_col.name} breakdown by {cat_col.name}",
-            })
-
-    # Find 2+ numeric cols -> scatter/relationship
-    if len(numeric_cols) >= 2:
-        for i in range(len(numeric_cols) - 1):
-            for j in range(i + 1, len(numeric_cols)):
-                if len(specs) >= 4:
-                    break
-                specs.append({
-                    "chart_type": "scatter",
-                    "title": f"{numeric_cols[i].name} vs {numeric_cols[j].name}",
-                    "x_col": numeric_cols[i].name,
-                    "y_cols": [numeric_cols[j].name],
-                    "series_col": None,
-                    "display_title": f"Relationship: {numeric_cols[i].name} vs {numeric_cols[j].name}",
-                    "description": f"Scatter plot showing relationship between {numeric_cols[i].name} and {numeric_cols[j].name}",
-                })
-
-    return specs
+    envelope = _empty_envelope()
+    envelope["summary"] = ". ".join(summary_parts) + "."
+    envelope["statistics"]["row_count"] = profile.row_count
+    envelope["statistics"]["column_count"] = profile.column_count
+    envelope["columns"] = [
+        {"name": c.name, "inferred_type": c.inferred_type}
+        for c in profile.columns
+    ]
+    envelope["metadata"] = {
+        "type_breakdown": type_breakdown,
+        "delimiter": profile.delimiter,
+        "has_header": profile.has_header,
+    }
+    return envelope
 
 
-def build_insight_card(profile: CSVProfile) -> list[dict]:
-    """Build insight_card artifacts from identifiable insights in the CSV profile."""
-    insights: list[dict] = []
+def build_source_content(profile: CSVProfile) -> dict:
+    """Build a source_content artifact from a CSVProfile.
 
-    # Row/column summary
-    insights.append({
-        "insight_type": "summary",
-        "title": "Dataset Overview",
-        "description": f"This dataset contains {profile.row_count} rows and {profile.column_count} columns.",
-        "columns": [c.name for c in profile.columns],
+    Produces compact factual snippet chunks from the profile data suitable for
+    citation-grounded retrieval. Each chunk has a stable chunk_id, a text
+    summary, column profiling detail, and row references.
+    """
+    chunks: list[dict] = []
+    chunk_index = 0
+
+    # One chunk per column with profiling facts
+    for col in profile.columns:
+        text_parts: list[str] = [f"Column '{col.name}' ({col.inferred_type}): "]
+
+        if col.inferred_type == "numeric" and col.numeric_stats:
+            stats = col.numeric_stats
+            text_parts.append(
+                f"ranges {stats['min']:.2f}–{stats['max']:.2f}, "
+                f"avg {stats['avg']:.2f} ({stats['count']} values, "
+                f"{col.null_count} nulls, {col.unique_count} unique)"
+            )
+        elif col.inferred_type == "date" and col.date_stats:
+            text_parts.append(
+                f"spans {col.date_stats['min']} to {col.date_stats['max']} "
+                f"({col.date_stats['count']} values, "
+                f"{col.null_count} nulls, {col.unique_count} unique)"
+            )
+        else:
+            text_parts.append(
+                f"{col.unique_count} unique, {col.null_count} nulls"
+            )
+            if col.sample_values:
+                samples = ", ".join(str(v) for v in col.sample_values[:3])
+                text_parts.append(f", samples: [{samples}]")
+
+        col_data: dict[str, Any] = {
+            "name": col.name,
+            "inferred_type": col.inferred_type,
+            "null_count": col.null_count,
+            "unique_count": col.unique_count,
+            "sample_values": col.sample_values or [],
+        }
+        if col.numeric_stats:
+            col_data["numeric_stats"] = col.numeric_stats
+        if col.date_stats:
+            col_data["date_stats"] = col.date_stats
+
+        chunks.append({
+            "chunk_id": f"csv-profile-{chunk_index}",
+            "text": "".join(text_parts),
+            "content_type": "metric" if col.inferred_type == "numeric" else "metadata",
+            "document_section": "data_profile",
+            "chunk_index": chunk_index,
+            "columns": [col.name],
+            "column_profile": col_data,
+        })
+        chunk_index += 1
+
+    # If there are numeric columns, add a summary chunk with aggregate stats
+    numeric_cols = [c for c in profile.columns if c.inferred_type == "numeric" and c.numeric_stats]
+    if numeric_cols:
+        lines = [f"Dataset: {profile.row_count} rows × {profile.column_count} columns."]
+        for c in numeric_cols:
+            s = c.numeric_stats or {}
+            if not s:
+                continue
+            lines.append(f"{c.name}: min={s['min']:.2f}, max={s['max']:.2f}, avg={s['avg']:.2f}")
+        chunks.append({
+            "chunk_id": f"csv-profile-{chunk_index}",
+            "text": " ".join(lines),
+            "content_type": "metric",
+            "document_section": "data_summary",
+            "chunk_index": chunk_index,
+            "columns": [c.name for c in numeric_cols],
+            "row_count": profile.row_count,
+        })
+        chunk_index += 1
+
+    envelope = _empty_envelope()
+    envelope["summary"] = f"Column-level profiling for {profile.row_count} rows, {profile.column_count} columns."
+    envelope["statistics"]["row_count"] = profile.row_count
+    envelope["statistics"]["column_count"] = profile.column_count
+    envelope["statistics"]["chunk_count"] = len(chunks)
+    envelope["columns"] = [
+        {"name": c.name, "inferred_type": c.inferred_type}
+        for c in profile.columns
+    ]
+    envelope["chunks"] = chunks
+    envelope["metadata"] = {
+        "delimiter": profile.delimiter,
+        "has_header": profile.has_header,
+    }
+    return envelope
+
+
+def build_source_insight(profile: CSVProfile) -> dict:
+    """Build a source_insight artifact from identifiable insights in the CSV profile."""
+    findings: list[dict] = []
+    risks: list[dict] = []
+    opportunities: list[dict] = []
+    assumptions: list[dict] = []
+    warnings: list[str] = []
+
+    # Dataset overview finding
+    findings.append({
+        "text": f"Dataset contains {profile.row_count} rows and {profile.column_count} columns.",
         "confidence": "high",
     })
 
-    # Numeric insights: min/max/avg for each numeric column
+    # Numeric column insights
     for col in profile.columns:
         if col.inferred_type == "numeric" and col.numeric_stats:
             stats = col.numeric_stats
-            insights.append({
-                "insight_type": "stat_summary",
-                "title": f"Metric: {col.name}",
-                "description": (
+            findings.append({
+                "text": (
                     f"{col.name} ranges from {stats['min']:.2f} to {stats['max']:.2f}, "
                     f"with an average of {stats['avg']:.2f} across {stats['count']} records."
                 ),
                 "column": col.name,
-                "min": stats["min"],
-                "max": stats["max"],
-                "avg": stats["avg"],
                 "confidence": "high",
             })
 
@@ -317,29 +417,34 @@ def build_insight_card(profile: CSVProfile) -> list[dict]:
                 std = variance ** 0.5
                 for val in numeric_vals:
                     if abs(val - avg) > 2 * std:
-                        insights.append({
-                            "insight_type": "anomaly",
-                            "title": f"Potential outlier in {col.name}",
-                            "description": f"Value {val:.2f} is more than 2 standard deviations from the mean ({avg:.2f}) in {col.name}.",
+                        risks.append({
+                            "text": f"Potential outlier in {col.name}: value {val:.2f} is more than 2 standard deviations from the mean ({avg:.2f}).",
                             "column": col.name,
-                            "value": val,
-                            "expected_range": f"{avg - 2*std:.2f} – {avg + 2*std:.2f}",
                             "confidence": "medium",
                         })
                         break
 
-    # Date range insight
-    date_cols = [c for c in profile.columns if c.inferred_type == "date"]
-    for col in date_cols:
-        if col.date_stats and "min" in col.date_stats and "max" in col.date_stats:
-            insights.append({
-                "insight_type": "date_range",
-                "title": f"Period: {col.name}",
-                "description": f"Data spans from {col.date_stats['min']} to {col.date_stats['max']}.",
+    # Date range insights
+    for col in profile.columns:
+        if col.inferred_type == "date" and col.date_stats:
+            findings.append({
+                "text": f"Data spans from {col.date_stats['min']} to {col.date_stats['max']}.",
                 "column": col.name,
-                "period_start": col.date_stats["min"],
-                "period_end": col.date_stats["max"],
                 "confidence": "high",
             })
 
-    return insights
+    # Warn on high null counts
+    for col in profile.columns:
+        if profile.row_count > 0 and col.null_count / profile.row_count > 0.3:
+            warnings.append(f"Column '{col.name}' has {col.null_count} null values ({col.null_count / profile.row_count * 100:.0f}%).")
+
+    envelope = _empty_envelope()
+    envelope["summary"] = f"Insights from CSV with {profile.row_count} rows, {profile.column_count} columns."
+    envelope["statistics"]["row_count"] = profile.row_count
+    envelope["statistics"]["column_count"] = profile.column_count
+    envelope["findings"] = findings
+    envelope["risks"] = risks
+    envelope["opportunities"] = opportunities
+    envelope["assumptions"] = assumptions
+    envelope["warnings"] = warnings
+    return envelope

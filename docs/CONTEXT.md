@@ -16,6 +16,10 @@ _Avoid_: Global active workspace, server active workspace
 An uploaded company input file plus its metadata, labels, period, processing status, and generated artifacts.
 _Avoid_: Source Data as the domain entity
 
+**Source Period**:
+A required month-level range on a Source, stored as `period_start_month` and `period_end_month` in `YYYY-MM` format. The display label is derived by the backend.
+_Avoid_: User-entered period labels, date-level source periods
+
 **Source Data**:
 The product page/menu where users manage Sources.
 _Avoid_: Using Source Data to mean one uploaded file
@@ -78,12 +82,13 @@ _Avoid_: Required chat output, user-facing evidence
 - An **Active Workspace** is client-selected; selecting it in one browser must not change another browser's selected workspace.
 - A **Workspace** owns many **Sources**.
 - **Source Data** lists and manages **Sources** for the **Active Workspace**.
+- A **Source** must have a valid **Source Period**; the start month must be earlier than or equal to the end month.
 - A **Source** has one **Processing Status** that tells whether it can be used by Visualization Data and Chat.
 - A **Source** can exist before processing succeeds; failed processing does not mean the uploaded Source should disappear.
 - A **Deleted Source** is excluded from new analysis but remains available to explain past citations and Decision Brief Drafts.
 - A **Deleted Source** may retain its original file when past **Source Citations** or **Decision Brief Drafts** need audit history.
 - A **Source** produces normalized **Source Artifacts** after processing.
-- A ready **Source** must have a `source_summary` artifact and indexable `source_content` stored in SQL and indexed in ChromaDB.
+- A ready **Source** must have a `source_summary` artifact and indexable `source_content` stored in SQL and indexed in ChromaDB; if no citation-ready content can be produced, the Source is **Failed**, not **Ready**.
 - `source_insight` is recommended but optional; missing insight should be represented as a warning or gap, not invented certainty.
 - **Visualization Data** shows a cached **Visualization Snapshot** for a selected month range, composed from overlapping ready Sources.
 - A **Source Citation** supports an assistant answer or **Decision Brief Draft** with a referenced Source, Source Artifact, quote, or page reference where available.
