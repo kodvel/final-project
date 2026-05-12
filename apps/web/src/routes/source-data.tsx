@@ -327,11 +327,11 @@ function AddSourceDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-2xl rounded-2xl p-0 sm:max-w-2xl">
         <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              if (!file) return
-              onSubmit({ workspaceId, title, file, teamLabel, categoryLabels, periodStartMonth, periodEndMonth })
-            }}
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (!file) return
+            onSubmit({ workspaceId, title, file, teamLabel, categoryLabels, periodStartMonth, periodEndMonth })
+          }}
         >
           <DialogHeader className="border-b border-border px-6 py-5">
             <DialogTitle className="font-heading text-xl">Add New Data</DialogTitle>
@@ -357,14 +357,26 @@ function AddSourceDialog({
               <label htmlFor={periodStartMonthId} className="text-sm font-medium text-foreground">
                 Period Start Month
               </label>
-              <Input id={periodStartMonthId} type="month" value={periodStartMonth} onChange={(event) => setPeriodStartMonth(event.target.value)} placeholder="YYYY-MM" />
+              <Input
+                id={periodStartMonthId}
+                type="month"
+                value={periodStartMonth}
+                onChange={(event) => setPeriodStartMonth(event.target.value)}
+                placeholder="YYYY-MM"
+              />
             </div>
 
             <div className="space-y-1.5">
               <label htmlFor={periodEndMonthId} className="text-sm font-medium text-foreground">
                 Period End Month
               </label>
-              <Input id={periodEndMonthId} type="month" value={periodEndMonth} onChange={(event) => setPeriodEndMonth(event.target.value)} placeholder="YYYY-MM" />
+              <Input
+                id={periodEndMonthId}
+                type="month"
+                value={periodEndMonth}
+                onChange={(event) => setPeriodEndMonth(event.target.value)}
+                placeholder="YYYY-MM"
+              />
             </div>
 
             <div className="space-y-1.5">

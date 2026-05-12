@@ -12,7 +12,6 @@ from app.services import csv_profiler
 from app.services.artifacts import (
     list_source_artifacts,
     replace_source_artifacts,
-    upsert_source_artifact,
 )
 
 

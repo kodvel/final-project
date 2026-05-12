@@ -1,5 +1,7 @@
 import { API_BASE_URL, apiFetch } from '../../lib/api-client'
 import type {
+  AgentToolCall,
+  AgentToolCallApi,
   AssistantCompletedEvent,
   AssistantStartedEvent,
   ChatMessage,
@@ -9,13 +11,19 @@ import type {
   ChatSessionDetail,
   ChatSessionDetailApi,
   CreateChatSessionInput,
+  MessageSourceCitation,
+  MessageSourceCitationApi,
   SendChatMessageInput,
   SessionCreatedEvent,
+  SourcesUsedEvent,
   StreamChatMessageInput,
   StreamErrorEvent,
   StreamHandlers,
   TextDeltaEvent,
+  ToolCallEvent,
+  ToolResultEvent,
   UserMessageSavedEvent,
+  WebSourcesUsedEvent,
 } from '../../types/chat'
 
 function messageFromApi(message: ChatMessageApi): ChatMessage {
@@ -49,10 +57,43 @@ function sessionFromApi(session: ChatSessionApi): ChatSession {
   }
 }
 
+function toolCallFromApi(toolCall: AgentToolCallApi): AgentToolCall {
+  return {
+    id: toolCall.id,
+    messageId: toolCall.message_id,
+    toolName: toolCall.tool_name,
+    status: toolCall.status,
+    summary: toolCall.summary,
+    createdAt: toolCall.created_at,
+  }
+}
+
+function citationFromApi(citation: MessageSourceCitationApi): MessageSourceCitation {
+  return {
+    id: citation.id,
+    messageId: citation.message_id,
+    sourceId: citation.source_id,
+    artifactId: citation.artifact_id,
+    chunkId: citation.chunk_id,
+    citationType: citation.citation_type,
+    ordinal: citation.ordinal,
+    quote: citation.quote,
+    pageNumber: citation.page_number,
+    url: citation.url,
+    title: citation.title,
+    domain: citation.domain,
+    citationStatus: citation.citation_status,
+    relevanceScore: citation.relevance_score,
+    createdAt: citation.created_at,
+  }
+}
+
 function sessionDetailFromApi(session: ChatSessionDetailApi): ChatSessionDetail {
   return {
     ...sessionFromApi(session),
     messages: session.messages.map(messageFromApi),
+    citations: (session.citations ?? []).map(citationFromApi),
+    toolCalls: (session.tool_calls ?? []).map(toolCallFromApi),
   }
 }
 
@@ -70,16 +111,12 @@ export async function createChatSession(input: CreateChatSessionInput): Promise<
 }
 
 export async function listChatSessions(workspaceId: number, limit = 5, offset = 0): Promise<ChatSession[]> {
-  const sessions = await apiFetch<ChatSessionApi[]>(
-    `/chat/sessions?workspace_id=${workspaceId}&limit=${limit}&offset=${offset}`,
-  )
+  const sessions = await apiFetch<ChatSessionApi[]>(`/chat/sessions?workspace_id=${workspaceId}&limit=${limit}&offset=${offset}`)
   return sessions.map(sessionFromApi)
 }
 
 export async function getChatSession(sessionId: number, workspaceId: number): Promise<ChatSessionDetail> {
-  return sessionDetailFromApi(
-    await apiFetch<ChatSessionDetailApi>(`/chat/sessions/${sessionId}?workspace_id=${workspaceId}`),
-  )
+  return sessionDetailFromApi(await apiFetch<ChatSessionDetailApi>(`/chat/sessions/${sessionId}?workspace_id=${workspaceId}`))
 }
 
 // ---------------------------------------------------------------------------
@@ -173,6 +210,18 @@ export async function streamChatMessage(input: StreamChatMessageInput, handlers:
                 break
               case 'text_delta':
                 handlers.onTextDelta?.(event as TextDeltaEvent)
+                break
+              case 'tool_call':
+                handlers.onToolCall?.(event as ToolCallEvent)
+                break
+              case 'tool_result':
+                handlers.onToolResult?.(event as ToolResultEvent)
+                break
+              case 'sources_used':
+                handlers.onSourcesUsed?.(event as SourcesUsedEvent)
+                break
+              case 'web_sources_used':
+                handlers.onWebSourcesUsed?.(event as WebSourcesUsedEvent)
                 break
               case 'assistant_completed':
                 handlers.onAssistantCompleted?.(event as AssistantCompletedEvent)

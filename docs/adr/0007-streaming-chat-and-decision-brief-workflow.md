@@ -31,6 +31,10 @@ data: [DONE]
 
 Do not use named SSE `event:` fields for the MVP contract.
 
+The backend uses `StreamingResponse` and manually formats DeltaKit SSE lines. Native browser `EventSource` is not used because the stream endpoint is a POST with a JSON request body. The frontend reads the stream with `fetch` and a `ReadableStream` parser.
+
+OpenAI Agents SDK stream events are internal Python events. The backend converts them into DeltaKit SSE events before sending them to the browser.
+
 Built-in event types:
 
 ```text
@@ -52,6 +56,8 @@ assistant_completed
 assistant_interrupted
 error
 ```
+
+`tool_call` events expose only tool name and call ID. `tool_result` events expose status only. Tool errors use safe messages. The stream must not expose private model reasoning, prompts, raw retrieved chunks, Tavily raw results, secrets, or full tool arguments.
 
 ### Chat Session creation and history
 
@@ -126,7 +132,7 @@ Summary refresh should happen before the context is full, around 70-80% of conte
 
 ### Evidence and citations
 
-Chat always performs mandatory company knowledge retrieval from uploaded Sources before answering.
+Chat runs a small classifier before pre-retrieval. If the message needs uploaded company evidence, or if classification fails, Chat retrieves company knowledge from uploaded Sources before answering. The consultant agent still has the retrieval tool available during the run.
 
 Eligible uploaded Sources must be:
 

@@ -250,7 +250,6 @@ def build_source_summary(profile: CSVProfile) -> dict:
 
     High-level dataset overview using the common envelope.
     """
-    col_names = [c.name for c in profile.columns]
     type_breakdown: dict[str, list[str]] = {}
     for col in profile.columns:
         type_breakdown.setdefault(col.inferred_type, []).append(col.name)

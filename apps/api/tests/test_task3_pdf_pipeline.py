@@ -465,7 +465,6 @@ def test_no_legacy_pdf_enums():
 
 def test_ready_gate_requires_source_content_csv(client) -> None:
     """CSV source must have both source_summary and source_content to be Ready."""
-    from unittest.mock import patch
 
     workspace = create_workspace(client)
 

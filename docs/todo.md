@@ -891,6 +891,9 @@ User asks a strategic question in Chat. The Company Strategy Consultant retrieve
 ### Backend work
 
 - Add AI Consultant orchestration service.
+- Current implementation decision: pre-retrieval is gated by a small LLM classifier that returns only whether local Source retrieval is needed. If classification fails, default to retrieval. The agent still has access to the retrieval tool for follow-up/refinement.
+- Use OpenAI Agents SDK with `openai-agents[litellm]` for the single Company Strategy Consultant agent. Convert Agents SDK stream events into DeltaKit-compatible `data:` SSE JSON events. Do not use named SSE `event:` fields or native browser `EventSource` for the POST stream.
+- Stream tool activity safely: `tool_call` exposes tool name and call ID only; `tool_result` exposes status only; tool errors expose a safe error message. Do not stream private reasoning, prompts, full tool arguments, raw retrieved chunks, Tavily raw results, or secrets.
 - Use the configured OpenAI-compatible client/model for LLM calls. Do not make Decision Brief generation an autonomous agent workflow in this task.
 - Keep retrieval deterministic and service-owned. The model must not query raw DB directly.
 - Build normal Chat model context through ContextBuilder:
@@ -992,18 +995,18 @@ User asks a strategic question in Chat. The Company Strategy Consultant retrieve
 
 ### Acceptance criteria
 
-- [ ] Chat response uses the unified company knowledge retrieval facade.
-- [ ] Chat auto-selects relevant Sources by default.
-- [ ] Natural-language Source Scope constraints work per message.
-- [ ] Response follows semi-structured consultant format.
-- [ ] Response uses full-session-aware context without passing unlimited raw history.
-- [ ] Response context is budgeted across conversation history, RAG evidence, web evidence, and output reserve.
-- [ ] Response includes citations.
-- [ ] Response citations are validated against provided EvidenceBundle IDs.
-- [ ] Response can include clearly labeled Tavily web citations.
-- [ ] Response can say data is insufficient.
-- [ ] Response stores simplified tool call summaries.
-- [ ] View Sources works from UI.
+- [x] Chat response uses the unified company knowledge retrieval facade.
+- [x] Chat auto-selects relevant Sources by default when the classifier determines local retrieval is needed.
+- [x] Natural-language Source Scope constraints work per message.
+- [x] Response follows natural consultant style by default and structured formatting when requested.
+- [x] Response uses full-session-aware context without passing unlimited raw history.
+- [x] Response context is budgeted across conversation history, RAG evidence, web evidence, and output reserve.
+- [x] Response includes citations.
+- [x] Response citations are validated against provided EvidenceBundle IDs.
+- [x] Response can include clearly labeled Tavily web citations.
+- [x] Response can say data is insufficient.
+- [x] Response stores simplified tool call summaries.
+- [x] View Sources works from UI.
 
 ---
 

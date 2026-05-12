@@ -124,7 +124,7 @@ _Avoid_: Required chat output, user-facing evidence
 - Workspace-scoped API requests previously implied server-side activation; resolved: the client sends explicit `workspace_id` instead.
 - Chat sessions could have been interpreted as following the selected workspace; resolved: each **Chat Session** is permanently scoped to its original **Workspace**.
 - Decision status language was overloaded; resolved: **Recommendation Status** is AI-generated direction, while **Approval Status** is human review state.
-- Chat source selection was ambiguous; resolved: Chat auto-selects relevant Sources by default and treats natural-language constraints as per-message **Source Scope**.
+- Chat source selection was ambiguous; resolved: Chat auto-selects relevant Sources when the message needs uploaded company evidence, uses a small classifier to skip clearly off-context pre-retrieval, defaults to retrieval if classification fails, and treats natural-language constraints as per-message **Source Scope**.
 - Observability was ambiguous with evidence; resolved: **Trace References** are optional debugging/observability links, while **Source Citations** are evidence.
 - CSV-specific artifact names (`csv_profile`, `chart_spec`, `insight_card`) made the product model file-type-driven; resolved: all Source types produce `source_summary`, `source_content`, and optional `source_insight`.
 - Visualization was previously treated as a per-Source artifact; resolved: **Visualization Data** is a period-based composed **Visualization Snapshot**.

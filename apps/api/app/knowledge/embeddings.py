@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import struct
 
-
 _EMBEDDING_DIM = 384  # matches common small sentence-transformer models
 
 
