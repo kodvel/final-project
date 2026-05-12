@@ -4,23 +4,23 @@ version = "0.0.0"
 description = "FastAPI backend for the final project foundation template."
 requires-python = "==3.14.*"
 dependencies = [
-  "alembic>=1.18.4",
-  "chonkie",
-  "fastapi>=0.116.0",
-  "litellm",
-  "mistralai",
-  "pydantic-settings>=2.14.0",
-  "python-multipart>=0.0.27",
-  "scalar-fastapi>=1.8.2",
-  "sqlmodel>=0.0.38",
-  "uvicorn[standard]>=0.35.0",
+  "alembic==1.18.4",
+  "chonkie==1.6.5",
+  "fastapi==0.136.1",
+  "litellm==1.83.14",
+  "mistralai @ https://files.pythonhosted.org/packages/1b/48/2c5c4f853dec32a625c1a3d23809b80cf2e135c3441fe1764f72910dfea9/mistralai-2.4.5-py3-none-any.whl#sha256=bf3b6550258ab16dec8547b90e9c18bebf9099f55b7fc25a884bf0bbeffced0f",
+  "pydantic-settings==2.14.0",
+  "python-multipart==0.0.27",
+  "scalar-fastapi==1.8.2",
+  "sqlmodel==0.0.38",
+  "uvicorn[standard]==0.46.0",
 ]
 
 [dependency-groups]
 dev = [
-  "httpx>=0.28.1",
-  "pytest>=8.4.1",
-  "ruff>=0.12.2",
+  "httpx==0.28.1",
+  "pytest==9.0.3",
+  "ruff==0.15.12",
 ]
 
 [tool.pytest.ini_options]

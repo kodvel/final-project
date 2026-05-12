@@ -320,23 +320,23 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "alembic", specifier = ">=1.18.4" },
-    { name = "chonkie" },
-    { name = "fastapi", specifier = ">=0.116.0" },
-    { name = "litellm" },
-    { name = "mistralai" },
-    { name = "pydantic-settings", specifier = ">=2.14.0" },
-    { name = "python-multipart", specifier = ">=0.0.27" },
-    { name = "scalar-fastapi", specifier = ">=1.8.2" },
-    { name = "sqlmodel", specifier = ">=0.0.38" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.35.0" },
+    { name = "alembic", specifier = "==1.18.4" },
+    { name = "chonkie", specifier = "==1.6.5" },
+    { name = "fastapi", specifier = "==0.136.1" },
+    { name = "litellm", specifier = "==1.83.14" },
+    { name = "mistralai", url = "https://files.pythonhosted.org/packages/1b/48/2c5c4f853dec32a625c1a3d23809b80cf2e135c3441fe1764f72910dfea9/mistralai-2.4.5-py3-none-any.whl" },
+    { name = "pydantic-settings", specifier = "==2.14.0" },
+    { name = "python-multipart", specifier = "==0.0.27" },
+    { name = "scalar-fastapi", specifier = "==1.8.2" },
+    { name = "sqlmodel", specifier = "==0.0.38" },
+    { name = "uvicorn", extras = ["standard"], specifier = "==0.46.0" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "pytest", specifier = ">=8.4.1" },
-    { name = "ruff", specifier = ">=0.12.2" },
+    { name = "httpx", specifier = "==0.28.1" },
+    { name = "pytest", specifier = "==9.0.3" },
+    { name = "ruff", specifier = "==0.15.12" },
 ]
 
 [[package]]
@@ -710,7 +710,7 @@ wheels = [
 [[package]]
 name = "mistralai"
 version = "2.4.5"
-source = { registry = "https://pypi.org/simple" }
+source = { url = "https://files.pythonhosted.org/packages/1b/48/2c5c4f853dec32a625c1a3d23809b80cf2e135c3441fe1764f72910dfea9/mistralai-2.4.5-py3-none-any.whl" }
 dependencies = [
     { name = "eval-type-backport" },
     { name = "httpx" },
@@ -721,10 +721,35 @@ dependencies = [
     { name = "python-dateutil" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8e/3f/5624d57c5897c83c55d3e4c7dd4127de42ad14fd3183e26566cdc7dca1bf/mistralai-2.4.5.tar.gz", hash = "sha256:ef165bb004ec4423cbf19a440bf0983ca0c3fc92ab12a35ebca097bdf418e33a", size = 424611, upload-time = "2026-05-07T11:46:43.888Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1b/48/2c5c4f853dec32a625c1a3d23809b80cf2e135c3441fe1764f72910dfea9/mistralai-2.4.5-py3-none-any.whl", hash = "sha256:bf3b6550258ab16dec8547b90e9c18bebf9099f55b7fc25a884bf0bbeffced0f", size = 995999, upload-time = "2026-05-07T11:46:41.915Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/48/2c5c4f853dec32a625c1a3d23809b80cf2e135c3441fe1764f72910dfea9/mistralai-2.4.5-py3-none-any.whl", hash = "sha256:bf3b6550258ab16dec8547b90e9c18bebf9099f55b7fc25a884bf0bbeffced0f" },
 ]
+
+[package.metadata]
+requires-dist = [
+    { name = "aioboto3", marker = "extra == 'workflow-payload-offloading'", specifier = ">=12.4.0,<13.0.0" },
+    { name = "aioboto3", marker = "extra == 'workflow-payload-offloading-s3'", specifier = ">=12.4.0,<13.0.0" },
+    { name = "authlib", marker = "extra == 'agents'", specifier = ">=1.5.2,<2.0" },
+    { name = "azure-storage-blob", extras = ["aio"], marker = "extra == 'workflow-payload-offloading'", specifier = ">=12.28.0,<13.0.0" },
+    { name = "azure-storage-blob", extras = ["aio"], marker = "extra == 'workflow-payload-offloading-azure'", specifier = ">=12.28.0,<13.0.0" },
+    { name = "cryptography", marker = "extra == 'workflow-payload-encryption'", specifier = ">=41.0.0,<47.0.0" },
+    { name = "eval-type-backport", specifier = ">=0.2.0" },
+    { name = "gcloud-aio-storage", marker = "extra == 'workflow-payload-offloading'", specifier = ">=9.3.0,<10.0.0" },
+    { name = "gcloud-aio-storage", marker = "extra == 'workflow-payload-offloading-gcs'", specifier = ">=9.3.0,<10.0.0" },
+    { name = "google-auth", marker = "extra == 'gcp'", specifier = ">=2.27.0" },
+    { name = "griffe", marker = "extra == 'agents'", specifier = ">=1.7.3,<2.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "jsonpath-python", specifier = ">=1.0.6" },
+    { name = "mcp", marker = "extra == 'agents'", specifier = ">=1.0,<2.0" },
+    { name = "opentelemetry-api", specifier = ">=1.33.1,<2.0.0" },
+    { name = "opentelemetry-semantic-conventions", specifier = ">=0.60b1,<0.61" },
+    { name = "pydantic", specifier = ">=2.11.2" },
+    { name = "python-dateutil", specifier = ">=2.8.2" },
+    { name = "requests", marker = "extra == 'gcp'", specifier = ">=2.32.3" },
+    { name = "typing-inspection", specifier = ">=0.4.0" },
+    { name = "websockets", marker = "extra == 'realtime'", specifier = ">=13.0" },
+]
+provides-extras = ["agents", "gcp", "realtime", "workflow-payload-encryption", "workflow-payload-offloading", "workflow-payload-offloading-azure", "workflow-payload-offloading-gcs", "workflow-payload-offloading-s3"]
 
 [[package]]
 name = "multidict"

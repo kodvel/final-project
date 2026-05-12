@@ -14,7 +14,7 @@
     "check": "node scripts/run-task.mjs check"
   },
   "devDependencies": {
-    "@moonrepo/cli": "^2.2.3",
-    "prettier": "^3.6.2"
+    "@moonrepo/cli": "2.2.3",
+    "prettier": "3.8.3"
   }
 }
