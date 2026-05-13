@@ -3,8 +3,9 @@ import { Bot, ChevronRight, Eye, FileSpreadsheet, FileText, Lightbulb, Mic, Pape
 import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { useChatSession, useChatSessions, useStreamChat } from '../features/chat/hooks'
 import { useActiveWorkspace } from '../features/workspaces/hooks/use-active-workspace'
+import { API_BASE_URL } from '../lib/api-client'
 import type { AgentToolCall, ChatMessage, MessageSourceCitation } from '../types/chat'
-import type { DecisionBriefApi, DecisionBriefContentJson } from '../types/decision-brief'
+import type { DecisionApprovalStatus, DecisionBriefApi, DecisionBriefContentJson } from '../types/decision-brief'
 
 export const Route = createFileRoute('/chat')({
   component: ChatPage,
@@ -52,6 +53,7 @@ export function ChatPage() {
   const [streamingText, setStreamingText] = useState('')
   const [briefsByMessageId, setBriefsByMessageId] = useState<Record<number, DecisionBriefApi>>({})
   const optIdCounter = useRef(0)
+  const newChatRef = useRef(false)
 
   const persistedMessages: ChatMessage[] = activeSession?.messages ?? []
 
@@ -74,9 +76,9 @@ export function ChatPage() {
     }
   }, [activeSession?.workspaceId, workspaceId])
 
-  // Auto-select first session
+  // Auto-select first session (skip if user explicitly started a new chat)
   useEffect(() => {
-    if (activeSessionId === null && sessions.length > 0) {
+    if (activeSessionId === null && sessions.length > 0 && !newChatRef.current) {
       setActiveSessionId(sessions[0].id)
     }
   }, [activeSessionId, sessions])
@@ -108,6 +110,7 @@ export function ChatPage() {
         },
         {
           onSessionCreated: (event) => {
+            newChatRef.current = false
             setActiveSessionId(event.session.id)
           },
           onUserMessageSaved: () => {
@@ -143,7 +146,7 @@ export function ChatPage() {
   )
 
   function handleNewChat() {
-    // New Chat = local draft only: clear active session, no backend POST
+    newChatRef.current = true
     setActiveSessionId(null)
     setOptimisticMessages([])
     setStreamingText('')
@@ -386,8 +389,65 @@ const SECTIONS: { key: keyof DecisionBriefContentJson; label: string }[] = [
   { key: 'next_steps', label: 'Next Steps' },
 ]
 
-function DecisionBriefCard({ brief }: { brief: DecisionBriefApi }) {
+const APPROVAL_LABELS: Record<DecisionApprovalStatus, { label: string; className: string }> = {
+  draft: { label: 'DRAFT', className: 'bg-chip-gray text-text-hint' },
+  reviewed: { label: 'REVIEWED', className: 'bg-primary/10 text-primary' },
+  approved: { label: 'APPROVED', className: 'bg-status-ready-foreground/10 text-status-ready-foreground' },
+  rejected: { label: 'REJECTED', className: 'bg-status-failed-foreground/10 text-status-failed-foreground' },
+}
+
+const ACTIONS: Record<DecisionApprovalStatus, { status: DecisionApprovalStatus; label: string; className: string }[]> = {
+  draft: [
+    { status: 'reviewed', label: 'Mark Reviewed', className: 'border border-primary/40 text-primary hover:bg-primary/10' },
+    { status: 'approved', label: 'Approve', className: 'border border-status-ready-foreground/40 text-status-ready-foreground hover:bg-status-ready-foreground/10' },
+    { status: 'rejected', label: 'Reject', className: 'border border-status-failed-foreground/40 text-status-failed-foreground hover:bg-status-failed-foreground/10' },
+  ],
+  reviewed: [
+    { status: 'approved', label: 'Approve', className: 'border border-status-ready-foreground/40 text-status-ready-foreground hover:bg-status-ready-foreground/10' },
+    { status: 'rejected', label: 'Reject', className: 'border border-status-failed-foreground/40 text-status-failed-foreground hover:bg-status-failed-foreground/10' },
+  ],
+  approved: [],
+  rejected: [],
+}
+
+async function patchBriefStatus(briefId: number, workspaceId: number, approvalStatus: DecisionApprovalStatus): Promise<DecisionBriefApi> {
+  const response = await fetch(`${API_BASE_URL}/decision-briefs/${briefId}/status?workspace_id=${workspaceId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ approval_status: approvalStatus }),
+  })
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(text || `Status update failed: ${response.status}`)
+  }
+  return response.json()
+}
+
+function DecisionBriefCard({ brief: initialBrief }: { brief: DecisionBriefApi }) {
+  const { activeWorkspace } = useActiveWorkspace()
+  const [brief, setBrief] = useState(initialBrief)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
   const rec = REC_LABELS[brief.recommendation_status] ?? { label: brief.recommendation_status.toUpperCase(), className: 'bg-chip-gray text-text-hint' }
+  const approval = APPROVAL_LABELS[brief.approval_status]
+  const actions = ACTIONS[brief.approval_status] ?? []
+  const isLocked = brief.approval_status === 'approved' || brief.approval_status === 'rejected'
+
+  async function handleAction(nextStatus: DecisionApprovalStatus) {
+    if (!activeWorkspace) return
+    setLoading(true)
+    setError(null)
+    try {
+      const updated = await patchBriefStatus(brief.id, activeWorkspace.id, nextStatus)
+      setBrief(updated)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Status update failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="rounded-2xl border border-highlight bg-card shadow-sm overflow-hidden">
       <div className="flex items-center justify-between gap-4 border-b border-border bg-accent px-7 py-5">
@@ -400,7 +460,7 @@ function DecisionBriefCard({ brief }: { brief: DecisionBriefApi }) {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className={`rounded-full px-3 py-1 font-mono text-xs font-semibold ${rec.className}`}>{rec.label}</span>
-          <span className="rounded bg-chip-gray px-2 py-1 font-mono text-[11px] text-text-hint">DRAFT</span>
+          <span className={`rounded px-2 py-1 font-mono text-[11px] font-semibold ${approval.className}`}>{approval.label}</span>
         </div>
       </div>
 
@@ -415,6 +475,25 @@ function DecisionBriefCard({ brief }: { brief: DecisionBriefApi }) {
             </div>
           )
         })}
+      </div>
+
+      <div className="flex items-center gap-3 border-t border-border px-7 py-4">
+        {isLocked ? (
+          <p className="text-xs text-muted-foreground">This brief is locked ({brief.approval_status}).</p>
+        ) : (
+          actions.map((action) => (
+            <button
+              key={action.status}
+              type="button"
+              disabled={loading}
+              onClick={() => handleAction(action.status)}
+              className={`rounded-lg px-4 py-2 text-xs font-semibold transition disabled:opacity-50 ${action.className}`}
+            >
+              {action.label}
+            </button>
+          ))
+        )}
+        {error && <p className="ml-auto text-xs text-status-failed-foreground">{error}</p>}
       </div>
     </div>
   )

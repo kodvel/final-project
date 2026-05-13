@@ -1088,15 +1088,15 @@ Diskusikan keputusan, opsi, risiko, dan evidence terlebih dahulu, lalu jalankan 
 
 ### Acceptance criteria
 
-- [ ] User can type `/decision-brief`.
-- [ ] Decision Brief Draft is generated from chat context.
-- [ ] Decision Brief Draft uses session citations already used in chat.
-- [ ] Brief is saved in database.
-- [ ] Brief appears as formatted assistant response.
-- [ ] Brief status defaults to Draft.
-- [ ] Re-running `/decision-brief` creates a new point-in-time draft.
-- [ ] Insufficient context returns a clear message and no draft.
-- [ ] Brief can be generated with weak evidence only when gaps are explicit and recommendation defaults toward Validate First.
+- [x] User can type `/decision-brief`.
+- [x] Decision Brief Draft is generated from chat context.
+- [x] Decision Brief Draft uses session citations already used in chat.
+- [x] Brief is saved in database.
+- [x] Brief appears as formatted assistant response.
+- [x] Brief status defaults to Draft.
+- [x] Re-running `/decision-brief` creates a new point-in-time draft.
+- [x] Insufficient context returns a clear message and no draft.
+- [x] Brief can be generated with weak evidence only when gaps are explicit and recommendation defaults toward Validate First.
 
 ---
 
@@ -1148,11 +1148,11 @@ rejected = locked
 
 ### Acceptance criteria
 
-- [ ] User can update Decision Brief status from the brief card.
-- [ ] Draft can become Reviewed, Approved, or Rejected.
-- [ ] Reviewed can become Approved or Rejected.
-- [ ] Approved and Rejected are locked.
-- [ ] Invalid transitions are rejected.
+- [x] User can update Decision Brief status from the brief card.
+- [x] Draft can become Reviewed, Approved, or Rejected.
+- [x] Reviewed can become Approved or Rejected.
+- [x] Approved and Rejected are locked.
+- [x] Invalid transitions are rejected.
 
 ---
 
