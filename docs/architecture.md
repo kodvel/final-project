@@ -605,6 +605,10 @@ The frontend uses DeltaKit React. The backend streams Server-Sent Events as `tex
 
 Do not use named SSE `event:` fields for the MVP contract.
 
+The backend uses `StreamingResponse` and manually formats DeltaKit SSE lines. Native browser `EventSource` is not used because the Chat stream endpoint is a POST with a JSON request body; the frontend reads the stream with `fetch` and a `ReadableStream` parser.
+
+OpenAI Agents SDK stream events are internal Python events, not the frontend wire format. The backend converts them into DeltaKit SSE events before sending them to the browser.
+
 Example stream:
 
 ```text
@@ -614,9 +618,9 @@ data: {"type":"user_message_saved","message_id":"..."}
 
 data: {"type":"assistant_started","message_id":"..."}
 
-data: {"type":"tool_call","tool_name":"retrieve_company_knowledge","argument":"...","call_id":"call_1"}
+data: {"type":"tool_call","tool_name":"retrieve_company_knowledge","call_id":"call_1"}
 
-data: {"type":"tool_result","call_id":"call_1","output":"..."}
+data: {"type":"tool_result","call_id":"call_1","ok":true}
 
 data: {"type":"sources_used","citations":[...]}
 
@@ -634,6 +638,8 @@ text_delta   Appends streamed assistant text.
 tool_call    Shows a server-side tool invocation.
 tool_result  Shows the server-side tool result summary.
 ```
+
+`tool_call` events expose only `tool_name` and `call_id`; they do not expose tool arguments. `tool_result` events expose status only. Tool errors are sent as safe error messages. The stream must not expose private model reasoning, prompts, raw retrieved chunks, Tavily raw results, secrets, or full tool arguments.
 
 Custom app event types:
 
@@ -661,26 +667,27 @@ flowchart TD
   E --> F
   F --> G[Create assistant chat_message<br/>status streaming]
   G --> H[Build conversation context<br/>summary + recent raw + current raw]
-  H --> I[Mandatory company knowledge retrieval]
-  I --> J[SQL eligible Sources<br/>ready, not deleted, same Workspace]
-  J --> K[ChromaDB search<br/>within eligible Source IDs]
-  K --> L[SQL validate and hydrate evidence]
-  L --> M{Evidence sufficient?}
-  M -->|Yes| N[Stream sources_used]
-  M -->|Weak or empty and web-capable| O[Tavily web search]
-  M -->|Weak or empty and not web-capable| P[Answer with gaps / insufficient evidence]
-  O --> Q[Stream web_sources_used]
-  N --> R[LLM generates grounded answer]
-  Q --> R
-  P --> R
-  R --> S[Stream text_delta]
+  H --> I[Classify whether local Source retrieval is needed]
+  I -->|Needed or classifier fails| J[Retrieve company knowledge]
+  I -->|Not needed| Q[Agent generates answer]
+  J --> K[SQL eligible Sources<br/>ready, not deleted, same Workspace]
+  K --> L[ChromaDB search<br/>within eligible Source IDs]
+  L --> M[SQL validate and hydrate evidence]
+  M --> N{Evidence sufficient?}
+  N -->|Yes| O[Stream sources_used]
+  N -->|Weak or empty and web-capable| P[Tavily web search]
+  N -->|Weak or empty and not web-capable| Q
+  O --> Q
+  P --> R[Stream web_sources_used]
+  R --> Q
+  Q --> S[Stream text_delta]
   S --> T[Save final assistant content]
   T --> U[Save citations actually used]
   U --> V[Mark assistant completed]
   V --> W[Stream assistant_completed + DONE]
 ```
 
-Chat always runs mandatory company knowledge retrieval before answering. The LLM may answer with gaps when evidence is weak, but it must not invent unsupported internal facts.
+Chat runs a small LLM classifier before pre-retrieval. If the message needs uploaded company evidence, or if classification fails, the backend retrieves company knowledge before the consultant agent answers. The consultant agent also has the retrieval tool available during the run. It may answer without local retrieval for clearly off-context chat, but it must not invent unsupported internal facts.
 
 ### Tavily web search policy
 

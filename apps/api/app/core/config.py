@@ -25,6 +25,14 @@ class Settings(BaseSettings):
     rag_max_file_size_mb: int = 30
     rag_enable_background_processing: bool = False
 
+    # Chat / AI Consultant configuration
+    chat_openai_api_base_url: str = "https://api.openai.com/v1"
+    chat_openai_api_key: str | None = None
+    chat_openai_model: str = "openai/gpt-4o-mini"
+    chat_max_context_tokens: int = 12000
+    chat_max_output_tokens: int = 2000
+    tavily_api_key: str | None = None
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 

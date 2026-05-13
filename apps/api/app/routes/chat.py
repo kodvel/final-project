@@ -11,6 +11,8 @@ from app.schemas.chat import (
     ChatSessionDetail,
     ChatSessionRead,
     ChatStreamRequest,
+    CitationRead,
+    ToolCallRead,
 )
 from app.services import chat as chat_service
 
@@ -49,10 +51,15 @@ def get_chat_session(
     workspace_id: int = Query(..., description="Workspace ID from client-selected active workspace"),
     session: Session = Depends(get_session),
 ) -> ChatSessionDetail:
-    """Get one Chat Session with persisted messages."""
+    """Get one Chat Session with persisted messages, citations, and tool calls."""
     chat_session = chat_service.get_session_for_workspace(session, session_id, workspace_id)
     if chat_session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat Session not found")
+
+    # Load citations and tool calls for all messages in the session
+    citations = chat_service.list_citations_for_session(session, session_id)
+    tool_calls = chat_service.list_tool_calls_for_session(session, session_id)
+
     return ChatSessionDetail(
         id=chat_session.id,
         workspace_id=chat_session.workspace_id,
@@ -64,6 +71,8 @@ def get_chat_session(
         summary_cutoff_message_id=chat_session.summary_cutoff_message_id,
         summary_updated_at=chat_session.summary_updated_at,
         messages=[ChatMessageRead.model_validate(message) for message in chat_service.list_messages(session, session_id)],
+        citations=[CitationRead.model_validate(c) for c in citations],
+        tool_calls=[ToolCallRead.model_validate(tc) for tc in tool_calls],
     )
 
 

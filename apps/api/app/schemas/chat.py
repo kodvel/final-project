@@ -50,6 +50,8 @@ class ChatSessionRead(BaseModel):
 
 class ChatSessionDetail(ChatSessionRead):
     messages: list[ChatMessageRead]
+    citations: list[CitationRead] = []
+    tool_calls: list[ToolCallRead] = []
 
 
 class ChatMessageCreate(BaseModel):
@@ -77,6 +79,8 @@ class CitationRead(BaseModel):
     id: int
     message_id: int
     source_id: int | None = None
+    artifact_id: int | None = None
+    chunk_id: str | None = None
     citation_type: CitationType = CitationType.UPLOADED_SOURCE
     ordinal: int | None = None
     quote: str | None = None

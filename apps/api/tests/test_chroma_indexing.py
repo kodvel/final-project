@@ -1,7 +1,6 @@
 """Tests for ChromaDB indexing of source_content chunks (migration slice 4)."""
 
 import json
-from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,13 +8,11 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from app.models.enums import (
     ArtifactType,
-    CategoryLabel,
     ProcessingStatus,
     SourceFileType,
     TeamLabel,
 )
 from app.models.source import SourceArtifact, SourceCategory, SourceData
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

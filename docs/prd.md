@@ -132,14 +132,14 @@ The backend uses FastAPI as the API layer, Python for AI/RAG/data processing, SQ
 - PDF structuring uses LiteLLM with `RAG_OPENAI_API_BASE_URL`, `RAG_OPENAI_API_KEY`, and `RAG_OPENAI_MODEL`, defaulting to `google/gemini-3.1-flash-lite-preview`.
 - PDF processing writes extracted markdown to `storage/extracted/{workspace_id}/{source_id}/ocr.md` and chunk metadata to `storage/extracted/{workspace_id}/{source_id}/chunks.json`.
 - Source processing runs synchronously by default for the demo. `RAG_ENABLE_BACKGROUND_PROCESSING=false` keeps sync processing; when enabled later, background failures should fall back to sync processing with a warning.
-- Chat can use all relevant sources by default.
+- Chat can use relevant Sources by default when the message needs uploaded company evidence. A small LLM classifier may skip pre-retrieval for clearly off-context chat; if the classifier fails, the backend retrieves by default.
 - Chat users can override scope by mentioning team, category, period, or source constraints in natural language.
 - Chat is full-session-aware. The backend loads all Chat Session messages and builds bounded model context with a conversation summary for older messages, recent raw messages, and the current user message.
 - Chat context assembly is budgeted across conversation history, uploaded Source RAG evidence, optional Tavily web evidence, and reserved output tokens. Grounding rules and the current user message are never dropped.
 - RAG evidence injected into Chat must be compact, validated against SQL, deduplicated, reranked, diversity-capped by Source, and quality-gated before it is shown to the model.
 - Chat streams responses through DeltaKit-compatible Server-Sent Events: `text/event-stream` with `data:` JSON events that include a `type` field and end with `data: [DONE]`.
 - Chat responses are semi-structured by default: Direct Answer, Evidence, Interpretation, Recommendation / Next Step, and Confidence + Gaps.
-- Chat answers must be source-grounded. If data is insufficient, the AI must say so and ask for missing information or label assumptions clearly.
+- Chat answers about uploaded company context must be source-grounded. If data is insufficient, the AI must say so and ask for missing information or label assumptions clearly.
 - Chat may use Tavily web search only when uploaded Source evidence is weak or empty and the question is public, current, market-facing, or generally answerable from the web. Web evidence must be labeled separately from uploaded Source evidence.
 - Chat responses should expose View Sources. They may expose View Trace when Langfuse trace information exists.
 - View Trace links to or references Langfuse trace information. The trace slash command is not part of the MVP.
@@ -370,6 +370,8 @@ User messages are stored as `completed`. Assistant messages are created as `stre
 
 Stores simplified tool-call summaries for UI/debugging. Full details belong in Langfuse.
 
+Tool-call stream events expose only tool name, call ID, and status. They must not expose private model reasoning, full prompts, raw retrieved chunks, Tavily raw results, secrets, or full tool arguments.
+
 - `id`
 - `message_id`
 - `tool_name`
@@ -560,9 +562,9 @@ The PRD expects high-level API contracts, not final OpenAPI definitions.
   - If `session_id` is present, the backend validates that the Chat Session belongs to the requested Workspace.
   - The endpoint handles normal chat and the supported MVP slash command `/decision-brief`.
 
-Chat auto-selects relevant Sources by default. User messages may narrow Source Scope by mentioning team, category, period, or source constraints in natural language; this scope is evaluated per message and is not a persistent chat filter in MVP.
+Chat auto-selects relevant Sources by default when the message needs uploaded company evidence. A small LLM classifier decides whether to run local pre-retrieval before the consultant agent. If classification fails, the backend retrieves by default. The consultant agent still has the retrieval tool available for follow-up or refinement. User messages may narrow Source Scope by mentioning team, category, period, or source constraints in natural language; this scope is evaluated per message and is not a persistent chat filter in MVP.
 
-Stream events are SSE `data:` JSON objects with a `type` field. Built-in DeltaKit-compatible event types include `text_delta`, `tool_call`, and `tool_result`. App-specific event types include `session_created`, `user_message_saved`, `assistant_started`, `sources_used`, `web_sources_used`, `decision_brief_created`, `assistant_completed`, `assistant_interrupted`, and `error`. The stream ends with `data: [DONE]`.
+Stream events are SSE `data:` JSON objects with a `type` field. Built-in DeltaKit-compatible event types include `text_delta`, `tool_call`, and `tool_result`. App-specific event types include `session_created`, `user_message_saved`, `assistant_started`, `sources_used`, `web_sources_used`, `decision_brief_created`, `assistant_completed`, `assistant_interrupted`, and `error`. The stream ends with `data: [DONE]`. The backend converts OpenAI Agents SDK stream events into this DeltaKit SSE format and uses `fetch`/ReadableStream on the frontend for the POST stream. It does not use named SSE `event:` fields or native `EventSource` for the MVP stream contract.
 
 #### Decision Briefs
 
@@ -628,23 +630,25 @@ flowchart TD
   F --> G[Create assistant chat_message streaming]
   G --> H[Build context: conversation summary + recent raw messages + current message]
   H --> I[Reserve output budget]
-  I --> J[Retrieve company knowledge]
-  J --> K[SQL eligible ready Sources]
-  K --> L[ChromaDB source_content search]
-  L --> M[Validate, dedupe, rerank, diversity-cap, and quality-gate evidence]
-  M --> N{Local evidence sufficient?}
-  N -->|Yes| O[Stream sources_used]
-  N -->|Weak/empty and web-capable| P[Tavily web search]
-  N -->|Weak/empty not web-capable| Q[Answer with gaps]
-  P --> R[Stream web_sources_used]
-  O --> S[Stream text_delta answer]
-  R --> S
-  Q --> S
-  S --> T[Validate used citation IDs]
-  T --> U[Save final assistant content]
-  U --> V[Save citations actually used]
-  V --> W[Record tool calls and optional trace]
-  W --> X[Mark assistant completed and stream DONE]
+  I --> J[Classify whether local Source retrieval is needed]
+  J -->|Needed or classifier fails| K[Retrieve company knowledge]
+  J -->|Not needed| R[Agent generates answer]
+  K --> L[SQL eligible ready Sources]
+  L --> M[ChromaDB source_content search]
+  M --> N[Validate, dedupe, rerank, diversity-cap, and quality-gate evidence]
+  N --> O{Local evidence sufficient?}
+  O -->|Yes| P[Stream sources_used]
+  O -->|Weak/empty and web-capable| Q[Tavily web search]
+  O -->|Weak/empty not web-capable| R
+  P --> R
+  Q --> S[Stream web_sources_used]
+  S --> R
+  R --> T[Stream text_delta answer]
+  T --> U[Validate used citation IDs]
+  U --> V[Save final assistant content]
+  V --> W[Save citations actually used]
+  W --> X[Record tool calls and optional trace]
+  X --> Y[Mark assistant completed and stream DONE]
 ```
 
 ### Decision Brief Draft Flow

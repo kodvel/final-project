@@ -242,7 +242,6 @@ def list_visualizations(
     period_end_month: str | None = None,
 ):
     """Legacy: list visualization artifacts per source. Tests use /visualizations/{source_id}."""
-    from app.models.enums import CategoryLabel, TeamLabel
     from app.models.source import SourceCategory
     from app.schemas.visualization import VisualizationArtifactRead
 

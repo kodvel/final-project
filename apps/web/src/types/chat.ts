@@ -72,10 +72,14 @@ export type ChatMessageApi = {
 
 export type ChatSessionDetail = ChatSession & {
   messages: ChatMessage[]
+  citations: MessageSourceCitation[]
+  toolCalls: AgentToolCall[]
 }
 
 export type ChatSessionDetailApi = ChatSessionApi & {
   messages: ChatMessageApi[]
+  citations: MessageSourceCitationApi[]
+  tool_calls: AgentToolCallApi[]
 }
 
 export type CreateChatSessionInput = {
@@ -143,6 +147,28 @@ export type StreamErrorEvent = {
   error: string
 }
 
+export type ToolCallEvent = {
+  type: 'tool_call'
+  tool_name: string
+  call_id?: string | null
+}
+
+export type ToolResultEvent = {
+  type: 'tool_result'
+  call_id?: string | null
+  ok: boolean
+}
+
+export type SourcesUsedEvent = {
+  type: 'sources_used'
+  citations: MessageSourceCitationApi[]
+}
+
+export type WebSourcesUsedEvent = {
+  type: 'web_sources_used'
+  citations: MessageSourceCitationApi[]
+}
+
 export type StreamEvent =
   | SessionCreatedEvent
   | UserMessageSavedEvent
@@ -150,6 +176,10 @@ export type StreamEvent =
   | TextDeltaEvent
   | AssistantCompletedEvent
   | StreamErrorEvent
+  | ToolCallEvent
+  | ToolResultEvent
+  | SourcesUsedEvent
+  | WebSourcesUsedEvent
 
 export type StreamHandlers = {
   onSessionCreated?: (event: SessionCreatedEvent) => void
@@ -158,11 +188,18 @@ export type StreamHandlers = {
   onTextDelta?: (event: TextDeltaEvent) => void
   onAssistantCompleted?: (event: AssistantCompletedEvent) => void
   onError?: (event: StreamErrorEvent) => void
+  onToolCall?: (event: ToolCallEvent) => void
+  onToolResult?: (event: ToolResultEvent) => void
+  onSourcesUsed?: (event: SourcesUsedEvent) => void
+  onWebSourcesUsed?: (event: WebSourcesUsedEvent) => void
 }
 
 // ---------------------------------------------------------------------------
-// Tool calls & citations (minimal for now)
+// Tool calls & citations
 // ---------------------------------------------------------------------------
+
+export type CitationType = 'uploaded_source' | 'web'
+export type CitationStatus = 'available' | 'source_deleted' | 'source_failed' | 'artifact_missing' | 'web_unavailable'
 
 export type AgentToolCall = {
   id: number
@@ -170,7 +207,7 @@ export type AgentToolCall = {
   toolName: string
   status: string
   summary: string
-  createdAt: IsoDateTime
+  createdAt?: IsoDateTime | null
 }
 
 export type AgentToolCallApi = {
@@ -179,25 +216,43 @@ export type AgentToolCallApi = {
   tool_name: string
   status: string
   summary: string
-  created_at: IsoDateTime
+  created_at?: IsoDateTime | null
 }
 
 export type MessageSourceCitation = {
   id: number
   messageId: number
-  sourceId: number
-  artifactId?: number | null
-  quote?: string | null
-  pageNumber?: number | null
-  createdAt: IsoDateTime
+  sourceId: number | null
+  artifactId: number | null
+  chunkId: string | null
+  citationType: CitationType
+  ordinal: number | null
+  quote: string | null
+  snippet?: string | null
+  pageNumber: number | null
+  url: string | null
+  title: string | null
+  domain: string | null
+  citationStatus: CitationStatus
+  relevanceScore: number | null
+  createdAt?: IsoDateTime | null
 }
 
 export type MessageSourceCitationApi = {
   id: number
   message_id: number
-  source_id: number
-  artifact_id?: number | null
-  quote?: string | null
-  page_number?: number | null
-  created_at: IsoDateTime
+  source_id: number | null
+  artifact_id: number | null
+  chunk_id: string | null
+  citation_type: CitationType
+  ordinal: number | null
+  quote: string | null
+  snippet?: string | null
+  page_number: number | null
+  url: string | null
+  title: string | null
+  domain: string | null
+  citation_status: CitationStatus
+  relevance_score: number | null
+  created_at?: IsoDateTime | null
 }

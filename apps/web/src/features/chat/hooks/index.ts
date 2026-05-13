@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useRef } from 'react'
+import type { StreamChatMessageInput, StreamHandlers } from '../../../types/chat'
 import { getChatSession, listChatSessions, streamChatMessage } from '../api'
-import type { ChatMessage, StreamChatMessageInput, StreamHandlers } from '../../../types/chat'
 
 export function useChatSessions(workspaceId: number | null) {
   return useQuery({
@@ -30,10 +30,7 @@ export function useStreamChat() {
   const streamingRef = useRef(false)
 
   const sendMessage = useCallback(
-    async (
-      input: StreamChatMessageInput,
-      handlers: StreamHandlers,
-    ) => {
+    async (input: StreamChatMessageInput, handlers: StreamHandlers) => {
       // Abort any in-flight stream
       abortRef.current?.abort()
       const controller = new AbortController()

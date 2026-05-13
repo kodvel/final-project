@@ -58,6 +58,7 @@ class MessageSourceCitation(SQLModel, table=True):
     message_id: int = Field(index=True, foreign_key="chat_message.id")
     source_id: int | None = Field(default=None, index=True, foreign_key="source_data.id", nullable=True)
     artifact_id: int | None = Field(default=None, foreign_key="source_artifact.id")
+    chunk_id: str | None = None
     citation_type: CitationType = CitationType.UPLOADED_SOURCE
     ordinal: int | None = None
     quote: str | None = None

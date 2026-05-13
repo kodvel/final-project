@@ -4,14 +4,26 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 from datetime import datetime
 from typing import Generator
 
 from sqlalchemy import asc, desc
 from sqlmodel import Session, select
 
-from app.models.chat import ChatMessage, ChatSession
+from app.agents.consultant import (
+    ConsultantResult,
+    classify_needs_retrieval,
+    parse_source_scope,
+    persist_citations,
+    persist_tool_calls,
+    run_consultant_stream,
+)
+from app.agents.tools import tavily_web_search
+from app.knowledge.retrieval import (
+    EvidenceBundle,
+    retrieve_company_knowledge,
+)
+from app.models.chat import AgentToolCall, ChatMessage, ChatSession, MessageSourceCitation
 from app.models.enums import ChatMessageRole, ChatMessageType, MessageStatus
 from app.models.workspace import Workspace
 from app.services.context_builder import ContextWindow, build_context
@@ -19,16 +31,6 @@ from app.services.context_builder import ContextWindow, build_context
 logger = logging.getLogger(__name__)
 
 DEFAULT_SESSION_TITLE = "New Chat"
-
-# Dummy streaming response split into chunks for SSE simulation.
-_DUMMY_CHUNKS = [
-    "Direct Answer: ",
-    "I saved your message to this Workspace-scoped Chat Session. ",
-    "This is a placeholder streaming assistant response until the source-grounded AI Consultant is implemented.\n\n",
-    "Next Step: ",
-    "Upload or process Sources, then Task 6 can replace this dummy response with grounded evidence, "
-    "citations, interpretation, recommendation, confidence, and gaps.",
-]
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +88,39 @@ def list_messages(session: Session, session_id: int) -> list[ChatMessage]:
     )
 
 
+def list_citations_for_session(session: Session, session_id: int) -> list[MessageSourceCitation]:
+    """List all citations for all messages in a session (for View Sources)."""
+    # Get all message IDs for the session
+    msg_ids = session.exec(
+        select(ChatMessage.id).where(ChatMessage.session_id == session_id)
+    ).all()
+    if not msg_ids:
+        return []
+    return list(
+        session.exec(
+            select(MessageSourceCitation)
+            .where(MessageSourceCitation.message_id.in_(msg_ids))
+            .order_by(asc(MessageSourceCitation.message_id), asc(MessageSourceCitation.ordinal))
+        ).all()
+    )
+
+
+def list_tool_calls_for_session(session: Session, session_id: int) -> list[AgentToolCall]:
+    """List all tool calls for all messages in a session."""
+    msg_ids = session.exec(
+        select(ChatMessage.id).where(ChatMessage.session_id == session_id)
+    ).all()
+    if not msg_ids:
+        return []
+    return list(
+        session.exec(
+            select(AgentToolCall)
+            .where(AgentToolCall.message_id.in_(msg_ids))
+            .order_by(asc(AgentToolCall.message_id), asc(AgentToolCall.id))
+        ).all()
+    )
+
+
 # ---------------------------------------------------------------------------
 # Legacy non-streaming send (kept for backward compat)
 # ---------------------------------------------------------------------------
@@ -117,7 +152,7 @@ def send_message(session: Session, session_id: int, workspace_id: int, content: 
         chat_session.title = _title_from_message(clean_content)
 
     # Build context window (triggers summary refresh for long sessions)
-    context = build_context_for_session(session, chat_session, clean_content)
+    build_context_for_session(session, chat_session, clean_content)
 
     assistant_message = ChatMessage(
         session_id=session_id,
@@ -161,7 +196,8 @@ def stream_chat(db: Session, workspace_id: int, session_id: int | None, message:
     - lazy session creation
     - user message persistence (completed)
     - assistant message creation (streaming → completed)
-    - streaming text delta chunks
+    - pre-retrieval classification and evidence retrieval
+    - consultant agent streaming with tool calls and citations
     - error / interrupted status on exceptions
 
     The caller should wrap in a ``StreamingResponse`` with
@@ -179,7 +215,6 @@ def stream_chat(db: Session, workspace_id: int, session_id: int | None, message:
         return
 
     now = datetime.utcnow()
-    session_created = False
 
     # Lazy session creation
     if session_id is None:
@@ -192,7 +227,6 @@ def stream_chat(db: Session, workspace_id: int, session_id: int | None, message:
         db.commit()
         db.refresh(chat_session)
         session_id = chat_session.id
-        session_created = True
         yield _sse_event({
             "type": "session_created",
             "session": _session_dict(db, session_id),  # type: ignore[arg-type]
@@ -257,35 +291,68 @@ def stream_chat(db: Session, workspace_id: int, session_id: int | None, message:
         "message": _message_dict(assistant_msg),
     })
 
-    # Stream dummy text deltas
+    # --- Task 6: Pre-retrieval classification and evidence ---
+    evidence_bundle: EvidenceBundle | None = None
+    web_results: list[dict] = []
+    needs_retrieval = classify_needs_retrieval(context, clean_message)
+
+    if needs_retrieval:
+        try:
+            # Parse natural-language source scope from user message
+            source_scope = parse_source_scope(clean_message)
+            evidence_bundle = retrieve_company_knowledge(
+                db,
+                workspace_id,
+                clean_message,
+                source_scope=source_scope,
+            )
+        except Exception:
+            logger.warning("Pre-retrieval failed", exc_info=True)
+            evidence_bundle = EvidenceBundle(insufficient_evidence=True, reason="Retrieval error")
+
+        # Stream sources_used if evidence found
+        if evidence_bundle and evidence_bundle.items:
+            citations_data = []
+            for item in evidence_bundle.items:
+                citations_data.append({
+                    "source_title": item.source_title,
+                    "file_type": item.file_type,
+                    "quote": item.quote[:200] if item.quote else None,
+                    "page_number": item.page_number,
+                    "relevance_score": item.relevance_score,
+                })
+            yield _sse_event({
+                "type": "sources_used",
+                "citations": citations_data,
+            })
+
+            # Check if Tavily fallback is needed (weak evidence + web-capable question)
+            if evidence_bundle.insufficient_evidence and _is_web_capable(clean_message):
+                web_results = _try_tavily_search(clean_message)
+                if web_results:
+                    yield _sse_event({
+                        "type": "web_sources_used",
+                        "citations": web_results,
+                    })
+
+    # --- Run consultant agent ---
     collected_content: list[str] = []
+    final_result: ConsultantResult | None = None
+
     try:
-        for chunk in _DUMMY_CHUNKS:
-            collected_content.append(chunk)
-            yield _sse_event({"type": "text_delta", "delta": chunk})
-            time.sleep(0)  # yield control; real LLM would be async
+        for event, result in run_consultant_stream(
+            db=db,
+            workspace_id=workspace_id,
+            context=context,
+            evidence_bundle=evidence_bundle,
+        ):
+            final_result = result
+            yield _sse_event({"type": event.type, **event.data})
 
-        # Finalise assistant message
-        full_content = "".join(collected_content)
-        completed_at = datetime.utcnow()
-        assistant_msg.content = full_content
-        assistant_msg.status = MessageStatus.COMPLETED
-        assistant_msg.completed_at = completed_at
-        assistant_msg.updated_at = completed_at
-        db.add(assistant_msg)
-
-        chat_session.last_message_at = completed_at
-        chat_session.updated_at = completed_at
-        db.add(chat_session)
-        db.commit()
-        db.refresh(assistant_msg)
-
-        yield _sse_event({
-            "type": "assistant_completed",
-            "message": _message_dict(assistant_msg),
-        })
+        if final_result:
+            collected_content.append(final_result.content)
     except Exception:
-        logger.exception("Error during streaming, marking assistant message as interrupted")
+        logger.exception("Error during consultant streaming, marking assistant message as interrupted")
         partial = "".join(collected_content)
         interrupted_at = datetime.utcnow()
         assistant_msg.content = partial
@@ -296,6 +363,48 @@ def stream_chat(db: Session, workspace_id: int, session_id: int | None, message:
         db.commit()
         yield _sse_event({"type": "error", "error": "Stream interrupted"})
         return
+
+    # Finalise assistant message
+    full_content = "".join(collected_content)
+    completed_at = datetime.utcnow()
+    assistant_msg.content = full_content
+    assistant_msg.status = MessageStatus.COMPLETED
+    assistant_msg.completed_at = completed_at
+    assistant_msg.updated_at = completed_at
+
+    # Store unreferenced context in metadata if present
+    if final_result and final_result.unreferenced_context:
+        assistant_msg.metadata_json = {
+            "unreferenced_context": final_result.unreferenced_context,
+        }
+
+    db.add(assistant_msg)
+
+    # Persist tool calls
+    if final_result and final_result.tool_calls:
+        persist_tool_calls(db, assistant_msg.id, final_result.tool_calls)
+
+    # Persist citations
+    if final_result and final_result.citations:
+        persist_citations(db, assistant_msg.id, final_result.citations)
+
+    # Persist web citations
+    if web_results and final_result:
+        from app.agents.consultant import persist_web_citations
+
+        start_ordinal = (len(final_result.citations) + 1) if final_result.citations else 1
+        persist_web_citations(db, assistant_msg.id, web_results, start_ordinal=start_ordinal)
+
+    chat_session.last_message_at = completed_at
+    chat_session.updated_at = completed_at
+    db.add(chat_session)
+    db.commit()
+    db.refresh(assistant_msg)
+
+    yield _sse_event({
+        "type": "assistant_completed",
+        "message": _message_dict(assistant_msg),
+    })
 
     yield "data: [DONE]\n\n"
 
@@ -318,6 +427,36 @@ def build_context_for_session(
         chat_session=chat_session,
         current_user_message=current_user_message,
     )
+
+
+# ---------------------------------------------------------------------------
+# Tavily helper
+# ---------------------------------------------------------------------------
+
+
+def _is_web_capable(message: str) -> bool:
+    """Heuristic check: is the question likely web-answerable?
+
+    Simple check: if the message contains market, industry, competitor,
+    public, or general knowledge keywords, consider it web-capable.
+    """
+    web_keywords = [
+        "market", "industry", "competitor", "trend", "benchmark",
+        "public", "general", "average", "standard", "best practice",
+        "research", "news", "latest", "current",
+    ]
+    lower = message.lower()
+    return any(kw in lower for kw in web_keywords)
+
+
+def _try_tavily_search(query: str) -> list[dict]:
+    """Try Tavily web search, return simplified results or empty list."""
+    try:
+        result = tavily_web_search(query)
+        return result.get("results", [])
+    except Exception:
+        logger.warning("Tavily search failed", exc_info=True)
+        return []
 
 
 # ---------------------------------------------------------------------------
