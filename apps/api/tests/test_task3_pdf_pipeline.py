@@ -71,32 +71,6 @@ def test_count_meaningful_text_empty():
     assert _count_meaningful_text("   \n\n  ") == 0
 
 
-def test_parse_json_with_repair_valid():
-    from app.services.pdf_extractor import _parse_json_with_repair
-
-    assert _parse_json_with_repair('{"key": "value"}') == {"key": "value"}
-
-
-def test_parse_json_with_repair_code_block():
-    from app.services.pdf_extractor import _parse_json_with_repair
-
-    raw = '```json\n{"key": "value"}\n```'
-    assert _parse_json_with_repair(raw) == {"key": "value"}
-
-
-def test_parse_json_with_repair_trailing_comma():
-    from app.services.pdf_extractor import _parse_json_with_repair
-
-    raw = '{"key": "value",}'
-    assert _parse_json_with_repair(raw) == {"key": "value"}
-
-
-def test_parse_json_with_repair_invalid():
-    from app.services.pdf_extractor import _parse_json_with_repair
-
-    assert _parse_json_with_repair("not json at all") is None
-
-
 def test_check_file_size_within_limit():
     from app.services.pdf_extractor import _check_file_size
 
@@ -155,12 +129,13 @@ def _upload_pdf_source(client, workspace_id: int, pdf_content: bytes = b"%PDF-1.
     return response.json()
 
 
-@patch("app.services.pdf_extractor._call_litellm")
+@patch("app.services.llm_extraction.extract_aggregate")
+@patch("app.services.llm_extraction.extract_chunk_label")
 @patch("app.services.pdf_extractor._chunk_markdown")
 @patch("app.services.pdf_extractor._run_mistral_ocr")
 @patch("app.services.pdf_extractor.get_settings")
 def test_pdf_creates_source_summary_and_insight_artifacts(
-    mock_settings_fn, mock_ocr, mock_chunk, mock_litellm, client
+    mock_settings_fn, mock_ocr, mock_chunk, mock_label, mock_aggregate, client
 ):
     """PDF with sufficient OCR text creates source_summary, source_content, and source_insight artifacts."""
     mock_settings_fn.return_value = _mock_settings()
@@ -196,53 +171,59 @@ def test_pdf_creates_source_summary_and_insight_artifacts(
     # Mock chunking: return 2 chunks
     mock_chunk.return_value = ["chunk one text about financials", "chunk two text about market analysis"]
 
-    # Mock LiteLLM calls: first for chunk labels, then for aggregate
-    chunk_label_1 = {
-        "document_section": "financials",
-        "section_confidence": 0.9,
-        "content_type": "metric",
-        "content_type_confidence": 0.9,
-        "topics": ["revenue", "financials"],
-        "entities": ["Company A"],
-        "time_periods": ["Q1 2026"],
-        "summary": "Financial overview with revenue figures",
-        "notable_quotes": [{"quote": "Revenue grew 20%", "page_number": 1}],
-    }
-    chunk_label_2 = {
-        "document_section": "market_context",
-        "section_confidence": 0.9,
-        "content_type": "narrative",
-        "content_type_confidence": 0.9,
-        "topics": ["market", "growth"],
-        "entities": ["Sector Tech"],
-        "time_periods": ["2026"],
-        "summary": "Market analysis showing growth trends",
-        "notable_quotes": [{"quote": "Growth is accelerating", "page_number": 2}],
-    }
-    aggregate_response = {
-        "source_summary": {
-            "summary": "A financial and market analysis report.",
-            "page_count": 3,
-            "ocr_model": "mistral-ocr-latest",
-            "structuring_model": "google/gemini-3.1-flash-lite-preview",
-            "extracted_markdown_path": "/some/path/ocr.md",
-            "chunk_metadata_path": "/some/path/chunks.json",
-            "warnings": [],
-        },
-        "source_insight": {
-            "key_findings": [{"text": "Revenue up 20%", "page_number": 1, "quote": "Revenue grew 20%"}],
-            "assumptions": [{"text": "Market continues growing", "page_number": 2, "quote": None}],
-            "risks": [{"text": "Regulatory risk", "page_number": 3, "quote": None}],
-            "opportunities": [{"text": "Tech sector growth", "page_number": 2, "quote": None}],
-            "source_quotes": [{"text": "Growth accelerating", "page_number": 2, "quote": "Growth is accelerating"}],
-        },
-    }
+    # Mock structured extraction: chunk labels and aggregate
+    from app.services.llm_extraction import (
+        AggregateResponse,
+        ChunkLabelResponse,
+        CitationItem,
+        NotableQuote,
+        SourceInsightExtract,
+        SourceSummaryExtract,
+    )
 
-    mock_litellm.side_effect = [
-        json.dumps(chunk_label_1),  # label chunk 1
-        json.dumps(chunk_label_2),  # label chunk 2
-        json.dumps(aggregate_response),  # aggregate
+    mock_label.side_effect = [
+        ChunkLabelResponse(
+            document_section="financials",
+            section_confidence=0.9,
+            content_type="metric",
+            content_type_confidence=0.9,
+            topics=["revenue", "financials"],
+            entities=["Company A"],
+            time_periods=["Q1 2026"],
+            summary="Financial overview with revenue figures",
+            notable_quotes=[NotableQuote(quote="Revenue grew 20%", page_number=1)],
+        ),
+        ChunkLabelResponse(
+            document_section="market_context",
+            section_confidence=0.9,
+            content_type="narrative",
+            content_type_confidence=0.9,
+            topics=["market", "growth"],
+            entities=["Sector Tech"],
+            time_periods=["2026"],
+            summary="Market analysis showing growth trends",
+            notable_quotes=[NotableQuote(quote="Growth is accelerating", page_number=2)],
+        ),
     ]
+
+    mock_aggregate.return_value = AggregateResponse(
+        source_summary=SourceSummaryExtract(
+            summary="A financial and market analysis report.",
+            page_count=3,
+            ocr_model="mistral-ocr-latest",
+            structuring_model="google/gemini-3.1-flash-lite-preview",
+            extracted_markdown_path="/some/path/ocr.md",
+            chunk_metadata_path="/some/path/chunks.json",
+            warnings=[],
+        ),
+        source_insight=SourceInsightExtract(
+            key_findings=[CitationItem(text="Revenue up 20%", page_number=1, quote="Revenue grew 20%")],
+            assumptions=[CitationItem(text="Market continues growing", page_number=2, quote=None)],
+            risks=[CitationItem(text="Regulatory risk", page_number=3, quote=None)],
+            opportunities=[CitationItem(text="Tech sector growth", page_number=2, quote=None)],
+            source_quotes=[CitationItem(text="Growth accelerating", page_number=2, quote="Growth is accelerating")],
+        ),
+    )
 
     workspace = create_workspace(client)
     source = _upload_pdf_source(client, workspace["id"])
@@ -282,12 +263,10 @@ def test_pdf_creates_source_summary_and_insight_artifacts(
     assert "document_summary" not in insight["content_json"]
 
 
-@patch("app.services.pdf_extractor._call_litellm")
-@patch("app.services.pdf_extractor._chunk_markdown")
 @patch("app.services.pdf_extractor._run_mistral_ocr")
 @patch("app.services.pdf_extractor.get_settings")
 def test_short_ocr_creates_summary_and_content_warning_no_insight(
-    mock_settings_fn, mock_ocr, mock_chunk, mock_litellm, client
+    mock_settings_fn, mock_ocr, client
 ):
     """PDF with <500 meaningful chars creates source_summary and source_content with warning, no source_insight."""
     mock_settings_fn.return_value = _mock_settings()
@@ -359,12 +338,13 @@ def test_missing_openai_key_marks_source_failed(mock_settings_fn, client):
     assert "RAG_OPENAI_API_KEY" in source["processing_error"]
 
 
-@patch("app.services.pdf_extractor._call_litellm")
+@patch("app.services.llm_extraction.extract_aggregate")
+@patch("app.services.llm_extraction.extract_chunk_label")
 @patch("app.services.pdf_extractor._chunk_markdown")
 @patch("app.services.pdf_extractor._run_mistral_ocr")
 @patch("app.services.pdf_extractor.get_settings")
 def test_ocr_handles_page_objects_with_attributes(
-    mock_settings_fn, mock_ocr, mock_chunk, mock_litellm, client
+    mock_settings_fn, mock_ocr, mock_chunk, mock_label, mock_aggregate, client
 ):
     """OCR should handle Mistral response pages as both objects and dicts."""
     mock_settings_fn.return_value = _mock_settings()
@@ -389,38 +369,44 @@ def test_ocr_handles_page_objects_with_attributes(
     ]
 
     mock_chunk.return_value = ["chunk text about financials and revenue analysis"]
-    aggregate_response = {
-        "source_summary": {
-            "summary": "Financial analysis report.",
-            "page_count": 2,
-            "ocr_model": "mistral-ocr-latest",
-            "structuring_model": "google/gemini-3.1-flash-lite-preview",
-            "extracted_markdown_path": "/path/ocr.md",
-            "chunk_metadata_path": "/path/chunks.json",
-            "warnings": [],
-        },
-        "source_insight": {
-            "key_findings": [],
-            "assumptions": [],
-            "risks": [],
-            "opportunities": [],
-            "source_quotes": [],
-        },
-    }
-    mock_litellm.side_effect = [
-        json.dumps({
-            "document_section": "financials",
-            "section_confidence": 0.9,
-            "content_type": "narrative",
-            "content_type_confidence": 0.9,
-            "topics": ["finance"],
-            "entities": [],
-            "time_periods": [],
-            "summary": "Financial analysis",
-            "notable_quotes": [],
-        }),
-        json.dumps(aggregate_response),
-    ]
+
+    from app.services.llm_extraction import (
+        AggregateResponse,
+        ChunkLabelResponse,
+        SourceInsightExtract,
+        SourceSummaryExtract,
+    )
+
+    mock_label.return_value = ChunkLabelResponse(
+        document_section="financials",
+        section_confidence=0.9,
+        content_type="narrative",
+        content_type_confidence=0.9,
+        topics=["finance"],
+        entities=[],
+        time_periods=[],
+        summary="Financial analysis",
+        notable_quotes=[],
+    )
+
+    mock_aggregate.return_value = AggregateResponse(
+        source_summary=SourceSummaryExtract(
+            summary="Financial analysis report.",
+            page_count=2,
+            ocr_model="mistral-ocr-latest",
+            structuring_model="google/gemini-3.1-flash-lite-preview",
+            extracted_markdown_path="/path/ocr.md",
+            chunk_metadata_path="/path/chunks.json",
+            warnings=[],
+        ),
+        source_insight=SourceInsightExtract(
+            key_findings=[],
+            assumptions=[],
+            risks=[],
+            opportunities=[],
+            source_quotes=[],
+        ),
+    )
 
     workspace = create_workspace(client)
     source = _upload_pdf_source(client, workspace["id"])

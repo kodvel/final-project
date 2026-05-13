@@ -1,6 +1,6 @@
 """PDF text extraction and insight-board generation.
 
-Pipeline: OCR (Mistral) → Chunk (Chonkie) → Label chunks (LiteLLM) → Aggregate (LiteLLM) → Artifacts.
+Pipeline: OCR (Mistral) → Chunk (Chonkie) → Label chunks (OpenAI structured) → Aggregate (OpenAI structured) → Artifacts.
 """
 
 import base64
@@ -10,11 +10,13 @@ import re
 from pathlib import Path
 from typing import Any
 
+from openai import OpenAI
 from sqlmodel import Session
 
 from app.core.config import get_settings
 from app.models.enums import ArtifactType
 from app.models.source import SourceData
+from app.services import llm_extraction
 from app.services.artifacts import get_source_artifact, upsert_source_artifact
 
 logger = logging.getLogger(__name__)
@@ -119,122 +121,19 @@ def _chunk_markdown(markdown: str, chunk_size: int = 3000, min_chars: int = 300)
 
 
 # ---------------------------------------------------------------------------
-# LiteLLM labeling helpers (mockable)
+# Chunk labeling helpers (OpenAI structured parsing)
 # ---------------------------------------------------------------------------
 
-CHUNK_LABEL_SYSTEM_PROMPT = """You are a document analysis assistant. Label the following text chunk with metadata.
-Respond ONLY with valid JSON matching this schema:
-{
-  "document_section": "one allowed document_section label",
-  "section_confidence": 0.0,
-  "content_type": "narrative|table|metric|quote|assumption|risk|opportunity|recommendation|raw_text",
-  "content_type_confidence": 0.0,
-  "topics": ["topic1", "topic2"],
-  "entities": ["entity1", "entity2"],
-  "time_periods": ["period1"],
-  "summary": "brief summary of chunk content",
-  "notable_quotes": [{"quote": "verbatim quote", "page_number": 1}]
-}
-Allowed document_section labels: executive_summary, market_context, customer_insight, competitor_analysis,
-financials, product_feature, risks, opportunities, recommendation, methodology, appendix, unknown.
-Use only the allowed content_type labels. Use 0.0 to 1.0 numeric confidence scores."""
 
-AGGREGATE_SYSTEM_PROMPT = """You are a document intelligence analyst. Given chunk metadata from a document, produce two JSON objects.
-
-For source_summary:
-{
-  "summary": "overall document summary",
-  "page_count": number,
-  "ocr_model": "mistral-ocr-latest",
-  "structuring_model": "provided_model_name",
-  "extracted_markdown_path": "path",
-  "chunk_metadata_path": "path",
-  "warnings": []
-}
-
-For source_insight:
-{
-  "key_findings": [{"text": "finding", "page_number": null, "quote": null}, ...up to 5],
-  "assumptions": [{"text": "assumption", "page_number": null, "quote": null}, ...up to 3],
-  "risks": [{"text": "risk", "page_number": null, "quote": null}, ...up to 5],
-  "opportunities": [{"text": "opportunity", "page_number": null, "quote": null}, ...up to 5],
-  "source_quotes": [{"text": "quote", "page_number": null, "quote": "verbatim"}, ...up to 5]
-}
-
-Do NOT include a document_summary field in source_insight.
-Respond with a single JSON object with keys "source_summary" and "source_insight"."""
-
-
-def _call_litellm(system_prompt: str, user_content: str, api_base: str, api_key: str, model: str) -> str:
-    """Make a single LiteLLM call and return the response text."""
-    import litellm
-
-    response = litellm.completion(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content},
-        ],
-        api_base=api_base,
-        api_key=api_key,
-        temperature=0.1,
-    )
-    return response.choices[0].message.content
-
-
-def _parse_json_with_repair(raw: str) -> Any:
-    """Parse JSON string with one repair attempt."""
-    # Try direct parse
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        pass
-
-    # Try to extract JSON from markdown code block
-    match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", raw, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(1))
-        except json.JSONDecodeError:
-            pass
-
-    # Try to fix common issues: trailing commas
-    fixed = re.sub(r",\s*([}\]])", r"\1", raw)
-    try:
-        return json.loads(fixed)
-    except json.JSONDecodeError:
-        pass
-
-    return None
-
-
-def _label_chunk(chunk_text: str, api_base: str, api_key: str, model: str) -> dict:
-    """Label a single chunk with metadata using LiteLLM. One retry on failure."""
-    last_error = None
-    for attempt in range(2):
-        try:
-            raw = _call_litellm(CHUNK_LABEL_SYSTEM_PROMPT, chunk_text, api_base, api_key, model)
-            parsed = _parse_json_with_repair(raw)
-            if parsed is None:
-                raise ValueError(f"Failed to parse chunk label JSON (attempt {attempt + 1})")
-            if isinstance(parsed, list):
-                parsed = parsed[0] if parsed else {}
-            return parsed
-        except Exception as e:
-            last_error = e
-            if attempt == 0:
-                logger.warning("Chunk labeling failed (attempt 1), retrying: %s", e)
-    raise RuntimeError(f"Chunk labeling failed after retry: {last_error}")
-
-
-def _label_all_chunks(chunks: list[str], api_base: str, api_key: str, model: str) -> list[dict]:
-    """Label all chunks with metadata."""
+def _label_all_chunks(chunks: list[str], client: OpenAI, model: str) -> list[dict]:
+    """Label all chunks with metadata via ``llm_extraction.extract_chunk_label``."""
     labeled = []
     for index, chunk in enumerate(chunks):
-        metadata = _label_chunk(chunk, api_base, api_key, model)
-        metadata.setdefault("chunk_index", index)
-        metadata.setdefault("chunk_text", chunk)
-        metadata.setdefault("page_numbers", _extract_page_numbers(chunk))
+        response = llm_extraction.extract_chunk_label(client, model, chunk)
+        metadata = response.model_dump()
+        metadata["chunk_index"] = index
+        metadata["chunk_text"] = chunk
+        metadata["page_numbers"] = _extract_page_numbers(chunk)
         labeled.append(metadata)
     return labeled
 
@@ -250,36 +149,20 @@ def _aggregate_metadata(
     ocr_md_path: str,
     chunks_path: str,
     model: str,
-    api_base: str,
-    api_key: str,
+    client: OpenAI,
 ) -> tuple[dict, dict]:
-    """Aggregate chunk metadata into source_summary and source_insight using LiteLLM."""
-    aggregate_input = json.dumps({
-        "chunk_metadata": chunk_metadata,
-        "page_count": page_count,
-        "ocr_model": "mistral-ocr-latest",
-        "structuring_model": model,
-        "extracted_markdown_path": ocr_md_path,
-        "chunk_metadata_path": chunks_path,
-    })
+    """Aggregate chunk metadata into source_summary and source_insight via ``llm_extraction.extract_aggregate``."""
+    response = llm_extraction.extract_aggregate(
+        client,
+        model,
+        chunk_metadata,
+        page_count,
+        ocr_md_path,
+        chunks_path,
+    )
 
-    last_error = None
-    for attempt in range(2):
-        try:
-            raw = _call_litellm(AGGREGATE_SYSTEM_PROMPT, aggregate_input, api_base, api_key, model)
-            parsed = _parse_json_with_repair(raw)
-            if parsed is None:
-                raise ValueError(f"Failed to parse aggregate JSON (attempt {attempt + 1})")
-            break
-        except Exception as e:
-            last_error = e
-            if attempt == 0:
-                logger.warning("Aggregate labeling failed (attempt 1), retrying: %s", e)
-    else:
-        raise RuntimeError(f"Aggregate labeling failed after retry: {last_error}")
-
-    source_summary = parsed.get("source_summary", {})
-    source_insight = parsed.get("source_insight", {})
+    source_summary = response.source_summary.model_dump()
+    source_insight = response.source_insight.model_dump()
 
     # Ensure summary has required fields
     source_summary["page_count"] = page_count
@@ -327,6 +210,13 @@ def process_pdf(session: Session, source: SourceData) -> None:
         raise ValueError("RAG_MISTRAL_API_KEY is not configured. PDF processing requires Mistral OCR.")
     if not settings.rag_openai_api_key:
         raise ValueError("RAG_OPENAI_API_KEY is not configured. PDF processing requires an LLM for labeling.")
+
+    # Create OpenAI client for structured extraction
+    client = OpenAI(
+        api_key=settings.rag_openai_api_key,
+        base_url=settings.rag_openai_api_base_url,
+    )
+    model = settings.rag_openai_model
 
     # Read and validate file
     pdf_bytes = _read_pdf_bytes(source.storage_path)
@@ -414,12 +304,7 @@ def process_pdf(session: Session, source: SourceData) -> None:
     chunks = _chunk_markdown(markdown)
 
     # Label each chunk
-    chunk_metadata = _label_all_chunks(
-        chunks,
-        settings.rag_openai_api_base_url,
-        settings.rag_openai_api_key,
-        settings.rag_openai_model,
-    )
+    chunk_metadata = _label_all_chunks(chunks, client, model)
 
     # Save chunk metadata
     chunks_path.write_text(json.dumps(chunk_metadata, indent=2), encoding="utf-8")
@@ -430,9 +315,8 @@ def process_pdf(session: Session, source: SourceData) -> None:
         page_count,
         str(ocr_md_path),
         str(chunks_path),
-        settings.rag_openai_model,
-        settings.rag_openai_api_base_url,
-        settings.rag_openai_api_key,
+        model,
+        client,
     )
 
     # Upsert artifacts via centralized service

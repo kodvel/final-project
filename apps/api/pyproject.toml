@@ -9,6 +9,7 @@ dependencies = [
   "fastapi==0.136.1",
   "litellm==1.83.14",
   "mistralai @ https://files.pythonhosted.org/packages/1b/48/2c5c4f853dec32a625c1a3d23809b80cf2e135c3441fe1764f72910dfea9/mistralai-2.4.5-py3-none-any.whl#sha256=bf3b6550258ab16dec8547b90e9c18bebf9099f55b7fc25a884bf0bbeffced0f",
+  "openai==2.24.0",
   "openai-agents[litellm]==0.6.3",
   "pydantic-settings==2.14.0",
   "python-multipart==0.0.27",
