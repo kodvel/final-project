@@ -263,6 +263,11 @@ def stream_chat(db: Session, workspace_id: int, session_id: int | None, message:
         "message": _message_dict(user_msg),
     })
 
+    # --- /decision-brief command ---
+    if clean_message.lower() == "/decision-brief":
+        yield from _handle_decision_brief_command(db, workspace_id, session_id, chat_session)
+        return
+
     # Build context window (triggers summary refresh for long sessions)
     context = build_context_for_session(db, chat_session, clean_message)
     logger.debug(
@@ -427,6 +432,45 @@ def build_context_for_session(
         chat_session=chat_session,
         current_user_message=current_user_message,
     )
+
+
+# ---------------------------------------------------------------------------
+# /decision-brief command handler
+# ---------------------------------------------------------------------------
+
+
+def _handle_decision_brief_command(
+    db: Session,
+    workspace_id: int,
+    session_id: int,
+    chat_session: "ChatSession",
+) -> "Generator[str, None, None]":
+    from app.services.decision_briefs import generate_decision_brief
+    from app.schemas.decision_brief import DecisionBriefRead
+
+    try:
+        assistant_msg, brief = generate_decision_brief(db, workspace_id, session_id)
+    except Exception as exc:
+        logger.exception("Decision brief generation failed")
+        yield _sse_event({"type": "error", "error": f"Decision brief generation failed: {exc}"})
+        return
+
+    msg_dict = _message_dict(assistant_msg)
+
+    if brief is None:
+        # Insufficient context — command_result message already saved
+        yield _sse_event({"type": "assistant_completed", "message": msg_dict})
+        yield "data: [DONE]\n\n"
+        return
+
+    brief_data = DecisionBriefRead.model_validate(brief).model_dump(mode="json")
+    yield _sse_event({
+        "type": "decision_brief_created",
+        "message": msg_dict,
+        "brief": brief_data,
+    })
+    yield _sse_event({"type": "assistant_completed", "message": msg_dict})
+    yield "data: [DONE]\n\n"
 
 
 # ---------------------------------------------------------------------------

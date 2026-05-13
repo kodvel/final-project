@@ -1,3 +1,4 @@
+import type { DecisionBriefApi } from './decision-brief'
 import type { IsoDateTime } from './common'
 
 export type ChatMessageRole = 'user' | 'assistant' | 'system'
@@ -169,6 +170,12 @@ export type WebSourcesUsedEvent = {
   citations: MessageSourceCitationApi[]
 }
 
+export type DecisionBriefCreatedEvent = {
+  type: 'decision_brief_created'
+  message: ChatMessageApi
+  brief: DecisionBriefApi
+}
+
 export type StreamEvent =
   | SessionCreatedEvent
   | UserMessageSavedEvent
@@ -180,6 +187,7 @@ export type StreamEvent =
   | ToolResultEvent
   | SourcesUsedEvent
   | WebSourcesUsedEvent
+  | DecisionBriefCreatedEvent
 
 export type StreamHandlers = {
   onSessionCreated?: (event: SessionCreatedEvent) => void
@@ -192,6 +200,7 @@ export type StreamHandlers = {
   onToolResult?: (event: ToolResultEvent) => void
   onSourcesUsed?: (event: SourcesUsedEvent) => void
   onWebSourcesUsed?: (event: WebSourcesUsedEvent) => void
+  onDecisionBriefCreated?: (event: DecisionBriefCreatedEvent) => void
 }
 
 // ---------------------------------------------------------------------------

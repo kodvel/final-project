@@ -4,6 +4,7 @@ import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useStat
 import { useChatSession, useChatSessions, useStreamChat } from '../features/chat/hooks'
 import { useActiveWorkspace } from '../features/workspaces/hooks/use-active-workspace'
 import type { AgentToolCall, ChatMessage, MessageSourceCitation } from '../types/chat'
+import type { DecisionBriefApi, DecisionBriefContentJson } from '../types/decision-brief'
 
 export const Route = createFileRoute('/chat')({
   component: ChatPage,
@@ -49,6 +50,7 @@ export function ChatPage() {
   const [isThinking, setIsThinking] = useState(false)
   const [optimisticMessages, setOptimisticMessages] = useState<DisplayMessage[]>([])
   const [streamingText, setStreamingText] = useState('')
+  const [briefsByMessageId, setBriefsByMessageId] = useState<Record<number, DecisionBriefApi>>({})
   const optIdCounter = useRef(0)
 
   const persistedMessages: ChatMessage[] = activeSession?.messages ?? []
@@ -116,6 +118,9 @@ export function ChatPage() {
           },
           onTextDelta: (event) => {
             setStreamingText((prev) => prev + event.delta)
+          },
+          onDecisionBriefCreated: (event) => {
+            setBriefsByMessageId((prev) => ({ ...prev, [event.message.id]: event.brief }))
           },
           onAssistantCompleted: () => {
             // Refetch happens inside useStreamChat; clear optimistic state
@@ -185,6 +190,7 @@ export function ChatPage() {
                     message={message}
                     citations={!isOptimistic(message) ? (activeSession?.citations.filter((citation) => citation.messageId === message.id) ?? []) : []}
                     toolCalls={!isOptimistic(message) ? (activeSession?.toolCalls.filter((toolCall) => toolCall.messageId === message.id) ?? []) : []}
+                    brief={!isOptimistic(message) && typeof message.id === 'number' ? (briefsByMessageId[message.id] ?? null) : null}
                   />
                 ),
               )
@@ -260,11 +266,16 @@ function AssistantCard({
   message,
   citations,
   toolCalls,
+  brief,
 }: {
   message: DisplayMessage
   citations: MessageSourceCitation[]
   toolCalls: AgentToolCall[]
+  brief?: DecisionBriefApi | null
 }) {
+  const isDecisionBrief = !isOptimistic(message) && (message as ChatMessage).messageType === 'decision_brief'
+  const isCommandResult = !isOptimistic(message) && (message as ChatMessage).messageType === 'command_result'
+
   return (
     <article>
       <div className="mb-5 flex items-center gap-3">
@@ -272,8 +283,18 @@ function AssistantCard({
           <Bot className="h-5 w-5" />
         </div>
         <h2 className="font-heading text-lg font-semibold text-foreground">Intelligence Copilot</h2>
+        {isDecisionBrief && (
+          <span className="rounded-full bg-primary/10 px-3 py-1 font-mono text-xs font-semibold text-primary">Decision Brief</span>
+        )}
       </div>
 
+      {isDecisionBrief && brief ? (
+        <DecisionBriefCard brief={brief} />
+      ) : isCommandResult ? (
+        <div className="rounded-2xl border border-border bg-surface-subtle p-6 shadow-sm">
+          <p className="whitespace-pre-line text-sm leading-7 text-muted-foreground">{message.content}</p>
+        </div>
+      ) : (
       <div className="rounded-2xl border border-border bg-card p-8 shadow-sm">
         <div className="border-l-4 border-highlight pl-7">
           <p className="whitespace-pre-line text-sm leading-7 text-foreground">{message.content}</p>
@@ -339,7 +360,63 @@ function AssistantCard({
           )}
         </div>
       </div>
+      )}
     </article>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Decision Brief Card
+// ---------------------------------------------------------------------------
+
+const REC_LABELS: Record<string, { label: string; className: string }> = {
+  go: { label: 'GO', className: 'bg-status-ready-foreground/10 text-status-ready-foreground' },
+  no_go: { label: 'NO GO', className: 'bg-status-failed-foreground/10 text-status-failed-foreground' },
+  validate_first: { label: 'VALIDATE FIRST', className: 'bg-amber-500/10 text-amber-600' },
+}
+
+const SECTIONS: { key: keyof DecisionBriefContentJson; label: string }[] = [
+  { key: 'context_problem', label: 'Context & Problem' },
+  { key: 'source_evidence', label: 'Source Evidence' },
+  { key: 'strategic_interpretation', label: 'Strategic Interpretation' },
+  { key: 'recommendation', label: 'Recommendation' },
+  { key: 'alternatives_considered', label: 'Alternatives Considered' },
+  { key: 'risks_assumptions', label: 'Risks & Assumptions' },
+  { key: 'success_metrics', label: 'Success Metrics' },
+  { key: 'next_steps', label: 'Next Steps' },
+]
+
+function DecisionBriefCard({ brief }: { brief: DecisionBriefApi }) {
+  const rec = REC_LABELS[brief.recommendation_status] ?? { label: brief.recommendation_status.toUpperCase(), className: 'bg-chip-gray text-text-hint' }
+  return (
+    <div className="rounded-2xl border border-highlight bg-card shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between gap-4 border-b border-border bg-accent px-7 py-5">
+        <div className="min-w-0">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-text-hint mb-1">
+            Decision Brief Draft #{brief.sequence_number}
+          </p>
+          <h3 className="font-heading text-base font-semibold text-foreground truncate">{brief.title}</h3>
+          {brief.objective && <p className="mt-1 text-xs text-muted-foreground">{brief.objective}</p>}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className={`rounded-full px-3 py-1 font-mono text-xs font-semibold ${rec.className}`}>{rec.label}</span>
+          <span className="rounded bg-chip-gray px-2 py-1 font-mono text-[11px] text-text-hint">DRAFT</span>
+        </div>
+      </div>
+
+      <div className="divide-y divide-border">
+        {SECTIONS.map(({ key, label }) => {
+          const text = brief.content_json[key]?.trim()
+          if (!text) return null
+          return (
+            <div key={key} className="px-7 py-5">
+              <p className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-text-hint">{label}</p>
+              <p className="text-sm leading-7 text-foreground whitespace-pre-line">{text}</p>
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 

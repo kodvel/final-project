@@ -11,6 +11,7 @@ import type {
   ChatSessionDetail,
   ChatSessionDetailApi,
   CreateChatSessionInput,
+  DecisionBriefCreatedEvent,
   MessageSourceCitation,
   MessageSourceCitationApi,
   SendChatMessageInput,
@@ -222,6 +223,9 @@ export async function streamChatMessage(input: StreamChatMessageInput, handlers:
                 break
               case 'web_sources_used':
                 handlers.onWebSourcesUsed?.(event as WebSourcesUsedEvent)
+                break
+              case 'decision_brief_created':
+                handlers.onDecisionBriefCreated?.(event as DecisionBriefCreatedEvent)
                 break
               case 'assistant_completed':
                 handlers.onAssistantCompleted?.(event as AssistantCompletedEvent)
