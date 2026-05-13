@@ -48,31 +48,6 @@ class ChatSessionRead(BaseModel):
     summary_updated_at: datetime | None = None
 
 
-class ChatSessionDetail(ChatSessionRead):
-    messages: list[ChatMessageRead]
-    citations: list[CitationRead] = []
-    tool_calls: list[ToolCallRead] = []
-
-
-class ChatMessageCreate(BaseModel):
-    content: str
-
-
-class ChatMessagePairRead(BaseModel):
-    user_message: ChatMessageRead
-    assistant_message: ChatMessageRead
-
-
-# ---------------------------------------------------------------------------
-# Streaming / SSE schemas
-# ---------------------------------------------------------------------------
-
-class ChatStreamRequest(BaseModel):
-    workspace_id: int
-    session_id: int | None = None
-    message: str
-
-
 class CitationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -100,3 +75,28 @@ class ToolCallRead(BaseModel):
     tool_name: str
     status: str
     summary: str
+
+
+class ChatSessionDetail(ChatSessionRead):
+    messages: list[ChatMessageRead]
+    citations: list[CitationRead] = []
+    tool_calls: list[ToolCallRead] = []
+
+
+class ChatMessageCreate(BaseModel):
+    content: str
+
+
+class ChatMessagePairRead(BaseModel):
+    user_message: ChatMessageRead
+    assistant_message: ChatMessageRead
+
+
+# ---------------------------------------------------------------------------
+# Streaming / SSE schemas
+# ---------------------------------------------------------------------------
+
+class ChatStreamRequest(BaseModel):
+    workspace_id: int
+    session_id: int | None = None
+    message: str

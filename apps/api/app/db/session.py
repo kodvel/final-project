@@ -1,3 +1,5 @@
+from collections.abc import Iterator
+
 from sqlalchemy import Engine
 from sqlmodel import Session, SQLModel, create_engine
 
@@ -18,6 +20,6 @@ def init_db() -> None:
     SQLModel.metadata.create_all(engine)
 
 
-def get_session() -> Session:
+def get_session() -> Iterator[Session]:
     with Session(engine) as session:
         yield session
