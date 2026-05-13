@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Generator
 
+from pydantic import BaseModel, Field
 from sqlmodel import Session
 
 from app.agents.prompts import PRE_RETRIEVAL_CLASSIFIER_PROMPT, SYSTEM_PROMPT
@@ -168,13 +169,30 @@ def parse_source_scope(message: str) -> SourceScope | None:
 # ---------------------------------------------------------------------------
 
 
+class RetrievalClassification(BaseModel):
+    """Structured output schema for the pre-retrieval classifier."""
+
+    needs_retrieval: bool = Field(
+        description=(
+            "True if the message requires retrieval of uploaded company Sources "
+            "to answer well (company data, metrics, strategy, analysis, etc.). "
+            "False only for simple greetings, chitchat, off-topic, or meta-questions."
+        ),
+    )
+    reason: str | None = Field(
+        default=None,
+        description="Short explanation of why retrieval is or is not needed.",
+    )
+
+
 def classify_needs_retrieval(
     context: ContextWindow,
     current_message: str,
 ) -> bool:
-    """Use LiteLLM classifier to decide if local Source retrieval is needed.
+    """Use OpenAI structured-output classifier to decide if local Source retrieval is needed.
 
-    Uses RAG_* config (rag_openai_api_base_url/key/model).
+    Uses RAG_* config (rag_openai_api_base_url/key/model) via the ``openai`` SDK
+    ``client.chat.completions.parse`` with a Pydantic ``response_format``.
     Classifier failure defaults to True (retrieve by default).
     """
     settings = get_settings()
@@ -184,7 +202,7 @@ def classify_needs_retrieval(
         return True
 
     try:
-        import litellm
+        from openai import OpenAI
 
         recent_text = ""
         for msg in context.recent_messages[-3:]:
@@ -196,21 +214,30 @@ def classify_needs_retrieval(
             current_message=current_message,
         )
 
-        response = litellm.completion(
-            model=settings.rag_openai_model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=10,
-            temperature=0.0,
-            api_base=settings.rag_openai_api_base_url,
+        client = OpenAI(
+            base_url=settings.rag_openai_api_base_url,
             api_key=settings.rag_openai_api_key,
         )
 
-        answer = response.choices[0].message.content.strip().lower()
-        logger.debug("Classifier response: %s", answer)
+        response = client.chat.completions.parse(
+            model=settings.rag_openai_model,
+            messages=[{"role": "user", "content": prompt}],
+            response_format=RetrievalClassification,
+            max_tokens=100,
+            temperature=0.0,
+        )
 
-        if "false" in answer:
-            return False
-        return True
+        parsed: RetrievalClassification | None = response.choices[0].message.parsed
+        if parsed is None:
+            logger.warning("Classifier returned no parsed structured output; defaulting to retrieval")
+            return True
+
+        logger.debug(
+            "Classifier response: needs_retrieval=%s reason=%s",
+            parsed.needs_retrieval,
+            parsed.reason,
+        )
+        return parsed.needs_retrieval
 
     except Exception:
         logger.warning("Classifier failed; defaulting to retrieval", exc_info=True)

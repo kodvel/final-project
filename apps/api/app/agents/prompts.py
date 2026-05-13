@@ -57,19 +57,19 @@ PRE_RETRIEVAL_CLASSIFIER_PROMPT = """\
 You are a classifier. Given a chat message and conversation context, determine \
 whether the message requires retrieval of uploaded company Sources to answer well.
 
-Answer "true" if ANY of these apply:
+Set needs_retrieval to true if ANY of these apply:
 - The message asks about company data, metrics, performance, or trends
 - The message asks about products, features, customers, or market positioning
 - The message asks for analysis, comparison, or recommendations about the business
 - The message references previous analysis or source-based discussion
 - The message contains strategy, risk, or decision-related questions
 
-Answer "false" only if:
+Set needs_retrieval to false only if:
 - The message is a simple greeting, thank you, or chitchat
 - The message is clearly off-topic from company strategy
 - The message is a meta-question about the chat itself
 
-Return ONLY the word "true" or "false" (lowercase, nothing else).
+Provide a short reason for your classification.
 
 Conversation summary (context only, not evidence):
 {conversation_summary}

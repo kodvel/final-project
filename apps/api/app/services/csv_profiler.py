@@ -34,6 +34,7 @@ class CSVProfile:
     has_header: bool = True
 
     def to_dict(self) -> dict:
+        """Full dict representation including file_path and sample_values."""
         return {
             "row_count": self.row_count,
             "column_count": self.column_count,
@@ -49,6 +50,35 @@ class CSVProfile:
             "delimiter": self.delimiter,
             "has_header": self.has_header,
         }
+
+
+def build_csv_llm_profile(profile: "CSVProfile") -> dict:
+    """Build a compact, LLM-safe profile dict from a CSVProfile.
+
+    Strips ``file_path`` (local path) and ``sample_values`` (raw cell data)
+    so the LLM only sees stats and metadata — no filesystem paths or
+    potentially sensitive row-level values.
+    """
+    columns = []
+    for col in profile.columns:
+        entry: dict[str, Any] = {
+            "name": col.name,
+            "inferred_type": col.inferred_type,
+            "null_count": col.null_count,
+            "unique_count": col.unique_count,
+        }
+        if col.numeric_stats:
+            entry["numeric_stats"] = col.numeric_stats
+        if col.date_stats:
+            entry["date_stats"] = col.date_stats
+        columns.append(entry)
+    return {
+        "row_count": profile.row_count,
+        "column_count": profile.column_count,
+        "columns": columns,
+        "delimiter": profile.delimiter,
+        "has_header": profile.has_header,
+    }
 
 
 # Re-export for convenience — active artifact types only

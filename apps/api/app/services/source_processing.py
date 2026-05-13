@@ -4,11 +4,12 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
+from openai import OpenAI
 from sqlmodel import Session
 
 from app.models.enums import ArtifactType, ProcessingStatus, SourceFileType
 from app.models.source import SourceData
-from app.services import csv_profiler
+from app.services import csv_profiler, llm_extraction
 from app.services.artifacts import (
     list_source_artifacts,
     replace_source_artifacts,
@@ -85,20 +86,37 @@ def _process_pdf(session: Session, source: SourceData) -> None:
 
 
 def _process_csv(session: Session, source: SourceData) -> None:
-    """Profile a CSV source and generate source_summary, source_content, source_insight artifacts."""
+    """Profile a CSV source and generate source_summary, source_content, source_insight artifacts.
+
+    * ``source_summary`` is deterministic (via ``csv_profiler.build_source_summary``).
+    * ``source_content`` and ``source_insight`` are LLM-generated using compact profile data.
+    * If LLM extraction fails the exception bubbles up to ``process_source`` → status Failed.
+    """
+    from app.core.config import get_settings
+    from app.models.source import SourceArtifact  # local import to keep top-level clean
+
     storage_path = Path(source.storage_path)
     if not storage_path.exists():
         raise FileNotFoundError(f"CSV file not found at: {storage_path}")
 
-    # Profile the CSV
+    # Profile the CSV deterministically
     profile = csv_profiler.profile_csv_from_path(storage_path)
 
-    # Build new artifact set
+    # Create OpenAI client from RAG settings — if key is missing this raises,
+    # which bubbles up to process_source and marks the source as Failed.
+    settings = get_settings()
+    client = OpenAI(
+        api_key=settings.rag_openai_api_key,
+        base_url=settings.rag_openai_api_base_url,
+    )
+    model = settings.rag_openai_model
+
+    # Compact profile data for LLM (no raw rows, no file_path)
+    profile_data = csv_profiler.build_csv_llm_profile(profile)
+
     new_artifacts: list[SourceArtifact] = []
 
-    # 1. source_summary artifact (required) — dataset overview
-    from app.models.source import SourceArtifact  # local import to keep top-level clean
-
+    # 1. source_summary artifact (required) — deterministic
     summary_data = csv_profiler.build_source_summary(profile)
     new_artifacts.append(SourceArtifact(
         source_id=source.id,
@@ -107,18 +125,19 @@ def _process_csv(session: Session, source: SourceData) -> None:
         content_json=summary_data,
     ))
 
-    # 2. source_content artifact — column-level profiling data
-    content_data = csv_profiler.build_source_content(profile)
+    # 2. source_content artifact — LLM-generated
+    content_response = llm_extraction.extract_csv_content(client, model, profile_data)
     new_artifacts.append(SourceArtifact(
         source_id=source.id,
         artifact_type=ArtifactType.SOURCE_CONTENT,
         title=f"Content: {source.title}",
-        content_json=content_data,
+        content_json=content_response.model_dump(),
     ))
 
-    # 3. source_insight artifact — statistical insights (optional)
-    insight_data = csv_profiler.build_source_insight(profile)
-    if insight_data.get("findings") or insight_data.get("risks"):
+    # 3. source_insight artifact — LLM-generated (optional — only if useful)
+    insight_response = llm_extraction.extract_csv_insight(client, model, profile_data)
+    insight_data = insight_response.model_dump()
+    if insight_data.get("findings") or insight_data.get("risks") or insight_data.get("opportunities") or insight_data.get("assumptions") or insight_data.get("warnings"):
         new_artifacts.append(SourceArtifact(
             source_id=source.id,
             artifact_type=ArtifactType.SOURCE_INSIGHT,

@@ -305,13 +305,14 @@ def test_classifier_defaults_to_retrieval_on_missing_key() -> None:
 
 
 def test_classifier_defaults_to_retrieval_on_failure(monkeypatch) -> None:
-    """When classifier LLM call fails, defaults to True (retrieve)."""
-    import litellm
+    """When classifier OpenAI call fails, defaults to True (retrieve)."""
+    from unittest.mock import MagicMock
 
-    def failing_completion(**kwargs):
-        raise RuntimeError("LLM unavailable")
+    # Mock OpenAI constructor to raise
+    mock_client = MagicMock()
+    mock_client.chat.completions.parse.side_effect = RuntimeError("LLM unavailable")
 
-    monkeypatch.setattr(litellm, "completion", failing_completion)
+    monkeypatch.setattr("openai.OpenAI", lambda **kw: mock_client)
     monkeypatch.setenv("RAG_OPENAI_API_KEY", "test-key")
 
     # Clear settings cache
@@ -326,6 +327,102 @@ def test_classifier_defaults_to_retrieval_on_failure(monkeypatch) -> None:
     assert classify_needs_retrieval(context, "What about marketing?") is True
 
     # Cleanup
+    get_settings.cache_clear()
+
+
+def test_classifier_returns_false_for_chitchat_when_parsed(monkeypatch) -> None:
+    """When OpenAI structured parse returns needs_retrieval=False, function returns False."""
+    from unittest.mock import MagicMock
+
+    from app.agents.consultant import RetrievalClassification
+
+    mock_parsed = RetrievalClassification(needs_retrieval=False, reason="Simple greeting")
+    mock_message = MagicMock()
+    mock_message.parsed = mock_parsed
+    mock_choice = MagicMock()
+    mock_choice.message = mock_message
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.parse.return_value = mock_response
+
+    monkeypatch.setattr("openai.OpenAI", lambda **kw: mock_client)
+    monkeypatch.setenv("RAG_OPENAI_API_KEY", "test-key")
+
+    from app.core.config import get_settings
+    get_settings.cache_clear()
+
+    context = ContextWindow(
+        conversation_summary=None,
+        recent_messages=[],
+        current_user_message="Hello!",
+    )
+    assert classify_needs_retrieval(context, "Hello!") is False
+
+    get_settings.cache_clear()
+
+
+def test_classifier_returns_true_when_parsed_needs_retrieval(monkeypatch) -> None:
+    """When OpenAI structured parse returns needs_retrieval=True, function returns True."""
+    from unittest.mock import MagicMock
+
+    from app.agents.consultant import RetrievalClassification
+
+    mock_parsed = RetrievalClassification(needs_retrieval=True, reason="Asks about company data")
+    mock_message = MagicMock()
+    mock_message.parsed = mock_parsed
+    mock_choice = MagicMock()
+    mock_choice.message = mock_message
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.parse.return_value = mock_response
+
+    monkeypatch.setattr("openai.OpenAI", lambda **kw: mock_client)
+    monkeypatch.setenv("RAG_OPENAI_API_KEY", "test-key")
+
+    from app.core.config import get_settings
+    get_settings.cache_clear()
+
+    context = ContextWindow(
+        conversation_summary=None,
+        recent_messages=[],
+        current_user_message="What is our revenue?",
+    )
+    assert classify_needs_retrieval(context, "What is our revenue?") is True
+
+    get_settings.cache_clear()
+
+
+def test_classifier_defaults_to_retrieval_when_parsed_is_none(monkeypatch) -> None:
+    """When OpenAI parse returns None for parsed field, defaults to True."""
+    from unittest.mock import MagicMock
+
+    mock_message = MagicMock()
+    mock_message.parsed = None
+    mock_choice = MagicMock()
+    mock_choice.message = mock_message
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.parse.return_value = mock_response
+
+    monkeypatch.setattr("openai.OpenAI", lambda **kw: mock_client)
+    monkeypatch.setenv("RAG_OPENAI_API_KEY", "test-key")
+
+    from app.core.config import get_settings
+    get_settings.cache_clear()
+
+    context = ContextWindow(
+        conversation_summary=None,
+        recent_messages=[],
+        current_user_message="Hello",
+    )
+    assert classify_needs_retrieval(context, "Hello") is True
+
     get_settings.cache_clear()
 
 

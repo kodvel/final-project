@@ -19,9 +19,9 @@ class Settings(BaseSettings):
 
     # RAG pipeline configuration
     rag_mistral_api_key: str | None = None
-    rag_openai_api_base_url: str = "https://api.openai.com/v1"
+    rag_openai_api_base_url: str = "https://openrouter.ai/api/v1"
     rag_openai_api_key: str | None = None
-    rag_openai_model: str = "google/gemini-3.1-flash-lite-preview"
+    rag_openai_model: str = "google/gemini-2.5-flash-lite"
     rag_max_file_size_mb: int = 30
     rag_enable_background_processing: bool = False
 
