@@ -430,6 +430,7 @@ def run_consultant_stream(
         retrieve_tool = function_tool(
             retrieve_fn,
             name_override="retrieve_company_knowledge",
+            strict_mode=False,
         )
         tavily_tool = function_tool(
             tavily_fn,

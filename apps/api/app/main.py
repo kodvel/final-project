@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 
+import agents
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from scalar_fastapi import get_scalar_api_reference
@@ -11,6 +12,7 @@ from app.routes import chat, decision_briefs, sources, visualizations, workspace
 from app.services.workspaces import seed_default_workspaces
 
 settings = get_settings()
+agents.set_tracing_disabled(True)
 
 
 @asynccontextmanager

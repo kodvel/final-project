@@ -70,7 +70,7 @@ def _call_llm(system_prompt: str, user_content: str) -> str:
 
     settings = get_settings()
     response = litellm.completion(
-        model=settings.rag_openai_model,
+        model=f"openai/{settings.rag_openai_model}",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
