@@ -1,7 +1,7 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useRef, useState } from 'react'
 import type { StreamChatMessageInput, StreamHandlers } from '../../../types/chat'
-import { getChatSession, listChatSessions, streamChatMessage } from '../api'
+import { createChatSession, getChatSession, listChatSessions, streamChatMessage } from '../api'
 
 export function useChatSessions(workspaceId: number | null) {
   return useQuery({
@@ -16,6 +16,17 @@ export function useChatSession(sessionId: number | null, workspaceId: number | n
     queryKey: ['chat-session', sessionId, workspaceId],
     queryFn: () => getChatSession(sessionId ?? 0, workspaceId ?? 0),
     enabled: typeof sessionId === 'number' && sessionId > 0 && typeof workspaceId === 'number' && workspaceId > 0,
+  })
+}
+
+export function useCreateChatSession() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: createChatSession,
+    onSuccess: (session) => {
+      queryClient.invalidateQueries({ queryKey: ['chat-sessions', session.workspaceId] })
+    },
   })
 }
 

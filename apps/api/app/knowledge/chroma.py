@@ -18,9 +18,10 @@ _chroma_client = None
 
 
 class _OpenAIEmbeddingFunction:
-    """ChromaDB-compatible embedding function backed by OpenAI API.
+    """ChromaDB-compatible embedding function backed by any OpenAI-compatible /embeddings endpoint.
 
-    Follows the Chroma ``EmbeddingFunction`` protocol: ``__call__(input)`` → list of vectors.
+    Works with OpenAI, Mistral (``https://api.mistral.ai/v1``), and other providers
+    that expose the same request/response shape.
     """
 
     def __init__(self, api_base_url: str, api_key: str, model: str) -> None:
@@ -39,6 +40,36 @@ class _OpenAIEmbeddingFunction:
 
         sorted_data = sorted(response.data, key=lambda d: d.index)
         return [item.embedding for item in sorted_data]
+
+    def embed_query(self, input: list[str]) -> list[list[float]]:  # noqa: A002 — Chroma protocol
+        return self.__call__(input)
+
+    @staticmethod
+    def name() -> str:
+        return "openai_compatible"
+
+    def default_space(self) -> str:
+        return "cosine"
+
+    def supported_spaces(self) -> list[str]:
+        return ["cosine", "l2", "ip"]
+
+    def get_config(self) -> dict:
+        return {
+            "api_base_url": self._api_base_url,
+            "model": self._model,
+        }
+
+    @staticmethod
+    def build_from_config(config: dict) -> "_OpenAIEmbeddingFunction":
+        from app.core.config import get_settings
+
+        settings = get_settings()
+        return _OpenAIEmbeddingFunction(
+            api_base_url=config.get("api_base_url", settings.rag_embedding_api_base_url),
+            api_key=settings.rag_embedding_api_key or "",
+            model=config.get("model", settings.rag_embedding_model),
+        )
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"_OpenAIEmbeddingFunction(model={self._model!r})"

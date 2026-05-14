@@ -46,7 +46,7 @@ def _run_mistral_ocr(api_key: str, pdf_b64: str) -> list[dict]:
 
     Returns list of dicts with 'markdown' and 'index' keys (1-based).
     """
-    from mistralai import Mistral
+    from mistralai.client import Mistral
 
     client = Mistral(api_key=api_key)
     document_url = f"data:application/pdf;base64,{pdf_b64}"

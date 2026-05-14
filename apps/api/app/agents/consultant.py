@@ -480,8 +480,12 @@ async def run_consultant_stream(
         from agents import Agent, Runner, function_tool
         from agents.extensions.models.litellm_model import LitellmModel
 
+        model_name = _normalize_litellm_model(
+            settings.chat_openai_model,
+            settings.chat_openai_api_base_url,
+        )
         model = LitellmModel(
-            model=settings.chat_openai_model,
+            model=model_name,
             base_url=settings.chat_openai_api_base_url,
             api_key=settings.chat_openai_api_key,
         )
@@ -599,6 +603,22 @@ async def run_consultant_stream(
             yield event_tuple
 
 
+def _normalize_litellm_model(model_name: str, base_url: str | None) -> str:
+    """Normalize model name for LiteLLM provider routing.
+
+    OpenRouter expects the provider prefix in the model name. If the base URL
+    points at OpenRouter and the model isn't already prefixed, add it.
+    """
+    if not base_url:
+        return model_name
+
+    lower_base = base_url.lower()
+    if "openrouter.ai" in lower_base and not model_name.startswith("openrouter/"):
+        return f"openrouter/{model_name}"
+
+    return model_name
+
+
 def _build_model_history(
     context: ContextWindow,
     evidence_text: str,
@@ -616,13 +636,25 @@ def _build_model_history(
             "content": "Understood. I will use this for context continuity only, not as source-grounded evidence.",
         })
 
-    for msg in context.recent_messages:
+    current = context.current_user_message or ""
+
+    # The user message is committed to DB before build_context runs, so it may
+    # already appear as the last item in recent_messages. Strip it to avoid
+    # sending two consecutive user turns (which most LLMs reject).
+    recent = list(context.recent_messages)
+    if current and recent and recent[-1].get("role") == "user":
+        # Normalise whitespace the same way _context_content does before comparing
+        normalised_current = current.replace("\n", " ").strip()
+        normalised_last = recent[-1].get("content", "").strip()
+        if normalised_last == normalised_current:
+            recent = recent[:-1]
+
+    for msg in recent:
         role = msg.get("role", "user")
         content = msg.get("content", "")
         if role in ("user", "assistant"):
             messages.append({"role": role, "content": content})
 
-    current = context.current_user_message or ""
     full_content = current + evidence_text
     messages.append({"role": "user", "content": full_content})
 

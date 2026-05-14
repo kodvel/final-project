@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Bot, ChevronRight, Eye, FileSpreadsheet, FileText, Mic, Paperclip, Send, Workflow, X } from 'lucide-react'
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
-import { useChatSession, useChatSessions, useStreamChat } from '../features/chat/hooks'
+import { useChatSession, useChatSessions, useCreateChatSession, useStreamChat } from '../features/chat/hooks'
 import { useActiveWorkspace } from '../features/workspaces/hooks/use-active-workspace'
 import type { AgentToolCall, ChatMessage, MessageSourceCitation } from '../types/chat'
 
@@ -49,6 +49,7 @@ export function ChatPage() {
   const { data: sessions = [], isLoading: isLoadingSessions, error: sessionsError } = useChatSessions(workspaceId)
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null)
   const { data: activeSession, isLoading: isLoadingSession } = useChatSession(activeSessionId, workspaceId)
+  const { mutateAsync: createChatSession, isPending: isCreatingSession } = useCreateChatSession()
   const { sendMessage, abort, isStreaming } = useStreamChat()
 
   const [input, setInput] = useState('')
@@ -195,14 +196,23 @@ export function ChatPage() {
     [input, isThinking, workspaceId, activeSessionId, sendMessage],
   )
 
-  function handleNewChat() {
-    // New Chat = local draft only: clear active session, no backend POST
+  async function handleNewChat() {
+    abort()
+    setIsThinking(false)
     setActiveSessionId(null)
     setIsDraftNewChat(true)
     setOptimisticMessages([])
     setStreamingText('')
     streamingTextRef.current = ''
     setStreamingToolCalls([])
+    if (!workspaceId) return
+    try {
+      const session = await createChatSession({ workspaceId })
+      setActiveSessionId(session.id)
+      setIsDraftNewChat(false)
+    } catch (error) {
+      console.error('Failed to create chat session:', error)
+    }
   }
 
   function handleStop() {
@@ -246,6 +256,7 @@ export function ChatPage() {
                 <button
                   type="button"
                   onClick={handleNewChat}
+                  disabled={!activeWorkspace || isCreatingSession}
                   className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-surface-subtle"
                 >
                   New Chat
