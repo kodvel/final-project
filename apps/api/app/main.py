@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,12 +14,32 @@ from app.services.workspaces import seed_default_workspaces
 settings = get_settings()
 
 
+def _configure_langfuse() -> bool:
+    if not settings.langfuse_public_key or not settings.langfuse_secret_key:
+        return False
+
+    os.environ.setdefault("LANGFUSE_PUBLIC_KEY", settings.langfuse_public_key)
+    os.environ.setdefault("LANGFUSE_SECRET_KEY", settings.langfuse_secret_key)
+    os.environ.setdefault("LANGFUSE_BASE_URL", settings.langfuse_host)
+    return True
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    langfuse_client = None
+    if _configure_langfuse():
+        from langfuse import get_client
+        from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
+
+        langfuse_client = get_client()
+        OpenAIAgentsInstrumentor().instrument()
+
     init_db()
     with Session(engine) as session:
         seed_default_workspaces(session)
     yield
+    if langfuse_client:
+        langfuse_client.shutdown()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)

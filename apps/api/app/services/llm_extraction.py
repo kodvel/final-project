@@ -11,7 +11,7 @@ import json
 import logging
 from typing import TypeVar
 
-from openai import OpenAI
+from openai import OpenAI as OpenAIClient
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -24,13 +24,15 @@ T = TypeVar("T", bound=BaseModel)
 
 
 def extract_structured(
-    client: OpenAI,
+    client: OpenAIClient,
     model: str,
     system_prompt: str,
     user_content: str,
     response_format: type[T],
     temperature: float = 0.1,
     retries: int = 1,
+    name: str | None = None,
+    metadata: dict | None = None,
 ) -> T:
     """Extract structured data via ``client.chat.completions.parse()``.
 
@@ -42,6 +44,8 @@ def extract_structured(
         response_format: Pydantic class used as ``response_format``.
         temperature: Sampling temperature.
         retries: Extra attempts after the first failure.
+        name: Optional Langfuse observation name for this call.
+        metadata: Optional Langfuse metadata dict for this call.
 
     Returns:
         Validated Pydantic model instance.
@@ -50,6 +54,11 @@ def extract_structured(
         RuntimeError: If every attempt fails.
     """
     last_error: Exception | None = None
+    extra_kwargs: dict = {}
+    if name is not None:
+        extra_kwargs["name"] = name
+    if metadata is not None:
+        extra_kwargs["metadata"] = metadata
     for attempt in range(retries + 1):
         try:
             response = client.chat.completions.parse(
@@ -60,6 +69,7 @@ def extract_structured(
                 ],
                 response_format=response_format,
                 temperature=temperature,
+                **extra_kwargs,
             )
             parsed = response.choices[0].message.parsed
             if parsed is None:
@@ -257,8 +267,16 @@ Each item should include a confidence level (high, medium, low)."""
 # ---------------------------------------------------------------------------
 
 
-def extract_chunk_label(client: OpenAI, model: str, chunk_text: str) -> ChunkLabelResponse:
+def extract_chunk_label(
+    client: OpenAIClient,
+    model: str,
+    chunk_text: str,
+    chunk_index: int | None = None,
+) -> ChunkLabelResponse:
     """Label a single PDF chunk using structured extraction (1 retry)."""
+    metadata = {"stage": "pdf.label_chunk"}
+    if chunk_index is not None:
+        metadata["chunk_index"] = chunk_index
     return extract_structured(
         client=client,
         model=model,
@@ -266,11 +284,13 @@ def extract_chunk_label(client: OpenAI, model: str, chunk_text: str) -> ChunkLab
         user_content=chunk_text,
         response_format=ChunkLabelResponse,
         retries=1,
+        name="pdf.label_chunk",
+        metadata=metadata,
     )
 
 
 def extract_aggregate(
-    client: OpenAI,
+    client: OpenAIClient,
     model: str,
     chunk_metadata: list[dict],
     page_count: int,
@@ -298,13 +318,15 @@ def extract_aggregate(
         user_content=aggregate_input,
         response_format=AggregateResponse,
         retries=1,
+        name="pdf.aggregate",
+        metadata={"stage": "pdf.aggregate", "page_count": page_count, "chunk_count": len(chunk_metadata)},
     )
     if not result.source_summary.summary.strip():
         raise ValueError("Aggregate extraction returned empty source_summary — unusable")
     return result
 
 
-def extract_csv_content(client: OpenAI, model: str, profile_data: dict) -> CSVContentResponse:
+def extract_csv_content(client: OpenAIClient, model: str, profile_data: dict) -> CSVContentResponse:
     """Extract source_content for a CSV using structured extraction.
 
     Raises ``ValueError`` if the LLM returns no usable chunks or empty text.
@@ -316,6 +338,8 @@ def extract_csv_content(client: OpenAI, model: str, profile_data: dict) -> CSVCo
         user_content=json.dumps(profile_data),
         response_format=CSVContentResponse,
         retries=1,
+        name="csv.extract_content",
+        metadata={"stage": "csv.extract_content"},
     )
     if not result.chunks:
         raise ValueError("CSV content extraction returned no chunks — unusable source_content")
@@ -325,7 +349,7 @@ def extract_csv_content(client: OpenAI, model: str, profile_data: dict) -> CSVCo
     return result
 
 
-def extract_csv_insight(client: OpenAI, model: str, profile_data: dict) -> CSVInsightResponse:
+def extract_csv_insight(client: OpenAIClient, model: str, profile_data: dict) -> CSVInsightResponse:
     """Extract source_insight for a CSV using structured extraction."""
     return extract_structured(
         client=client,
@@ -334,4 +358,6 @@ def extract_csv_insight(client: OpenAI, model: str, profile_data: dict) -> CSVIn
         user_content=json.dumps(profile_data),
         response_format=CSVInsightResponse,
         retries=1,
+        name="csv.extract_insight",
+        metadata={"stage": "csv.extract_insight"},
     )

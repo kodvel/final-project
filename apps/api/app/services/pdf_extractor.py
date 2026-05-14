@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from openai import OpenAI
+from openai import OpenAI as OpenAIClient
 from sqlmodel import Session
 
 from app.core.config import get_settings
@@ -125,11 +125,11 @@ def _chunk_markdown(markdown: str, chunk_size: int = 3000, min_chars: int = 300)
 # ---------------------------------------------------------------------------
 
 
-def _label_all_chunks(chunks: list[str], client: OpenAI, model: str) -> list[dict]:
+def _label_all_chunks(chunks: list[str], client: OpenAIClient, model: str) -> list[dict]:
     """Label all chunks with metadata via ``llm_extraction.extract_chunk_label``."""
     labeled = []
     for index, chunk in enumerate(chunks):
-        response = llm_extraction.extract_chunk_label(client, model, chunk)
+        response = llm_extraction.extract_chunk_label(client, model, chunk, chunk_index=index)
         metadata = response.model_dump()
         metadata["chunk_index"] = index
         metadata["chunk_text"] = chunk
@@ -149,7 +149,7 @@ def _aggregate_metadata(
     ocr_md_path: str,
     chunks_path: str,
     model: str,
-    client: OpenAI,
+    client: OpenAIClient,
 ) -> tuple[dict, dict]:
     """Aggregate chunk metadata into source_summary and source_insight via ``llm_extraction.extract_aggregate``."""
     response = llm_extraction.extract_aggregate(
@@ -212,7 +212,9 @@ def process_pdf(session: Session, source: SourceData) -> None:
         raise ValueError("RAG_OPENAI_API_KEY is not configured. PDF processing requires an LLM for labeling.")
 
     # Create OpenAI client for structured extraction
-    client = OpenAI(
+    from app.services.langfuse_openai import create_openai_client
+
+    client = create_openai_client(
         api_key=settings.rag_openai_api_key,
         base_url=settings.rag_openai_api_base_url,
     )

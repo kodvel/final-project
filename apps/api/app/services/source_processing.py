@@ -1,12 +1,14 @@
 """Testable source-processing orchestration shared by jobs and routes."""
 
 import traceback
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from openai import OpenAI
+from openai import OpenAI as OpenAIClient
 from sqlmodel import Session
 
+from app.core.config import get_settings
 from app.models.enums import ArtifactType, ProcessingStatus, SourceFileType
 from app.models.source import SourceData
 from app.services import csv_profiler, llm_extraction
@@ -14,6 +16,50 @@ from app.services.artifacts import (
     list_source_artifacts,
     replace_source_artifacts,
 )
+
+
+@contextmanager
+def _langfuse_source_span(source: SourceData):
+    settings = get_settings()
+    if not settings.langfuse_public_key or not settings.langfuse_secret_key:
+        yield None
+        return
+
+    from langfuse import get_client, propagate_attributes
+
+    langfuse = get_client()
+    metadata = {
+        "workspaceId": str(source.workspace_id),
+        "sourceId": str(source.id or ""),
+        "fileType": str(source.file_type),
+        "sourceTitle": source.title,
+    }
+    # Workspace is the multi-tenant principal — set as user_id so the Users
+    # view in Langfuse aggregates per workspace, matching the chat trace setup.
+    with propagate_attributes(
+        user_id=f"workspace:{source.workspace_id}",
+        tags=["source-processing", str(source.file_type), f"workspace:{source.workspace_id}"],
+        metadata=metadata,
+    ):
+        with langfuse.start_as_current_observation(
+            name=f"source.process:{source.file_type}",
+            as_type="span",
+            input={
+                "source_id": source.id,
+                "file_type": str(source.file_type),
+                "title": source.title,
+            },
+        ) as span:
+            yield span
+
+
+def _update_langfuse_span(span, status: str, error: str | None = None) -> None:
+    if not span:
+        return
+    payload: dict[str, str] = {"status": status}
+    if error:
+        payload["error"] = error
+    span.update(output=payload)
 
 
 def process_source(session: Session, source_id: int) -> SourceData:
@@ -35,44 +81,47 @@ def process_source(session: Session, source_id: int) -> SourceData:
     session.commit()
     session.refresh(source)
 
-    try:
-        # Delete old ChromaDB vectors before reprocessing
-        from app.knowledge.indexing import delete_source_vectors
+    with _langfuse_source_span(source) as span:
+        try:
+            # Delete old ChromaDB vectors before reprocessing
+            from app.knowledge.indexing import delete_source_vectors
 
-        delete_source_vectors(source_id)
+            delete_source_vectors(source_id)
 
-        if source.file_type == SourceFileType.CSV:
-            _process_csv(session, source)
-        elif source.file_type == SourceFileType.PDF:
-            _process_pdf(session, source)
-        else:
-            raise ValueError(f"Unsupported file type: {source.file_type}")
+            if source.file_type == SourceFileType.CSV:
+                _process_csv(session, source)
+            elif source.file_type == SourceFileType.PDF:
+                _process_pdf(session, source)
+            else:
+                raise ValueError(f"Unsupported file type: {source.file_type}")
 
-        # Require both source_summary and source_content for Ready status
-        artifacts = list_source_artifacts(session, source_id)
-        artifact_types = {a.artifact_type for a in artifacts}
-        required = {str(ArtifactType.SOURCE_SUMMARY), str(ArtifactType.SOURCE_CONTENT)}
-        if required.issubset(artifact_types):
-            # Index source_content chunks into ChromaDB before marking Ready
-            from app.knowledge.indexing import index_source_content
+            # Require both source_summary and source_content for Ready status
+            artifacts = list_source_artifacts(session, source_id)
+            artifact_types = {a.artifact_type for a in artifacts}
+            required = {str(ArtifactType.SOURCE_SUMMARY), str(ArtifactType.SOURCE_CONTENT)}
+            if required.issubset(artifact_types):
+                # Index source_content chunks into ChromaDB before marking Ready
+                from app.knowledge.indexing import index_source_content
 
-            index_source_content(session, source_id)
+                index_source_content(session, source_id)
 
-            source.processing_status = ProcessingStatus.READY
-            source.processed_at = datetime.utcnow()
-            source.processing_error = None
-        else:
-            missing = required - artifact_types
-            raise ValueError(f"Missing required artifacts for Ready: {missing}")
-        session.add(source)
-        session.commit()
+                source.processing_status = ProcessingStatus.READY
+                source.processed_at = datetime.utcnow()
+                source.processing_error = None
+            else:
+                missing = required - artifact_types
+                raise ValueError(f"Missing required artifacts for Ready: {missing}")
+            session.add(source)
+            session.commit()
+            _update_langfuse_span(span, "completed")
 
-    except Exception as exc:
-        source.processing_status = ProcessingStatus.FAILED
-        source.processing_error = f"{type(exc).__name__}: {exc}"
-        session.add(source)
-        session.commit()
-        traceback.print_exc()
+        except Exception as exc:
+            source.processing_status = ProcessingStatus.FAILED
+            source.processing_error = f"{type(exc).__name__}: {exc}"
+            session.add(source)
+            session.commit()
+            _update_langfuse_span(span, "failed", source.processing_error)
+            traceback.print_exc()
 
     session.refresh(source)
     return source
@@ -98,6 +147,8 @@ def _process_csv(session: Session, source: SourceData) -> None:
     storage_path = Path(source.storage_path)
     if not storage_path.exists():
         raise FileNotFoundError(f"CSV file not found at: {storage_path}")
+    if source.id is None:
+        raise ValueError("Source must be persisted before CSV processing")
 
     # Profile the CSV deterministically
     profile = csv_profiler.profile_csv_from_path(storage_path)
@@ -105,7 +156,9 @@ def _process_csv(session: Session, source: SourceData) -> None:
     # Create OpenAI client from RAG settings — if key is missing this raises,
     # which bubbles up to process_source and marks the source as Failed.
     settings = get_settings()
-    client = OpenAI(
+    from app.services.langfuse_openai import create_openai_client
+
+    client = create_openai_client(
         api_key=settings.rag_openai_api_key,
         base_url=settings.rag_openai_api_base_url,
     )

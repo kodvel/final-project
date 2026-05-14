@@ -33,9 +33,9 @@ class _OpenAIEmbeddingFunction:
         if not input:
             return []
 
-        from openai import OpenAI
+        from app.services.langfuse_openai import create_openai_client
 
-        client = OpenAI(base_url=self._api_base_url, api_key=self._api_key)
+        client = create_openai_client(base_url=self._api_base_url, api_key=self._api_key)
         response = client.embeddings.create(model=self._model, input=input)
 
         sorted_data = sorted(response.data, key=lambda d: d.index)

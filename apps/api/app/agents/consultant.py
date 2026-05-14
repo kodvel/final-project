@@ -203,7 +203,7 @@ def classify_needs_retrieval(
         return True
 
     try:
-        from openai import APIStatusError, OpenAI
+        from openai import APIStatusError
 
         recent_text = ""
         for msg in context.recent_messages[-3:]:
@@ -215,7 +215,9 @@ def classify_needs_retrieval(
             current_message=current_message,
         )
 
-        client = OpenAI(
+        from app.services.langfuse_openai import create_openai_client
+
+        client = create_openai_client(
             base_url=settings.rag_openai_api_base_url,
             api_key=settings.rag_openai_api_key,
         )
@@ -226,6 +228,8 @@ def classify_needs_retrieval(
             response_format=RetrievalClassification,
             max_tokens=100,
             temperature=0.0,
+            name="chat.classify_needs_retrieval",
+            metadata={"stage": "chat.classify_needs_retrieval"},
         )
 
         parsed: RetrievalClassification | None = response.choices[0].message.parsed

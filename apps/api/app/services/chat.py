@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from contextlib import contextmanager
 from datetime import datetime
 from typing import AsyncGenerator, Awaitable, Callable
 
@@ -21,6 +22,7 @@ from app.agents.consultant import (
     run_consultant_stream,
 )
 from app.agents.tools import tavily_web_search
+from app.core.config import get_settings
 from app.knowledge.retrieval import (
     EvidenceBundle,
     retrieve_company_knowledge,
@@ -135,6 +137,101 @@ def _sse_event(data: dict | str) -> str:
     """
     payload = json.dumps(data) if isinstance(data, dict) else data
     return f"data: {payload}\n\n"
+
+
+@contextmanager
+def _langfuse_chat_span(
+    workspace_id: int,
+    session_id: int,
+    user_message_id: int,
+    assistant_message_id: int,
+    message: str,
+):
+    settings = get_settings()
+    if not settings.langfuse_public_key or not settings.langfuse_secret_key:
+        yield None
+        return
+
+    from langfuse import get_client, propagate_attributes
+
+    langfuse = get_client()
+    metadata = {
+        "workspaceId": str(workspace_id),
+        "sessionId": str(session_id),
+        "userMessageId": str(user_message_id),
+        "assistantMessageId": str(assistant_message_id),
+    }
+    # Workspace acts as the multi-tenant principal — surfaced as user_id so
+    # the Users view in Langfuse becomes a per-workspace dashboard.
+    with propagate_attributes(
+        session_id=str(session_id),
+        user_id=f"workspace:{workspace_id}",
+        tags=["chat", f"workspace:{workspace_id}"],
+        metadata=metadata,
+    ):
+        with langfuse.start_as_current_observation(
+            name="chat.stream",
+            as_type="span",
+            input={"message": message},
+        ) as span:
+            yield span
+
+
+def _update_langfuse_span(span, status: str, error: str | None = None, output: str | None = None) -> None:
+    if not span:
+        return
+    payload: dict[str, str] = {"status": status}
+    if error:
+        payload["error"] = error
+    if output:
+        payload["assistant_message"] = output
+    span.update(output=payload)
+
+
+@contextmanager
+def _langfuse_retrieval_span(workspace_id: int, query: str, source_scope):
+    """Wrap company-knowledge retrieval (SQL filter + Chroma + rerank) in a span.
+
+    Nested under the active chat span so the trace tree shows retrieval as a
+    discrete step. Chroma's embedding call is auto-traced as a child generation
+    via the ``langfuse.openai`` embedding client.
+    """
+    settings = get_settings()
+    if not settings.langfuse_public_key or not settings.langfuse_secret_key:
+        yield None
+        return
+
+    from langfuse import get_client
+
+    langfuse = get_client()
+    scope_payload = None
+    if source_scope is not None:
+        scope_payload = {
+            k: v for k, v in {
+                "team_label": getattr(source_scope, "team_label", None),
+                "category_labels": getattr(source_scope, "category_labels", None),
+                "period_start_month": getattr(source_scope, "period_start_month", None),
+                "period_end_month": getattr(source_scope, "period_end_month", None),
+                "source_ids": getattr(source_scope, "source_ids", None),
+            }.items() if v
+        }
+    with langfuse.start_as_current_observation(
+        name="retrieve_company_knowledge",
+        as_type="span",
+        input={"query": query, "workspace_id": workspace_id, "scope": scope_payload},
+    ) as span:
+        yield span
+
+
+def _update_retrieval_span(span, evidence_bundle) -> None:
+    if not span or evidence_bundle is None:
+        return
+    span.update(output={
+        "item_count": len(evidence_bundle.items) if evidence_bundle.items else 0,
+        "candidate_count": evidence_bundle.candidate_count,
+        "insufficient_evidence": evidence_bundle.insufficient_evidence,
+        "reason": evidence_bundle.reason,
+    })
 
 
 async def stream_chat(
@@ -254,169 +351,188 @@ async def stream_chat(
         yield _sse_event("[DONE]")
         return
 
-    yield _sse_event({
-        "type": "metadata",
-        "session_id": session_id,
-        "assistant_message_id": assistant_msg.id,
-        "created_session": created_session,
-    })
-
-    if is_disconnected is not None and await is_disconnected():
-        _mark_assistant_interrupted(db, assistant_msg, [], "Stream interrupted")
-        return
-
-    # --- Task 6: Pre-retrieval classification and evidence ---
-    evidence_bundle: EvidenceBundle | None = None
-    web_results: list[dict] = []
-    pre_tool_calls: list[ToolCallRecord] = []
-    needs_retrieval = classify_needs_retrieval(context, clean_message)
-
-    if needs_retrieval:
-        retrieval_call_id = f"pre-retrieval-{assistant_msg.id}"
-        retrieval_record = ToolCallRecord(
-            tool_name="retrieve_company_knowledge",
-            status="running",
-            summary="Started company Source retrieval",
-            call_id=retrieval_call_id,
-        )
-        pre_tool_calls.append(retrieval_record)
-        yield _sse_event({"type": "tool_call", "tool_name": "retrieve_company_knowledge", "call_id": retrieval_call_id})
-        if is_disconnected is not None and await is_disconnected():
-            _mark_assistant_interrupted(db, assistant_msg, [], "Stream interrupted", pre_tool_calls)
-            return
-        try:
-            # Parse natural-language source scope from user message
-            source_scope = parse_source_scope(clean_message)
-            evidence_bundle = retrieve_company_knowledge(
-                db,
-                workspace_id,
-                clean_message,
-                source_scope=source_scope,
-            )
-        except Exception:
-            logger.warning("Pre-retrieval failed", exc_info=True)
-            evidence_bundle = EvidenceBundle(insufficient_evidence=True, reason="Retrieval error")
-            retrieval_record.status = "failed"
-            retrieval_record.summary = "Pre-retrieval failed"
-            yield _sse_event({"type": "tool_result", "call_id": retrieval_call_id, "ok": False})
-        else:
-            retrieval_record.status = "success"
-            retrieval_record.summary = "Retrieved company Source evidence" if evidence_bundle and evidence_bundle.items else "No matching Source evidence found"
-            yield _sse_event({"type": "tool_result", "call_id": retrieval_call_id, "ok": True})
+    with _langfuse_chat_span(
+        workspace_id=workspace_id,
+        session_id=session_id,
+        user_message_id=user_msg.id,
+        assistant_message_id=assistant_msg.id,
+        message=clean_message,
+    ) as span:
+        yield _sse_event({
+            "type": "metadata",
+            "session_id": session_id,
+            "assistant_message_id": assistant_msg.id,
+            "created_session": created_session,
+        })
 
         if is_disconnected is not None and await is_disconnected():
-            _mark_assistant_interrupted(db, assistant_msg, [], "Stream interrupted", pre_tool_calls)
+            _mark_assistant_interrupted(db, assistant_msg, [], "Stream interrupted")
+            _update_langfuse_span(span, "interrupted", "Stream interrupted")
             return
 
-        # Check if Tavily fallback is needed (weak evidence + web-capable question)
-        if evidence_bundle and evidence_bundle.insufficient_evidence and _is_web_capable(clean_message):
-            tavily_call_id = f"pre-tavily-{assistant_msg.id}"
-            tavily_record = ToolCallRecord(
-                tool_name="tavily_web_search",
+        # --- Task 6: Pre-retrieval classification and evidence ---
+        evidence_bundle: EvidenceBundle | None = None
+        web_results: list[dict] = []
+        pre_tool_calls: list[ToolCallRecord] = []
+        needs_retrieval = classify_needs_retrieval(context, clean_message)
+
+        if needs_retrieval:
+            retrieval_call_id = f"pre-retrieval-{assistant_msg.id}"
+            retrieval_record = ToolCallRecord(
+                tool_name="retrieve_company_knowledge",
                 status="running",
-                summary="Started web fallback search",
-                call_id=tavily_call_id,
+                summary="Started company Source retrieval",
+                call_id=retrieval_call_id,
             )
-            pre_tool_calls.append(tavily_record)
-            yield _sse_event({"type": "tool_call", "tool_name": "tavily_web_search", "call_id": tavily_call_id})
+            pre_tool_calls.append(retrieval_record)
+            yield _sse_event({"type": "tool_call", "tool_name": "retrieve_company_knowledge", "call_id": retrieval_call_id})
             if is_disconnected is not None and await is_disconnected():
                 _mark_assistant_interrupted(db, assistant_msg, [], "Stream interrupted", pre_tool_calls)
+                _update_langfuse_span(span, "interrupted", "Stream interrupted")
                 return
-            web_results = _try_tavily_search(clean_message)
-            tavily_record.status = "success" if web_results else "failed"
-            tavily_record.summary = "Retrieved web fallback evidence" if web_results else "No web fallback evidence found"
-            yield _sse_event({"type": "tool_result", "call_id": tavily_call_id, "ok": bool(web_results)})
+            try:
+                # Parse natural-language source scope from user message
+                source_scope = parse_source_scope(clean_message)
+                with _langfuse_retrieval_span(workspace_id, clean_message, source_scope) as retrieval_span:
+                    evidence_bundle = retrieve_company_knowledge(
+                        db,
+                        workspace_id,
+                        clean_message,
+                        source_scope=source_scope,
+                    )
+                    _update_retrieval_span(retrieval_span, evidence_bundle)
+            except Exception:
+                logger.warning("Pre-retrieval failed", exc_info=True)
+                evidence_bundle = EvidenceBundle(insufficient_evidence=True, reason="Retrieval error")
+                retrieval_record.status = "failed"
+                retrieval_record.summary = "Pre-retrieval failed"
+                yield _sse_event({"type": "tool_result", "call_id": retrieval_call_id, "ok": False})
+            else:
+                retrieval_record.status = "success"
+                retrieval_record.summary = "Retrieved company Source evidence" if evidence_bundle and evidence_bundle.items else "No matching Source evidence found"
+                yield _sse_event({"type": "tool_result", "call_id": retrieval_call_id, "ok": True})
 
             if is_disconnected is not None and await is_disconnected():
                 _mark_assistant_interrupted(db, assistant_msg, [], "Stream interrupted", pre_tool_calls)
+                _update_langfuse_span(span, "interrupted", "Stream interrupted")
                 return
 
-    # --- Run consultant agent ---
-    collected_content: list[str] = []
-    final_result: ConsultantResult | None = None
+            # Check if Tavily fallback is needed (weak evidence + web-capable question)
+            if evidence_bundle and evidence_bundle.insufficient_evidence and _is_web_capable(clean_message):
+                tavily_call_id = f"pre-tavily-{assistant_msg.id}"
+                tavily_record = ToolCallRecord(
+                    tool_name="tavily_web_search",
+                    status="running",
+                    summary="Started web fallback search",
+                    call_id=tavily_call_id,
+                )
+                pre_tool_calls.append(tavily_record)
+                yield _sse_event({"type": "tool_call", "tool_name": "tavily_web_search", "call_id": tavily_call_id})
+                if is_disconnected is not None and await is_disconnected():
+                    _mark_assistant_interrupted(db, assistant_msg, [], "Stream interrupted", pre_tool_calls)
+                    _update_langfuse_span(span, "interrupted", "Stream interrupted")
+                    return
+                web_results = _try_tavily_search(clean_message)
+                tavily_record.status = "success" if web_results else "failed"
+                tavily_record.summary = "Retrieved web fallback evidence" if web_results else "No web fallback evidence found"
+                yield _sse_event({"type": "tool_result", "call_id": tavily_call_id, "ok": bool(web_results)})
 
-    try:
-        async for event, result in run_consultant_stream(
-            db=db,
-            workspace_id=workspace_id,
-            context=context,
-            evidence_bundle=evidence_bundle,
-        ):
-            if is_disconnected is not None and await is_disconnected():
-                tool_calls = pre_tool_calls + result.tool_calls
-                _mark_assistant_interrupted(db, assistant_msg, collected_content, "Stream interrupted", tool_calls)
-                return
-            final_result = result
-            if event.type == "text_delta":
-                collected_content.append(str(event.data.get("delta", "")))
-            yield _sse_event({"type": event.type, **event.data})
+                if is_disconnected is not None and await is_disconnected():
+                    _mark_assistant_interrupted(db, assistant_msg, [], "Stream interrupted", pre_tool_calls)
+                    _update_langfuse_span(span, "interrupted", "Stream interrupted")
+                    return
 
-        if final_result:
-            collected_content = [final_result.content]
-    except (asyncio.CancelledError, GeneratorExit):
-        tool_calls = pre_tool_calls + (final_result.tool_calls if final_result else [])
-        _mark_assistant_interrupted(db, assistant_msg, collected_content, "Stream interrupted", tool_calls)
-        raise
-    except Exception as exc:
-        if exc.__class__.__name__ == "ClientDisconnect":
+        # --- Run consultant agent ---
+        collected_content: list[str] = []
+        final_result: ConsultantResult | None = None
+
+        try:
+            async for event, result in run_consultant_stream(
+                db=db,
+                workspace_id=workspace_id,
+                context=context,
+                evidence_bundle=evidence_bundle,
+            ):
+                if is_disconnected is not None and await is_disconnected():
+                    tool_calls = pre_tool_calls + result.tool_calls
+                    _mark_assistant_interrupted(db, assistant_msg, collected_content, "Stream interrupted", tool_calls)
+                    _update_langfuse_span(span, "interrupted", "Stream interrupted")
+                    return
+                final_result = result
+                if event.type == "text_delta":
+                    collected_content.append(str(event.data.get("delta", "")))
+                yield _sse_event({"type": event.type, **event.data})
+
+            if final_result:
+                collected_content = [final_result.content]
+        except (asyncio.CancelledError, GeneratorExit):
             tool_calls = pre_tool_calls + (final_result.tool_calls if final_result else [])
             _mark_assistant_interrupted(db, assistant_msg, collected_content, "Stream interrupted", tool_calls)
+            _update_langfuse_span(span, "interrupted", "Stream interrupted")
             raise
-        logger.exception("Error during consultant streaming, marking assistant message as failed")
-        partial = "".join(collected_content)
-        failed_at = datetime.utcnow()
-        assistant_msg.content = partial
-        assistant_msg.status = MessageStatus.FAILED
-        assistant_msg.error_message = "Stream failed"
-        assistant_msg.updated_at = failed_at
+        except Exception as exc:
+            if exc.__class__.__name__ == "ClientDisconnect":
+                tool_calls = pre_tool_calls + (final_result.tool_calls if final_result else [])
+                _mark_assistant_interrupted(db, assistant_msg, collected_content, "Stream interrupted", tool_calls)
+                _update_langfuse_span(span, "interrupted", "Stream interrupted")
+                raise
+            logger.exception("Error during consultant streaming, marking assistant message as failed")
+            partial = "".join(collected_content)
+            failed_at = datetime.utcnow()
+            assistant_msg.content = partial
+            assistant_msg.status = MessageStatus.FAILED
+            assistant_msg.error_message = "Stream failed"
+            assistant_msg.updated_at = failed_at
+            db.add(assistant_msg)
+            tool_calls = pre_tool_calls + (final_result.tool_calls if final_result else [])
+            if tool_calls and assistant_msg.id is not None:
+                persist_tool_calls(db, assistant_msg.id, tool_calls)
+            db.commit()
+            _update_langfuse_span(span, "failed", "Stream failed", partial)
+            yield _sse_event({"type": "error", "error": "Stream failed"})
+            yield _sse_event("[DONE]")
+            return
+
+        # Finalise assistant message
+        full_content = "".join(collected_content)
+        completed_at = datetime.utcnow()
+        assistant_msg.content = full_content
+        assistant_msg.status = MessageStatus.COMPLETED
+        assistant_msg.completed_at = completed_at
+        assistant_msg.updated_at = completed_at
+
+        # Store unreferenced context in metadata if present
+        if final_result and final_result.unreferenced_context:
+            assistant_msg.metadata_json = {
+                "unreferenced_context": final_result.unreferenced_context,
+            }
+
         db.add(assistant_msg)
+
+        # Persist tool calls
         tool_calls = pre_tool_calls + (final_result.tool_calls if final_result else [])
-        if tool_calls and assistant_msg.id is not None:
+        if tool_calls:
             persist_tool_calls(db, assistant_msg.id, tool_calls)
+
+        # Persist citations
+        if final_result and final_result.citations:
+            persist_citations(db, assistant_msg.id, final_result.citations)
+
+        # Persist web citations
+        if web_results and final_result:
+            from app.agents.consultant import persist_web_citations
+
+            start_ordinal = (len(final_result.citations) + 1) if final_result.citations else 1
+            persist_web_citations(db, assistant_msg.id, web_results, start_ordinal=start_ordinal)
+
+        chat_session.last_message_at = completed_at
+        chat_session.updated_at = completed_at
+        db.add(chat_session)
         db.commit()
-        yield _sse_event({"type": "error", "error": "Stream failed"})
+        db.refresh(assistant_msg)
+
+        _update_langfuse_span(span, "completed", output=full_content)
         yield _sse_event("[DONE]")
-        return
-
-    # Finalise assistant message
-    full_content = "".join(collected_content)
-    completed_at = datetime.utcnow()
-    assistant_msg.content = full_content
-    assistant_msg.status = MessageStatus.COMPLETED
-    assistant_msg.completed_at = completed_at
-    assistant_msg.updated_at = completed_at
-
-    # Store unreferenced context in metadata if present
-    if final_result and final_result.unreferenced_context:
-        assistant_msg.metadata_json = {
-            "unreferenced_context": final_result.unreferenced_context,
-        }
-
-    db.add(assistant_msg)
-
-    # Persist tool calls
-    tool_calls = pre_tool_calls + (final_result.tool_calls if final_result else [])
-    if tool_calls:
-        persist_tool_calls(db, assistant_msg.id, tool_calls)
-
-    # Persist citations
-    if final_result and final_result.citations:
-        persist_citations(db, assistant_msg.id, final_result.citations)
-
-    # Persist web citations
-    if web_results and final_result:
-        from app.agents.consultant import persist_web_citations
-
-        start_ordinal = (len(final_result.citations) + 1) if final_result.citations else 1
-        persist_web_citations(db, assistant_msg.id, web_results, start_ordinal=start_ordinal)
-
-    chat_session.last_message_at = completed_at
-    chat_session.updated_at = completed_at
-    db.add(chat_session)
-    db.commit()
-    db.refresh(assistant_msg)
-
-    yield _sse_event("[DONE]")
 
 
 # ---------------------------------------------------------------------------
