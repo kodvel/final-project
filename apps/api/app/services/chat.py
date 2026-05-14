@@ -223,6 +223,18 @@ def _langfuse_retrieval_span(workspace_id: int, query: str, source_scope):
         yield span
 
 
+def _trace_id_from_span(span) -> str | None:
+    """Return the active Langfuse trace_id, or None if Langfuse is disabled."""
+    if span is None:
+        return None
+    trace_id = getattr(span, "trace_id", None)
+    # SDK returns a zero-string for spans created on a disabled client; treat
+    # that as "no trace" so we don't persist a fake id.
+    if not trace_id or set(trace_id) == {"0"}:
+        return None
+    return trace_id
+
+
 def _update_retrieval_span(span, evidence_bundle) -> None:
     if not span or evidence_bundle is None:
         return
@@ -358,11 +370,26 @@ async def stream_chat(
         assistant_message_id=assistant_msg.id,
         message=clean_message,
     ) as span:
+        # Persist trace_id on the assistant message so the frontend can render
+        # a "View Trace" link. Set early so it's visible even if the stream
+        # later fails/interrupts (and persisted regardless via the existing
+        # db.add(assistant_msg) calls on each terminal path).
+        trace_id = _trace_id_from_span(span)
+        if trace_id:
+            assistant_msg.trace_id = trace_id
+
+        trace_url: str | None = None
+        if trace_id:
+            settings = get_settings()
+            trace_url = f"{settings.langfuse_host.rstrip('/')}/trace/{trace_id}"
+
         yield _sse_event({
             "type": "metadata",
             "session_id": session_id,
             "assistant_message_id": assistant_msg.id,
             "created_session": created_session,
+            "trace_id": trace_id,
+            "trace_url": trace_url,
         })
 
         if is_disconnected is not None and await is_disconnected():

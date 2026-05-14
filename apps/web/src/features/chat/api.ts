@@ -31,6 +31,7 @@ function messageFromApi(message: ChatMessageApi): ChatMessage {
     errorMessage: message.error_message,
     metadataJson: message.metadata_json,
     traceId: message.trace_id,
+    traceUrl: message.trace_url,
     createdAt: message.created_at,
     updatedAt: message.updated_at,
     completedAt: message.completed_at,

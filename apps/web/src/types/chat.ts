@@ -46,6 +46,7 @@ export type ChatMessage = {
   errorMessage?: string | null
   metadataJson?: Record<string, unknown> | null
   traceId?: string | null
+  traceUrl?: string | null
   createdAt: IsoDateTime
   updatedAt: IsoDateTime
   completedAt?: IsoDateTime | null
@@ -61,6 +62,7 @@ export type ChatMessageApi = {
   error_message?: string | null
   metadata_json?: Record<string, unknown> | null
   trace_id?: string | null
+  trace_url?: string | null
   created_at: IsoDateTime
   updated_at: IsoDateTime
   completed_at?: IsoDateTime | null
@@ -106,6 +108,8 @@ export type MetadataEvent = {
   session_id: number
   assistant_message_id: number
   created_session: boolean
+  trace_id?: string | null
+  trace_url?: string | null
 }
 
 export type TextDeltaEvent = {

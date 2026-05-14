@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from app.models.enums import (
     ChatMessageRole,
@@ -29,7 +29,16 @@ class ChatMessageRead(BaseModel):
     error_message: str | None = None
     metadata_json: dict[str, Any] | None = None
     trace_id: str | None = None
+    trace_url: str | None = None
     created_at: datetime
+
+    @model_validator(mode="after")
+    def _compute_trace_url(self) -> "ChatMessageRead":
+        if self.trace_id and not self.trace_url:
+            from app.core.config import get_settings
+            host = get_settings().langfuse_host.rstrip("/")
+            self.trace_url = f"{host}/trace/{self.trace_id}"
+        return self
     updated_at: datetime
     completed_at: datetime | None = None
 

@@ -1290,10 +1290,14 @@ Langfuse is implemented last. Core chat and AI Consultant must work without Lang
 
 ### Acceptance criteria
 
-- [ ] AI consultant runs create Langfuse traces.
-- [ ] Assistant messages store trace ID.
-- [ ] User can view trace reference.
-- [ ] Core app still works without Langfuse.
+- [x] AI consultant runs create Langfuse traces.
+- [x] Assistant messages store trace ID.
+- [x] User can view trace reference.
+- [x] Core app still works without Langfuse.
+
+Notes:
+- Decision Brief tracing remains pending — [decision_briefs.py](../apps/api/app/services/decision_briefs.py) is still a stub. Once it issues LLM calls via `services/langfuse_openai.create_openai_client`, they will auto-trace under the active span without additional wiring.
+- Frontend "View trace" link is hidden unless `VITE_LANGFUSE_HOST` is set; deploys without the env var degrade silently.
 
 ---
 

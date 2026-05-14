@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Bot, ChevronRight, Eye, FileSpreadsheet, FileText, Mic, Paperclip, Send, Workflow, X } from 'lucide-react'
+import { Bot, ChevronRight, ExternalLink, Eye, FileSpreadsheet, FileText, Mic, Paperclip, Send, Workflow, X } from 'lucide-react'
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { useChatSession, useChatSessions, useCreateChatSession, useStreamChat } from '../features/chat/hooks'
 import { useActiveWorkspace } from '../features/workspaces/hooks/use-active-workspace'
@@ -415,7 +415,27 @@ function AssistantMessage({
           ))}
         </div>
       )}
+
+      <TraceLink message={message} />
     </article>
+  )
+}
+
+function TraceLink({ message }: { message: DisplayMessage }) {
+  if (isOptimistic(message)) return null
+  const url = message.traceUrl
+  if (!url) return null
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1.5 text-xs text-text-hint hover:text-primary transition-colors"
+      title="Open trace in Langfuse"
+    >
+      <ExternalLink className="h-3.5 w-3.5" />
+      View trace
+    </a>
   )
 }
 
