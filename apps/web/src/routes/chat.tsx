@@ -321,18 +321,12 @@ export function ChatPage() {
         <form onSubmit={handleSubmit} className="shrink-0 border-t border-border bg-card px-8 py-5">
           <div className="mx-auto max-w-[850px]">
             <div className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-sm">
-              <button type="button" className="text-text-hint hover:text-primary" aria-label="Attach Source">
-                <Paperclip className="h-5 w-5" />
-              </button>
               <input
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 placeholder="Ask a strategic question or type '/'"
                 className="min-w-0 flex-1 border-0 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
               />
-              <button type="button" className="text-text-hint hover:text-primary" aria-label="Voice input">
-                <Mic className="h-5 w-5" />
-              </button>
               {isStreaming || isThinking ? (
                 <button
                   type="button"
