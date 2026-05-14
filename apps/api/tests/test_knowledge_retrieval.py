@@ -131,10 +131,7 @@ def test_retrieval_returns_citation_ready_evidence(session):
         distances=[0.15],
     )
 
-    with (
-        patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection),
-        patch("app.knowledge.retrieval.get_embeddings_for_texts", return_value=[[0.1] * 384]),
-    ):
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection):
         from app.knowledge.retrieval import retrieve_company_knowledge
 
         bundle = retrieve_company_knowledge(session, workspace_id=1, query="revenue growth")
@@ -149,6 +146,28 @@ def test_retrieval_returns_citation_ready_evidence(session):
     assert item.quote == "Revenue grew 15% in Q1 2026"
     assert item.category_labels == ["analytics_metrics"]
     assert item.relevance_score == pytest.approx(0.85)  # 1 - 0.15
+
+
+def test_retrieval_uses_query_texts_not_embeddings(session):
+    """Retrieval calls collection.query with query_texts, not query_embeddings."""
+    source = _make_source(session, title="Query Test")
+    _make_content_artifact(session, source.id, [{"chunk_id": "c-0", "text": "test", "chunk_index": 0}])
+
+    fake_collection = MagicMock()
+    fake_collection.query.return_value = _chroma_result(
+        ids=[], documents=[], metadatas=[], distances=[],
+    )
+
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection):
+        from app.knowledge.retrieval import retrieve_company_knowledge
+
+        retrieve_company_knowledge(session, workspace_id=1, query="test query")
+
+    call_kwargs = fake_collection.query.call_args[1]
+    # Should use query_texts for Chroma auto-embedding
+    assert call_kwargs.get("query_texts") == ["test query"]
+    # Should NOT include query_embeddings
+    assert "query_embeddings" not in call_kwargs
 
 
 def test_retrieval_hydrates_evidence_from_sql_not_chroma_payload(session):
@@ -199,10 +218,7 @@ def test_retrieval_hydrates_evidence_from_sql_not_chroma_payload(session):
         distances=[0.1],
     )
 
-    with (
-        patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection),
-        patch("app.knowledge.retrieval.get_embeddings_for_texts", return_value=[[0.1] * 384]),
-    ):
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection):
         from app.knowledge.retrieval import retrieve_company_knowledge
 
         bundle = retrieve_company_knowledge(session, workspace_id=1, query="product quote")
@@ -262,10 +278,7 @@ def test_discards_candidates_from_wrong_workspace(session):
         distances=[0.1],
     )
 
-    with (
-        patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection),
-        patch("app.knowledge.retrieval.get_embeddings_for_texts", return_value=[[0.1] * 384]),
-    ):
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection):
         from app.knowledge.retrieval import retrieve_company_knowledge
 
         bundle = retrieve_company_knowledge(session, workspace_id=1, query="data")
@@ -282,10 +295,7 @@ def test_discards_soft_deleted_source(session):
     session.add(source)
     session.commit()
 
-    with (
-        patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=MagicMock()),
-        patch("app.knowledge.retrieval.get_embeddings_for_texts", return_value=[[0.1] * 384]),
-    ):
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=MagicMock()):
         from app.knowledge.retrieval import retrieve_company_knowledge
 
         bundle = retrieve_company_knowledge(session, workspace_id=1, query="deleted")
@@ -298,10 +308,7 @@ def test_discards_non_ready_source(session):
     """Sources with status != READY are not eligible."""
     _make_source(session, processing_status=ProcessingStatus.PROCESSING)
 
-    with (
-        patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=MagicMock()),
-        patch("app.knowledge.retrieval.get_embeddings_for_texts", return_value=[[0.1] * 384]),
-    ):
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=MagicMock()):
         from app.knowledge.retrieval import retrieve_company_knowledge
 
         bundle = retrieve_company_knowledge(session, workspace_id=1, query="processing")
@@ -336,10 +343,7 @@ def test_discards_candidates_with_missing_artifact(session):
         distances=[0.1],
     )
 
-    with (
-        patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection),
-        patch("app.knowledge.retrieval.get_embeddings_for_texts", return_value=[[0.1] * 384]),
-    ):
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection):
         from app.knowledge.retrieval import retrieve_company_knowledge
 
         bundle = retrieve_company_knowledge(session, workspace_id=1, query="orphan")
@@ -378,10 +382,7 @@ def test_discards_candidates_with_chunk_not_in_artifact(session):
         distances=[0.1],
     )
 
-    with (
-        patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection),
-        patch("app.knowledge.retrieval.get_embeddings_for_texts", return_value=[[0.1] * 384]),
-    ):
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection):
         from app.knowledge.retrieval import retrieve_company_knowledge
 
         bundle = retrieve_company_knowledge(session, workspace_id=1, query="phantom")
@@ -405,10 +406,7 @@ def test_scope_filters_by_team_label(session):
         ids=[], documents=[], metadatas=[], distances=[],
     )
 
-    with (
-        patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection),
-        patch("app.knowledge.retrieval.get_embeddings_for_texts", return_value=[[0.1] * 384]),
-    ):
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection):
         from app.knowledge.retrieval import SourceScope, retrieve_company_knowledge
 
         retrieve_company_knowledge(
@@ -437,10 +435,7 @@ def test_scope_filters_by_category(session):
         ids=[], documents=[], metadatas=[], distances=[],
     )
 
-    with (
-        patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection),
-        patch("app.knowledge.retrieval.get_embeddings_for_texts", return_value=[[0.1] * 384]),
-    ):
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection):
         from app.knowledge.retrieval import SourceScope, retrieve_company_knowledge
 
         retrieve_company_knowledge(
@@ -482,10 +477,7 @@ def test_scope_filters_by_period_overlap(session):
         ids=[], documents=[], metadatas=[], distances=[],
     )
 
-    with (
-        patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection),
-        patch("app.knowledge.retrieval.get_embeddings_for_texts", return_value=[[0.1] * 384]),
-    ):
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection):
         from app.knowledge.retrieval import SourceScope, retrieve_company_knowledge
 
         # Scope asks for Jul-Aug 2026 → only Q3 source eligible
@@ -515,10 +507,7 @@ def test_scope_filters_by_source_ids(session):
         ids=[], documents=[], metadatas=[], distances=[],
     )
 
-    with (
-        patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection),
-        patch("app.knowledge.retrieval.get_embeddings_for_texts", return_value=[[0.1] * 384]),
-    ):
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection):
         from app.knowledge.retrieval import SourceScope, retrieve_company_knowledge
 
         retrieve_company_knowledge(
@@ -574,10 +563,7 @@ def test_dedupes_near_identical_quotes(session):
         distances=[0.1, 0.12],
     )
 
-    with (
-        patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection),
-        patch("app.knowledge.retrieval.get_embeddings_for_texts", return_value=[[0.1] * 384]),
-    ):
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection):
         from app.knowledge.retrieval import retrieve_company_knowledge
 
         bundle = retrieve_company_knowledge(session, workspace_id=1, query="revenue")
@@ -620,10 +606,7 @@ def test_reranks_by_relevance_score(session):
         distances=[0.5, 0.1],
     )
 
-    with (
-        patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection),
-        patch("app.knowledge.retrieval.get_embeddings_for_texts", return_value=[[0.1] * 384]),
-    ):
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection):
         from app.knowledge.retrieval import retrieve_company_knowledge
 
         bundle = retrieve_company_knowledge(session, workspace_id=1, query="relevance")
@@ -667,10 +650,7 @@ def test_per_source_diversity_cap(session):
         distances=[0.1] * 5,
     )
 
-    with (
-        patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection),
-        patch("app.knowledge.retrieval.get_embeddings_for_texts", return_value=[[0.1] * 384]),
-    ):
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection):
         from app.knowledge.retrieval import retrieve_company_knowledge
 
         bundle = retrieve_company_knowledge(
@@ -719,10 +699,7 @@ def test_low_relevance_returns_insufficient_evidence(session):
         distances=[0.95],
     )
 
-    with (
-        patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection),
-        patch("app.knowledge.retrieval.get_embeddings_for_texts", return_value=[[0.1] * 384]),
-    ):
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection):
         from app.knowledge.retrieval import retrieve_company_knowledge
 
         bundle = retrieve_company_knowledge(session, workspace_id=1, query="unrelated query")
@@ -734,10 +711,7 @@ def test_low_relevance_returns_insufficient_evidence(session):
 
 def test_no_eligible_sources_returns_insufficient(session):
     """When no sources are eligible, returns insufficient with no items."""
-    with (
-        patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=MagicMock()),
-        patch("app.knowledge.retrieval.get_embeddings_for_texts", return_value=[[0.1] * 384]),
-    ):
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=MagicMock()):
         from app.knowledge.retrieval import retrieve_company_knowledge
 
         bundle = retrieve_company_knowledge(session, workspace_id=999, query="anything")
@@ -751,16 +725,30 @@ def test_chromadb_unavailable_returns_insufficient(session):
     """When ChromaDB is None, returns insufficient gracefully."""
     _make_source(session)
 
-    with (
-        patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=None),
-        patch("app.knowledge.retrieval.get_embeddings_for_texts", return_value=[[0.1] * 384]),
-    ):
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=None):
         from app.knowledge.retrieval import retrieve_company_knowledge
 
         bundle = retrieve_company_knowledge(session, workspace_id=1, query="test")
 
     assert bundle.insufficient_evidence
     assert "ChromaDB unavailable" in (bundle.reason or "")
+
+
+def test_chroma_query_error_returns_insufficient(session):
+    """When Chroma query raises (e.g. embedding failure), returns insufficient evidence."""
+    _make_source(session)
+
+    fake_collection = MagicMock()
+    fake_collection.query.side_effect = RuntimeError("embedding API timeout")
+
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection):
+        from app.knowledge.retrieval import retrieve_company_knowledge
+
+        bundle = retrieve_company_knowledge(session, workspace_id=1, query="test")
+
+    assert bundle.insufficient_evidence
+    assert "query error" in (bundle.reason or "").lower()
+    assert len(bundle.items) == 0
 
 
 def test_chroma_returns_empty_results(session):
@@ -775,10 +763,7 @@ def test_chroma_returns_empty_results(session):
         "distances": [[]],
     }
 
-    with (
-        patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection),
-        patch("app.knowledge.retrieval.get_embeddings_for_texts", return_value=[[0.1] * 384]),
-    ):
+    with patch("app.knowledge.retrieval.get_company_knowledge_collection", return_value=fake_collection):
         from app.knowledge.retrieval import retrieve_company_knowledge
 
         bundle = retrieve_company_knowledge(session, workspace_id=1, query="test")

@@ -73,36 +73,145 @@ def _make_content_artifact(
 
 
 # ---------------------------------------------------------------------------
-# Unit tests: deterministic embeddings
+# Unit tests: _OpenAIEmbeddingFunction
 # ---------------------------------------------------------------------------
 
 
-def test_deterministic_embedding_returns_correct_dim():
-    from app.knowledge.embeddings import deterministic_embedding
+def test_embedding_function_calls_openai():
+    """_OpenAIEmbeddingFunction creates an OpenAI client and returns vectors."""
+    from app.knowledge.chroma import _OpenAIEmbeddingFunction
 
-    vec = deterministic_embedding("hello world")
-    assert len(vec) == 384
-    assert all(isinstance(v, float) for v in vec)
+    fake_embedding = [0.1] * 1536
+    fake_item = MagicMock()
+    fake_item.embedding = fake_embedding
+    fake_item.index = 0
+    fake_response = MagicMock()
+    fake_response.data = [fake_item]
+
+    ef = _OpenAIEmbeddingFunction(
+        api_base_url="https://api.example.com/v1",
+        api_key="test-key",
+        model="text-embedding-3-small",
+    )
+
+    with patch("openai.OpenAI") as mock_openai_cls:
+        mock_client = MagicMock()
+        mock_client.embeddings.create.return_value = fake_response
+        mock_openai_cls.return_value = mock_client
+
+        result = ef(["hello world"])
+
+    assert len(result) == 1
+    assert result[0] == fake_embedding
+    mock_openai_cls.assert_called_once_with(
+        base_url="https://api.example.com/v1",
+        api_key="test-key",
+    )
+    mock_client.embeddings.create.assert_called_once_with(
+        model="text-embedding-3-small",
+        input=["hello world"],
+    )
 
 
-def test_deterministic_embedding_is_stable():
-    from app.knowledge.embeddings import deterministic_embedding
+def test_embedding_function_batch():
+    """_OpenAIEmbeddingFunction handles batch input."""
+    from app.knowledge.chroma import _OpenAIEmbeddingFunction
 
-    assert deterministic_embedding("foo") == deterministic_embedding("foo")
+    fake_items = []
+    for i in range(3):
+        item = MagicMock()
+        item.embedding = [float(i)] * 1536
+        item.index = i
+        fake_items.append(item)
+    fake_response = MagicMock()
+    fake_response.data = fake_items
 
+    ef = _OpenAIEmbeddingFunction(
+        api_base_url="https://api.example.com/v1",
+        api_key="test-key",
+        model="text-embedding-3-small",
+    )
 
-def test_deterministic_embedding_differs_for_different_text():
-    from app.knowledge.embeddings import deterministic_embedding
+    with patch("openai.OpenAI", return_value=MagicMock()) as mock_openai_cls:
+        mock_openai_cls.return_value.embeddings.create.return_value = fake_response
+        result = ef(["a", "b", "c"])
 
-    assert deterministic_embedding("foo") != deterministic_embedding("bar")
-
-
-def test_get_embeddings_for_texts_batch():
-    from app.knowledge.embeddings import get_embeddings_for_texts
-
-    result = get_embeddings_for_texts(["a", "b", "c"])
     assert len(result) == 3
-    assert all(len(v) == 384 for v in result)
+
+
+def test_embedding_function_returns_empty_for_empty_input():
+    """_OpenAIEmbeddingFunction returns [] for empty input (no API call)."""
+    from app.knowledge.chroma import _OpenAIEmbeddingFunction
+
+    ef = _OpenAIEmbeddingFunction(
+        api_base_url="https://api.example.com/v1",
+        api_key="test-key",
+        model="text-embedding-3-small",
+    )
+    result = ef([])
+    assert result == []
+
+
+def test_embedding_function_sorts_by_index():
+    """_OpenAIEmbeddingFunction sorts results by index to match input order."""
+    from app.knowledge.chroma import _OpenAIEmbeddingFunction
+
+    # Return items out of order
+    item1 = MagicMock()
+    item1.embedding = [0.1] * 1536
+    item1.index = 1
+    item0 = MagicMock()
+    item0.embedding = [0.2] * 1536
+    item0.index = 0
+    fake_response = MagicMock()
+    fake_response.data = [item1, item0]
+
+    ef = _OpenAIEmbeddingFunction(
+        api_base_url="https://api.example.com/v1",
+        api_key="test-key",
+        model="text-embedding-3-small",
+    )
+
+    with patch("openai.OpenAI", return_value=MagicMock()) as mock_openai_cls:
+        mock_openai_cls.return_value.embeddings.create.return_value = fake_response
+        result = ef(["a", "b"])
+
+    # Sorted: index 0 first, then index 1
+    assert result[0] == [0.2] * 1536
+    assert result[1] == [0.1] * 1536
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _build_embedding_function
+# ---------------------------------------------------------------------------
+
+
+def test_build_embedding_function_returns_ef_with_key():
+    """_build_embedding_function returns function when API key is configured."""
+    from app.knowledge.chroma import _build_embedding_function
+
+    fake_settings = MagicMock()
+    fake_settings.rag_embedding_api_base_url = "https://api.example.com/v1"
+    fake_settings.rag_embedding_api_key = "test-key"
+    fake_settings.rag_embedding_model = "text-embedding-3-small"
+
+    with patch("app.core.config.get_settings", return_value=fake_settings):
+        ef = _build_embedding_function()
+
+    assert ef is not None
+
+
+def test_build_embedding_function_returns_none_without_key():
+    """_build_embedding_function returns None when API key is missing."""
+    from app.knowledge.chroma import _build_embedding_function
+
+    fake_settings = MagicMock()
+    fake_settings.rag_embedding_api_key = None
+
+    with patch("app.core.config.get_settings", return_value=fake_settings):
+        ef = _build_embedding_function()
+
+    assert ef is None
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +257,9 @@ def test_index_source_content_csv_chunks(session):
     ids = call_kwargs["ids"]
     docs = call_kwargs["documents"]
     metas = call_kwargs["metadatas"]
-    embeddings = call_kwargs["embeddings"]
+
+    # upsert should NOT include embeddings (Chroma auto-embeds)
+    assert "embeddings" not in call_kwargs
 
     # Stable IDs
     assert ids[0] == f"source:{source.id}:artifact:{artifact.id}:chunk:0"
@@ -171,10 +282,6 @@ def test_index_source_content_csv_chunks(session):
     assert meta0["document_section"] == "data_profile"
     assert meta0["chunk_index"] == 0
     assert json.loads(meta0["columns"]) == ["revenue"]
-
-    # Embeddings present
-    assert len(embeddings) == 2
-    assert all(len(e) == 384 for e in embeddings)
 
 
 def test_index_source_content_pdf_with_page_metadata(session):

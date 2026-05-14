@@ -17,7 +17,6 @@ from typing import Any
 from sqlmodel import Session, select
 
 from app.knowledge.chroma import get_company_knowledge_collection
-from app.knowledge.embeddings import get_embeddings_for_texts
 from app.models.enums import ArtifactType, ProcessingStatus
 from app.models.source import SourceArtifact, SourceCategory, SourceData
 
@@ -173,8 +172,6 @@ def retrieve_company_knowledge(
             reason="ChromaDB unavailable",
         )
 
-    query_embedding = get_embeddings_for_texts([query])[0]
-
     # Build Chroma where filter for eligible source IDs
     if len(eligible_ids) == 1:
         chroma_where: dict[str, Any] = {"source_id": eligible_ids[0]}
@@ -183,7 +180,7 @@ def retrieve_company_knowledge(
 
     try:
         chroma_results = collection.query(
-            query_embeddings=[query_embedding],
+            query_texts=[query],
             n_results=min(max_results * 3, 50),  # fetch extra for post-filtering
             where=chroma_where,
             include=["metadatas", "distances"],

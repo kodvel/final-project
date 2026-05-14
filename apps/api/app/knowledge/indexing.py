@@ -12,7 +12,6 @@ import logging
 from sqlmodel import Session, select
 
 from app.knowledge.chroma import get_company_knowledge_collection
-from app.knowledge.embeddings import get_embeddings_for_texts
 from app.models.enums import ArtifactType
 from app.models.source import SourceArtifact, SourceCategory, SourceData
 
@@ -64,7 +63,6 @@ def index_source_content(session: Session, source_id: int) -> int:
     ids: list[str] = []
     documents: list[str] = []
     metadatas: list[dict] = []
-    texts: list[str] = []
 
     for chunk in chunks:
         chunk_text = chunk.get("text", "")
@@ -75,7 +73,6 @@ def index_source_content(session: Session, source_id: int) -> int:
         vector_id = f"source:{source_id}:artifact:{artifact.id}:chunk:{chunk_index}"
         ids.append(vector_id)
         documents.append(chunk_text)
-        texts.append(chunk_text)
 
         meta: dict = {
             "workspace_id": source.workspace_id,
@@ -112,8 +109,7 @@ def index_source_content(session: Session, source_id: int) -> int:
     if not ids:
         return 0
 
-    embeddings = get_embeddings_for_texts(texts)
-    collection.upsert(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings)
+    collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
     logger.info("Indexed %d chunks for source %s", len(ids), source_id)
     return len(ids)
 

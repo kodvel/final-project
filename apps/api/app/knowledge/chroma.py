@@ -1,14 +1,66 @@
-"""ChromaDB collection setup and persistence helpers."""
+"""ChromaDB collection setup and persistence helpers.
+
+The collection uses an OpenAI-compatible embedding function configured from
+project settings so that ``upsert(documents=...)`` and ``query(query_texts=...)``
+auto-embed without the caller managing vectors.
+"""
 
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 COMPANY_KNOWLEDGE_COLLECTION = "company_knowledge"
 
 _chroma_client = None
+
+
+class _OpenAIEmbeddingFunction:
+    """ChromaDB-compatible embedding function backed by OpenAI API.
+
+    Follows the Chroma ``EmbeddingFunction`` protocol: ``__call__(input)`` → list of vectors.
+    """
+
+    def __init__(self, api_base_url: str, api_key: str, model: str) -> None:
+        self._api_base_url = api_base_url
+        self._api_key = api_key
+        self._model = model
+
+    def __call__(self, input: list[str]) -> list[list[float]]:  # noqa: A002 — Chroma protocol
+        if not input:
+            return []
+
+        from openai import OpenAI
+
+        client = OpenAI(base_url=self._api_base_url, api_key=self._api_key)
+        response = client.embeddings.create(model=self._model, input=input)
+
+        sorted_data = sorted(response.data, key=lambda d: d.index)
+        return [item.embedding for item in sorted_data]
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"_OpenAIEmbeddingFunction(model={self._model!r})"
+
+
+def _build_embedding_function() -> _OpenAIEmbeddingFunction | None:
+    """Build an embedding function from settings, or None if key is missing."""
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    api_key = settings.rag_embedding_api_key
+    if not api_key:
+        logger.warning(
+            "RAG_EMBEDDING_API_KEY not configured; "
+            "collection will not have an embedding function"
+        )
+        return None
+    return _OpenAIEmbeddingFunction(
+        api_base_url=settings.rag_embedding_api_base_url,
+        api_key=api_key,
+        model=settings.rag_embedding_model,
+    )
 
 
 def get_chroma_client():
@@ -36,13 +88,26 @@ def get_chroma_client():
 def get_company_knowledge_collection():
     """Return the ``company_knowledge`` collection (created if absent).
 
-    Returns None when chromadb is unavailable.
+    The collection is created with an OpenAI embedding function so callers
+    can use ``documents`` / ``query_texts`` without manual vectors.
+
+    Returns None when chromadb is unavailable or embedding key is missing.
     """
     client = get_chroma_client()
     if client is None:
         return None
+
+    ef = _build_embedding_function()
+    if ef is None:
+        logger.error(
+            "Cannot create collection without embedding function. "
+            "Set RAG_EMBEDDING_API_KEY."
+        )
+        return None
+
     return client.get_or_create_collection(
         name=COMPANY_KNOWLEDGE_COLLECTION,
+        embedding_function=ef,
         metadata={"hnsw:space": "cosine"},
     )
 
