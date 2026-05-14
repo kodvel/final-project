@@ -1102,15 +1102,15 @@ Diskusikan keputusan, opsi, risiko, dan evidence terlebih dahulu, lalu jalankan 
 
 ### Acceptance criteria
 
-- [ ] User can type `/decision-brief`.
-- [ ] Decision Brief Draft is generated from chat context.
-- [ ] Decision Brief Draft uses session citations already used in chat.
-- [ ] Brief is saved in database.
-- [ ] Brief appears as formatted assistant response.
-- [ ] Brief status defaults to Draft.
-- [ ] Re-running `/decision-brief` creates a new point-in-time draft.
-- [ ] Insufficient context returns a clear message and no draft.
-- [ ] Brief can be generated with weak evidence only when gaps are explicit and recommendation defaults toward Validate First.
+- [x] User can type `/decision-brief`.
+- [x] Decision Brief Draft is generated from chat context.
+- [x] Decision Brief Draft uses session citations already used in chat.
+- [x] Brief is saved in database.
+- [x] Brief appears as formatted assistant response.
+- [x] Brief status defaults to Draft.
+- [x] Re-running `/decision-brief` creates a new point-in-time draft.
+- [x] Insufficient context returns a clear message and no draft.
+- [x] Brief can be generated with weak evidence only when gaps are explicit and recommendation defaults toward Validate First.
 
 ---
 
@@ -1162,11 +1162,11 @@ rejected = locked
 
 ### Acceptance criteria
 
-- [ ] User can update Decision Brief status from the brief card.
-- [ ] Draft can become Reviewed, Approved, or Rejected.
-- [ ] Reviewed can become Approved or Rejected.
-- [ ] Approved and Rejected are locked.
-- [ ] Invalid transitions are rejected.
+- [x] User can update Decision Brief status from the brief card.
+- [x] Draft can become Reviewed, Approved, or Rejected.
+- [x] Reviewed can become Approved or Rejected.
+- [x] Approved and Rejected are locked.
+- [x] Invalid transitions are rejected.
 
 ---
 
@@ -1296,22 +1296,17 @@ Langfuse is implemented last. Core chat and AI Consultant must work without Lang
 - [x] Core app still works without Langfuse.
 
 Notes:
-- Decision Brief tracing remains pending — [decision_briefs.py](../apps/api/app/services/decision_briefs.py) is still a stub. Once it issues LLM calls via `services/langfuse_openai.create_openai_client`, they will auto-trace under the active span without additional wiring.
+- Decision Brief generation now issues LLM calls through `services/langfuse_openai.create_openai_client` in [decision_briefs.py](../apps/api/app/services/decision_briefs.py), so structured extraction auto-traces under the active chat span.
 - Frontend "View trace" link is hidden unless `VITE_LANGFUSE_HOST` is set; deploys without the env var degrade silently.
 
 ---
 
 ## Recommended Implementation Order
 
-Completed foundation and migration work: Task 0, Task 1, Task 2, Task 3, Task 4 indexing, Task 4A, Task 5, and Task 10 baseline alignment.
+Completed foundation and migration work: Task 0, Task 1, Task 2, Task 3, Task 4 indexing + retrieval facade, Task 4A, Task 5, Task 6, Task 8, Task 9, Task 10 baseline alignment, and Task 12 (Langfuse).
 
-Continue remaining work in this order:
+Remaining work:
 
-1. Finish Task 4 retrieval facade: SQL validation, Chroma search, dedupe, rerank, diversity cap, quality gate, compact EvidenceBundle.
-2. Task 6: Source-grounded AI Consultant responses.
-3. Task 8: Decision Brief Draft generation.
-4. Task 9: Decision Brief approval status actions.
-5. Task 11: Demo seed data and presentation scenario.
-6. Task 12: Langfuse observability integration.
+1. Task 11: Demo seed data and presentation scenario.
 
 Run Task 10 API contract alignment continuously as schemas change.

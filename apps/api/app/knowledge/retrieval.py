@@ -17,7 +17,8 @@ from typing import Any
 from sqlmodel import Session, select
 
 from app.knowledge.chroma import get_company_knowledge_collection
-from app.models.enums import ArtifactType, ProcessingStatus
+from app.models.decision_brief import DecisionBrief
+from app.models.enums import ArtifactType, DecisionApprovalStatus, ProcessingStatus
 from app.models.source import SourceArtifact, SourceCategory, SourceData
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,8 @@ class EvidenceItem:
     document_section: str
     relevance_score: float
     why_relevant: str | None = None
+    source_kind: str = "uploaded_source"
+    decision_brief_id: int | None = None
 
 
 @dataclass
@@ -82,6 +85,14 @@ _WHITESPACE_RE = re.compile(r"\s+")
 
 def _normalise_quote(text: str) -> str:
     return _WHITESPACE_RE.sub(" ", text).strip().lower()
+
+
+def _document_for_vector(chroma_results: dict, idx: int) -> str:
+    docs = (chroma_results.get("documents") or [[]])[0]
+    if idx >= len(docs):
+        return ""
+    text = docs[idx]
+    return str(text).strip() if text else ""
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +144,58 @@ def _eligible_source_ids(
     return list(rows)
 
 
+def _eligible_decision_brief_ids(
+    session: Session,
+    workspace_id: int,
+    scope: SourceScope | None,
+) -> list[int]:
+    """Return approved Decision Brief IDs for the workspace.
+
+    Approved briefs become cross-session knowledge. Explicit source_ids scope
+    suppresses brief retrieval — the user is constraining to specific sources.
+    """
+    if scope is not None and scope.source_ids:
+        return []
+    rows = session.exec(
+        select(DecisionBrief.id).where(
+            DecisionBrief.workspace_id == workspace_id,
+            DecisionBrief.approval_status == DecisionApprovalStatus.APPROVED,
+        )
+    ).all()
+    return list(rows)
+
+
+def _build_chroma_where(
+    eligible_source_ids: list[int],
+    approved_brief_ids: list[int],
+    workspace_id: int,
+) -> dict[str, Any]:
+    """Compose a Chroma ``where`` filter that matches eligible uploaded sources
+    and approved Decision Briefs, scoped by workspace.
+    """
+    clauses: list[dict[str, Any]] = []
+    if eligible_source_ids:
+        if len(eligible_source_ids) == 1:
+            clauses.append({"source_id": eligible_source_ids[0]})
+        else:
+            clauses.append({"source_id": {"$in": eligible_source_ids}})
+    if approved_brief_ids:
+        if len(approved_brief_ids) == 1:
+            brief_clause: dict[str, Any] = {"decision_brief_id": approved_brief_ids[0]}
+        else:
+            brief_clause = {"decision_brief_id": {"$in": approved_brief_ids}}
+        clauses.append({
+            "$and": [
+                {"workspace_id": workspace_id},
+                {"source_kind": "decision_brief"},
+                brief_clause,
+            ]
+        })
+    if len(clauses) == 1:
+        return clauses[0]
+    return {"$or": clauses}
+
+
 # ---------------------------------------------------------------------------
 # Main retrieval facade
 # ---------------------------------------------------------------------------
@@ -157,11 +220,12 @@ def retrieve_company_knowledge(
     """
     # --- 1. Eligibility ---
     eligible_ids = _eligible_source_ids(session, workspace_id, source_scope)
+    approved_brief_ids = _eligible_decision_brief_ids(session, workspace_id, source_scope)
 
-    if not eligible_ids:
+    if not eligible_ids and not approved_brief_ids:
         return EvidenceBundle(
             insufficient_evidence=True,
-            reason="No eligible sources found for workspace/scope",
+            reason="No eligible sources or approved Decision Briefs found for workspace/scope",
         )
 
     # --- 2. Chroma search ---
@@ -172,18 +236,15 @@ def retrieve_company_knowledge(
             reason="ChromaDB unavailable",
         )
 
-    # Build Chroma where filter for eligible source IDs
-    if len(eligible_ids) == 1:
-        chroma_where: dict[str, Any] = {"source_id": eligible_ids[0]}
-    else:
-        chroma_where = {"source_id": {"$in": eligible_ids}}
+    # Build Chroma where filter: uploaded source chunks OR approved decision briefs
+    chroma_where = _build_chroma_where(eligible_ids, approved_brief_ids, workspace_id)
 
     try:
         chroma_results = collection.query(
             query_texts=[query],
             n_results=min(max_results * 3, 50),  # fetch extra for post-filtering
             where=chroma_where,
-            include=["metadatas", "distances"],
+            include=["metadatas", "distances", "documents"],
         )
     except Exception:
         logger.warning("ChromaDB query failed", exc_info=True)
@@ -212,7 +273,7 @@ def retrieve_company_knowledge(
             SourceData.processing_status == str(ProcessingStatus.READY),
             SourceData.deleted_at.is_(None),  # type: ignore[union-attr]
         )
-    ).all()
+    ).all() if eligible_ids else []
     source_map: dict[int, SourceData] = {s.id: s for s in valid_sources}
 
     # Pre-load source_content artifacts for eligible sources
@@ -221,7 +282,7 @@ def retrieve_company_knowledge(
             SourceArtifact.source_id.in_(eligible_ids),
             SourceArtifact.artifact_type == str(ArtifactType.SOURCE_CONTENT),
         )
-    ).all()
+    ).all() if eligible_ids else []
     artifact_map: dict[int, SourceArtifact] = {a.id: a for a in artifacts}
 
     # Build chunk lookup: artifact_id -> set of chunk_id values
@@ -234,10 +295,21 @@ def retrieve_company_knowledge(
     # Pre-load categories per source
     all_categories = session.exec(
         select(SourceCategory).where(SourceCategory.source_id.in_(eligible_ids))
-    ).all()
+    ).all() if eligible_ids else []
     cat_map: dict[int, list[str]] = {}
     for cat in all_categories:
         cat_map.setdefault(cat.source_id, []).append(str(cat.category))
+
+    # Pre-load approved decision briefs for hydration
+    brief_map: dict[int, DecisionBrief] = {}
+    if approved_brief_ids:
+        approved_briefs = session.exec(
+            select(DecisionBrief).where(
+                DecisionBrief.id.in_(approved_brief_ids),
+                DecisionBrief.approval_status == DecisionApprovalStatus.APPROVED,
+            )
+        ).all()
+        brief_map = {b.id: b for b in approved_briefs}
 
     # Validate each candidate
     raw_items: list[EvidenceItem] = []
@@ -247,6 +319,48 @@ def retrieve_company_knowledge(
         meta = chroma_metas[idx] if idx < len(chroma_metas) else {}
         dist = chroma_dists[idx] if idx < len(chroma_dists) else None
 
+        # Dedupe by vector_id
+        if vector_id in seen_ids:
+            continue
+
+        # Compute relevance score
+        if dist is not None:
+            relevance = max(0.0, min(1.0, 1.0 - dist))
+        else:
+            relevance = 1.0
+
+        if meta.get("source_kind") == "decision_brief":
+            brief_id = meta.get("decision_brief_id")
+            if brief_id is None or int(brief_id) not in brief_map:
+                continue
+            brief = brief_map[int(brief_id)]
+            quote = _document_for_vector(chroma_results, idx)
+            if not quote:
+                continue
+            seen_ids.add(vector_id)
+            raw_items.append(EvidenceItem(
+                citation_id=vector_id,
+                source_id=-int(brief_id),  # negative sentinel to avoid colliding with real source IDs
+                artifact_id=0,
+                chunk_id=str(meta.get("document_section") or "section"),
+                source_title=str(meta.get("source_title") or brief.title),
+                file_type="decision_brief",
+                team_label="",
+                category_labels=[],
+                period_start_month=None,
+                period_end_month=None,
+                quote=quote,
+                page_number=None,
+                row_refs=None,
+                content_type="decision_brief",
+                document_section=str(meta.get("document_section", "")),
+                relevance_score=relevance,
+                source_kind="decision_brief",
+                decision_brief_id=int(brief_id),
+            ))
+            continue
+
+        # Uploaded source path
         src_id = meta.get("source_id")
         art_id = meta.get("artifact_id")
         chunk_id = meta.get("chunk_id", "")
@@ -279,16 +393,7 @@ def retrieve_company_knowledge(
         if not quote:
             continue
 
-        # Dedupe by vector_id
-        if vector_id in seen_ids:
-            continue
         seen_ids.add(vector_id)
-
-        # Compute relevance score
-        if dist is not None:
-            relevance = max(0.0, min(1.0, 1.0 - dist))
-        else:
-            relevance = 1.0
 
         item = EvidenceItem(
             citation_id=vector_id,

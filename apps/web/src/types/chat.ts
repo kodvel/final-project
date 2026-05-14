@@ -47,6 +47,7 @@ export type ChatMessage = {
   metadataJson?: Record<string, unknown> | null
   traceId?: string | null
   traceUrl?: string | null
+  decisionBriefId?: number | null
   createdAt: IsoDateTime
   updatedAt: IsoDateTime
   completedAt?: IsoDateTime | null
@@ -63,6 +64,7 @@ export type ChatMessageApi = {
   metadata_json?: Record<string, unknown> | null
   trace_id?: string | null
   trace_url?: string | null
+  decision_brief_id?: number | null
   created_at: IsoDateTime
   updated_at: IsoDateTime
   completed_at?: IsoDateTime | null
@@ -106,10 +108,28 @@ export type StreamChatMessageInput = {
 export type MetadataEvent = {
   type: 'metadata'
   session_id: number
-  assistant_message_id: number
+  assistant_message_id: number | null
   created_session: boolean
   trace_id?: string | null
   trace_url?: string | null
+  command?: string | null
+}
+
+export type DecisionBriefEvent = {
+  type: 'decision_brief'
+  message_id: number
+  brief_id: number
+  sequence_number: number
+  recommendation_status: string
+  approval_status: string
+}
+
+export type CommandResultEvent = {
+  type: 'command_result'
+  message_id: number
+  command: string
+  ok: boolean
+  content: string
 }
 
 export type TextDeltaEvent = {
@@ -140,6 +160,8 @@ export type StreamEvent =
   | StreamErrorEvent
   | ToolCallEvent
   | ToolResultEvent
+  | DecisionBriefEvent
+  | CommandResultEvent
 
 export type StreamHandlers = {
   onMetadata?: (event: MetadataEvent) => void
@@ -147,6 +169,8 @@ export type StreamHandlers = {
   onError?: (event: StreamErrorEvent) => void
   onToolCall?: (event: ToolCallEvent) => void
   onToolResult?: (event: ToolResultEvent) => void
+  onDecisionBrief?: (event: DecisionBriefEvent) => void
+  onCommandResult?: (event: CommandResultEvent) => void
   onDone?: () => void
 }
 
