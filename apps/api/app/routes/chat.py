@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.db.session import get_session
+from app.models.decision_brief import DecisionBrief
 from app.schemas.chat import (
     ChatMessageRead,
     ChatSessionCreate,
@@ -58,6 +59,19 @@ def get_chat_session(
     citations = chat_service.list_citations_for_session(session, session_id)
     tool_calls = chat_service.list_tool_calls_for_session(session, session_id)
 
+    # Map chat_message_id -> decision_brief_id so the frontend can render brief cards.
+    briefs = session.exec(
+        select(DecisionBrief).where(DecisionBrief.chat_session_id == session_id)
+    ).all()
+    brief_id_by_message: dict[int, int] = {b.chat_message_id: b.id for b in briefs}
+
+    message_reads: list[ChatMessageRead] = []
+    for message in chat_service.list_messages(session, session_id):
+        read = ChatMessageRead.model_validate(message)
+        if message.id in brief_id_by_message:
+            read.decision_brief_id = brief_id_by_message[message.id]
+        message_reads.append(read)
+
     return ChatSessionDetail(
         id=chat_session.id,
         workspace_id=chat_session.workspace_id,
@@ -68,7 +82,7 @@ def get_chat_session(
         conversation_summary=chat_session.conversation_summary,
         summary_cutoff_message_id=chat_session.summary_cutoff_message_id,
         summary_updated_at=chat_session.summary_updated_at,
-        messages=[ChatMessageRead.model_validate(message) for message in chat_service.list_messages(session, session_id)],
+        messages=message_reads,
         citations=[CitationRead.model_validate(c) for c in citations],
         tool_calls=[ToolCallRead.model_validate(tc) for tc in tool_calls],
     )

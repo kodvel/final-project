@@ -14,9 +14,13 @@ class DecisionBrief(SQLModel, table=True):
     workspace_id: int = Field(index=True, foreign_key="workspace.id")
     chat_session_id: int = Field(index=True, foreign_key="chat_session.id")
     chat_message_id: int = Field(index=True, foreign_key="chat_message.id")
+    sequence_number: int = 1
+    context_cutoff_message_id: int | None = Field(default=None, foreign_key="chat_message.id")
     title: str
+    objective: str | None = None
     recommendation_status: DecisionRecommendationStatus
     approval_status: DecisionApprovalStatus = DecisionApprovalStatus.DRAFT
     content_json: dict = Field(default_factory=dict, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+    status_updated_at: datetime = Field(default_factory=datetime.utcnow)

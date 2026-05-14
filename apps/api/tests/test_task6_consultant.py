@@ -829,12 +829,23 @@ def test_system_prompt_encourages_natural_style() -> None:
 
 
 def test_parse_source_scope_detects_team() -> None:
-    """Parser extracts team_label from natural language."""
+    """Parser extracts team_label only from explicit team-scoping phrasing."""
     from app.agents.consultant import parse_source_scope
 
-    scope = parse_source_scope("Show me marketing data from our Q1 report")
+    scope = parse_source_scope("Show me sources from the marketing team for our Q1 report")
     assert scope is not None
     assert scope.team_label == "marketing"
+
+
+def test_parse_source_scope_ignores_incidental_team_words() -> None:
+    """Bare mentions of team-named words in question content do not scope retrieval."""
+    from app.agents.consultant import parse_source_scope
+
+    # "product launch" and "AI analytics" are question content, not scope filters.
+    scope = parse_source_scope(
+        "What does the report say about Nexora's AI analytics product launch?"
+    )
+    assert scope is None
 
 
 def test_parse_source_scope_detects_category() -> None:
