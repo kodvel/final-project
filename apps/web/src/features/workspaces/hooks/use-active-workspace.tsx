@@ -1,5 +1,37 @@
-import { createContext, type ReactNode, useCallback, useContext, useState } from 'react'
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useWorkspace } from './index'
 import type { Workspace } from '../../../types/workspace'
+
+const STORAGE_KEY = 'activeWorkspaceId'
+
+function readStoredId(): number | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw === null) return null
+    const id = Number(raw)
+    if (!Number.isInteger(id) || id <= 0) {
+      localStorage.removeItem(STORAGE_KEY)
+      return null
+    }
+    return id
+  } catch {
+    return null
+  }
+}
+
+function writeStoredId(id: number | null): void {
+  try {
+    if (id === null) {
+      localStorage.removeItem(STORAGE_KEY)
+    } else {
+      localStorage.setItem(STORAGE_KEY, String(id))
+    }
+  } catch {
+    // localStorage unavailable — ignore silently
+  }
+}
 
 type WorkspaceContextValue = {
   activeWorkspaceId: number | null
@@ -15,21 +47,42 @@ type WorkspaceProviderProps = {
   initialWorkspaceId?: number | null
 }
 
-export function WorkspaceProvider({ children, initialWorkspaceId = null }: WorkspaceProviderProps) {
-  const [activeWorkspaceId, setActiveWorkspaceIdState] = useState<number | null>(initialWorkspaceId)
-  const [activeWorkspace, setActiveWorkspaceState] = useState<Workspace | null>(null)
+export function WorkspaceProvider({ children, initialWorkspaceId }: WorkspaceProviderProps) {
+  const [activeWorkspaceId, setActiveWorkspaceIdState] = useState<number | null>(initialWorkspaceId ?? null)
+  const hydratedRef = useRef(false)
+
+  // SSR-safe: read localStorage only after mount, never during server render
+  useEffect(() => {
+    if (hydratedRef.current) return
+    hydratedRef.current = true
+    if (initialWorkspaceId !== undefined && initialWorkspaceId !== null) return
+    const storedId = readStoredId()
+    if (storedId !== null) {
+      setActiveWorkspaceIdState(storedId)
+    }
+  }, [initialWorkspaceId])
+
+  // Derive activeWorkspace from activeWorkspaceId via the shared query cache
+  // useWorkspace disables the query when id <= 0, so it returns undefined when no workspace is selected
+  const { data: fetchedWorkspace } = useWorkspace(activeWorkspaceId ?? 0)
+  const activeWorkspace = fetchedWorkspace ?? null
+
+  const queryClient = useQueryClient()
 
   const setActiveWorkspaceId = useCallback((id: number | null) => {
     setActiveWorkspaceIdState(id)
-    if (id === null) {
-      setActiveWorkspaceState(null)
-    }
+    writeStoredId(id)
   }, [])
 
   const setActiveWorkspace = useCallback((ws: Workspace | null) => {
-    setActiveWorkspaceState(ws)
-    setActiveWorkspaceIdState(ws?.id ?? null)
-  }, [])
+    const id = ws?.id ?? null
+    setActiveWorkspaceIdState(id)
+    writeStoredId(id)
+    if (ws) {
+      // Populate cache so useWorkspace resolves immediately without a refetch
+      queryClient.setQueryData(['workspaces', id], ws)
+    }
+  }, [queryClient])
 
   return (
     <WorkspaceContext.Provider value={{ activeWorkspaceId, setActiveWorkspaceId, activeWorkspace, setActiveWorkspace }}>

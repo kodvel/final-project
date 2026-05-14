@@ -78,6 +78,9 @@ function VisualizationDataPage() {
 
   const content = snapshot?.contentJson
   const coverage = content?.coverage
+  const executiveSummary = content?.executive_summary
+  const confidenceAssessment = content?.confidence_assessment
+  const crossSourcePatterns = content?.cross_source_patterns ?? []
   const sourceCards = content?.source_cards ?? []
   const keyFindings = content?.key_findings ?? []
   const risksAssumptions = content?.risks_assumptions ?? []
@@ -149,6 +152,44 @@ function VisualizationDataPage() {
 
         <section className="rounded-2xl border border-border bg-background p-6 shadow-sm">
           <SectionHeader
+            eyebrow="Executive summary"
+            title="Cross-artifact intelligence snapshot"
+            description="LLM-composed view across ready Sources, teams, labels, and artifacts in this period."
+            icon={<Sparkles className="h-4 w-4" />}
+          />
+          {executiveSummary ? (
+            <div className="mt-5 rounded-xl border border-border bg-surface-subtle p-5">
+              <p className="text-sm leading-7 text-foreground">{executiveSummary}</p>
+              {confidenceAssessment && (
+                <div className="mt-4 inline-flex max-w-full items-start gap-1 rounded-md border border-border bg-background px-2.5 py-0.5 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                  <span className="min-w-0 whitespace-normal break-words">
+                    {confidenceAssessment}
+                  </span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <EmptyInline title="No executive summary" description="The snapshot did not include a cross-artifact summary yet." className="mt-5" />
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-border bg-background p-6 shadow-sm">
+          <SectionHeader
+            eyebrow="Cross-source patterns"
+            title="Signals across teams and labels"
+            description="Patterns are synthesized across multiple Source Artifacts, not listed per file."
+            icon={<Sparkles className="h-4 w-4" />}
+          />
+          <ItemList
+            items={crossSourcePatterns}
+            emptyTitle="No cross-source patterns"
+            emptyDescription="The snapshot did not find repeated or conflicting signals across sources."
+            className="mt-5"
+          />
+        </section>
+
+        <section className="rounded-2xl border border-border bg-background p-6 shadow-sm">
+          <SectionHeader
             eyebrow="Coverage overview"
             title="What this snapshot includes"
             description={coverage?.summary ?? 'Ready sources overlapping the selected month range are composed into one cached intelligence view.'}
@@ -174,7 +215,7 @@ function VisualizationDataPage() {
           {sourceCards.length > 0 ? (
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
               {sourceCards.map((card) => (
-                <SourceCard key={card.sourceId} card={card} />
+                <SourceCard key={card.sourceId ?? card.title} card={card} />
               ))}
             </div>
           ) : (
@@ -375,9 +416,14 @@ function ItemList({
                   {item.kind}
                 </Badge>
               )}
+              {item.theme && (
+                <Badge variant="secondary" className="bg-primary/10 text-primary">
+                  {formatLabel(item.theme)}
+                </Badge>
+              )}
               <p className="text-sm leading-6 text-foreground">{item.title ?? item.text ?? item.detail ?? item.description ?? 'Untitled item'}</p>
             </div>
-            {typeof item.confidence === 'number' && <span className="text-xs text-muted-foreground">{Math.round(item.confidence * 100)}%</span>}
+            {item.confidence != null && <span className="text-xs capitalize text-muted-foreground">{formatConfidence(item.confidence)}</span>}
           </div>
           {item.evidenceRefs && item.evidenceRefs.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
@@ -422,8 +468,23 @@ function EmptyState({ title, description }: { title: string; description: string
 
 function LoadingState() {
   return (
-    <section className="rounded-2xl border border-border bg-background p-8 text-sm text-muted-foreground shadow-sm">
-      Loading visualizations...
+    <section className="p-8 ">
+      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+        <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground" />
+
+        <div>
+          <p className="font-medium text-foreground">Preparing visualizations</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Analyzing data and building charts...
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-6 space-y-3">
+        <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
+        <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
+        <div className="h-32 animate-pulse rounded-xl bg-muted" />
+      </div>
     </section>
   )
 }
@@ -459,10 +520,15 @@ function formatLabel(value: string) {
     .join(' ')
 }
 
+function formatConfidence(value: VisualizationSnapshotListItem['confidence']) {
+  if (typeof value === 'number') return `${Math.round(value * 100)}%`
+  return String(value)
+}
+
 function itemKey(item: VisualizationSnapshotListItem) {
-  return [item.kind, item.title ?? item.text ?? item.detail ?? item.description ?? 'item', item.confidence ?? ''].join('|')
+  return [item.kind, item.theme ?? '', item.title ?? item.text ?? item.detail ?? item.description ?? 'item', item.confidence ?? ''].join('|')
 }
 
 function evidenceRefKey(ref: VisualizationEvidenceRef) {
-  return [ref.sourceId ?? '', ref.sourceTitle ?? '', ref.pageNumber ?? '', ref.quote ?? ''].join('|')
+  return [ref.sourceId ?? '', ref.artifactId ?? '', ref.sourceTitle ?? '', ref.pageNumber ?? '', ref.quote ?? ''].join('|')
 }

@@ -198,6 +198,39 @@ class CSVInsightResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+# --- Visualization Snapshot composition ---
+
+
+class VisualizationEvidenceRef(BaseModel):
+    """Evidence reference for a cross-artifact visualization claim."""
+
+    source_id: int
+    artifact_id: int
+    source_title: str | None = None
+
+
+class VisualizationInsightItem(BaseModel):
+    """One board-ready insight grounded in one or more Source Artifacts."""
+
+    text: str
+    confidence: str = "medium"
+    evidence: list[VisualizationEvidenceRef] = Field(default_factory=list)
+    theme: str | None = None
+    kind: str | None = None
+
+
+class VisualizationSnapshotExtract(BaseModel):
+    """Structured LLM output for cross-artifact Visualization Snapshot composition."""
+
+    executive_summary: str = ""
+    key_findings: list[VisualizationInsightItem] = Field(default_factory=list)
+    risks_assumptions: list[VisualizationInsightItem] = Field(default_factory=list)
+    opportunities: list[VisualizationInsightItem] = Field(default_factory=list)
+    cross_source_patterns: list[VisualizationInsightItem] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+    confidence_assessment: str = "medium"
+
+
 # ---------------------------------------------------------------------------
 # Prompt templates
 # ---------------------------------------------------------------------------
@@ -261,6 +294,23 @@ Focus on:
 Keep findings factual and grounded in the provided statistics. \
 Each item should include a confidence level (high, medium, low)."""
 
+VISUALIZATION_SNAPSHOT_SYSTEM_PROMPT = """\
+You are a senior strategy analyst creating a cross-source company intelligence snapshot.
+
+You receive multiple Source Artifacts from one Workspace and one selected period.
+
+Rules:
+- Synthesize across sources, teams, labels, and artifact types.
+- Do not list each source one by one.
+- Deduplicate repeated insights.
+- Identify cross-source patterns, contradictions, risks, opportunities, and gaps.
+- Every claim must cite evidence using source_id and artifact_id from the input.
+- Every claim must cite evidence using source_id and artifact_id from the input.
+- risks_assumptions items must set kind to either risk or assumption.
+- If evidence is weak or missing, put it in gaps instead of inventing certainty.
+- Confidence values must be one of: high, medium, low.
+- Keep output concise and board-ready."""
+
 
 # ---------------------------------------------------------------------------
 # High-level extraction functions
@@ -274,7 +324,7 @@ def extract_chunk_label(
     chunk_index: int | None = None,
 ) -> ChunkLabelResponse:
     """Label a single PDF chunk using structured extraction (1 retry)."""
-    metadata = {"stage": "pdf.label_chunk"}
+    metadata: dict = {"stage": "pdf.label_chunk"}
     if chunk_index is not None:
         metadata["chunk_index"] = chunk_index
     return extract_structured(
@@ -361,3 +411,39 @@ def extract_csv_insight(client: OpenAIClient, model: str, profile_data: dict) ->
         name="csv.extract_insight",
         metadata={"stage": "csv.extract_insight"},
     )
+
+
+def extract_visualization_snapshot(
+    client: OpenAIClient,
+    model: str,
+    artifact_payload: dict,
+) -> VisualizationSnapshotExtract:
+    """Compose a cross-artifact Visualization Snapshot using structured extraction."""
+    result = extract_structured(
+        client=client,
+        model=model,
+        system_prompt=VISUALIZATION_SNAPSHOT_SYSTEM_PROMPT,
+        user_content=json.dumps(artifact_payload, ensure_ascii=False),
+        response_format=VisualizationSnapshotExtract,
+        temperature=0.2,
+        retries=1,
+        name="visualization.compose_snapshot",
+        metadata={
+            "stage": "visualization.compose_snapshot",
+            "source_count": len(artifact_payload.get("sources", [])),
+            "period_label": artifact_payload.get("period", {}).get("label"),
+        },
+    )
+    claim_groups = [
+        *result.key_findings,
+        *result.risks_assumptions,
+        *result.opportunities,
+        *result.cross_source_patterns,
+    ]
+    has_usable_output = bool(result.executive_summary.strip()) and bool(claim_groups)
+    if not has_usable_output:
+        raise ValueError("Visualization snapshot extraction returned no usable cross-source output")
+    uncited = [item.text for item in claim_groups if not item.evidence]
+    if uncited:
+        raise ValueError("Visualization snapshot extraction returned uncited claims")
+    return result

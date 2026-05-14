@@ -161,20 +161,24 @@ flowchart TD
 flowchart TD
   A[User opens Visualization Data] --> B[Select Workspace + month range]
   B --> C[Compute scope key<br/>workspace_id + start_month + end_month]
-  C --> D[(SQL: visualization_snapshot)]
-  D --> E{Valid snapshot exists?}
-  E -->|Yes| F[Return cached snapshot]
-  E -->|No| G[Find ready overlapping Sources]
-  G --> H[Load source_summary + source_insight]
-  H --> I[Compose coverage]
-  H --> J[Compose source cards]
-  H --> K[Compose findings, risks, opportunities, gaps]
-  I --> L[Build snapshot content_json]
-  J --> L
-  K --> L
-  L --> M[(SQL: visualization_snapshot)]
-  M --> F
-  F --> N[Visualization Data UI]
+  C --> D[Find ready overlapping Sources]
+  D --> E[Load source_summary + source_insight + source_content refs]
+  E --> F[Compute source/artifact fingerprint]
+  F --> G[(SQL: visualization_snapshot)]
+  G --> H{Cached fingerprint matches?}
+  H -->|Yes| I[Return cached snapshot]
+  H -->|No| J[Build compact artifact payload]
+  J --> K{LLM configured?}
+  K -->|Yes| L[LLM cross-artifact synthesis<br/>extract_visualization_snapshot]
+  L --> M{Valid cited output?}
+  M -->|Yes| N[Build LLM content_json]
+  K -->|No| O[Deterministic fallback]
+  M -->|No| O
+  O --> P[Build fallback content_json]
+  N --> Q[(SQL: visualization_snapshot)]
+  P --> Q
+  Q --> I
+  I --> R[Visualization Data UI]
 ```
 
 Visualization Data has no team, category, or file type filters in MVP. Team and category labels appear as grouping context inside the snapshot.
@@ -853,7 +857,7 @@ The endpoint must validate that the Decision Brief belongs to the requested Work
 
 ## Visualization Composer
 
-Visualization Data is a period-based intelligence snapshot. It is not a per-Source artifact.
+Visualization Data is a period-based intelligence snapshot. It is not a per-Source artifact browser. The composer builds one cross-artifact board for a Workspace and month range.
 
 Input scope:
 
@@ -870,8 +874,14 @@ Flow:
 ```text
 request period view
   -> compute scope key
-  -> return valid visualization_snapshot if present
-  -> otherwise compose from ready overlapping Sources
+  -> find ready, non-deleted, overlapping Sources
+  -> load source_summary, source_insight, and source_content references
+  -> compute current source/artifact fingerprint
+  -> return visualization_snapshot if cached fingerprint matches
+  -> otherwise build compact artifact payload
+  -> run LLM cross-artifact synthesis when configured
+  -> validate that LLM claims cite Source Artifacts
+  -> fallback to deterministic composition if LLM is unavailable or invalid
   -> save snapshot
   -> return snapshot
 ```
@@ -884,7 +894,23 @@ workspace_id + period_start_month + period_end_month
 
 `visualization_snapshot` is cache, not source of truth. It can be rebuilt from `source_data` and `source_artifact`.
 
-Snapshot content should include coverage, source cards, key findings, risks, opportunities, gaps, and evidence references.
+The static cache key is `workspace_id + period_start_month + period_end_month`. Runtime staleness is checked with a fingerprint stored in `content_json._fingerprint`. The fingerprint includes ready overlapping Source IDs, Source status/period/team/file type/category labels, Source `updated_at`, and Source Artifact IDs/types/`updated_at`. If the fingerprint changes, the read path deletes the stale snapshot and recomposes it.
+
+The LLM composer sends a compact artifact payload to `extract_visualization_snapshot()`. The payload contains Source metadata, `source_summary` summaries/statistics/warnings, `source_insight` findings/risks/opportunities/assumptions/quotes, and bounded `source_content` chunk references. It does not send full raw files.
+
+LLM output uses a Pydantic response format with:
+
+- `executive_summary`
+- `cross_source_patterns`
+- `key_findings`
+- `risks_assumptions`
+- `opportunities`
+- `gaps`
+- `confidence_assessment`
+
+Every non-gap claim must cite `source_id` and `artifact_id`. Empty output or uncited claims are rejected and trigger deterministic fallback.
+
+Snapshot content should include coverage, executive summary, cross-source patterns, source cards as supporting context, key findings, risks and assumptions, opportunities, gaps, evidence references, `_fingerprint`, and `_composition_mode` (`llm` or `deterministic_fallback`).
 
 ## Service boundaries
 
@@ -898,7 +924,7 @@ services/source_processing.py
 services/llm_extraction.py
   Shared OpenAI structured extraction using client.chat.completions.parse() with Pydantic response_format.
   Provides extract_structured(), extract_chunk_label(), extract_aggregate(),
-  extract_csv_content(), extract_csv_insight() and related Pydantic schemas.
+  extract_csv_content(), extract_csv_insight(), extract_visualization_snapshot(), and related Pydantic schemas.
   Replaces direct LiteLLM JSON calls and manual JSON repair.
 
 services/extractors/csv_extractor.py
@@ -926,7 +952,7 @@ knowledge/retrieval.py
   Chat-facing retrieval facade
 
 services/visualizations.py
-  Visualization Composer and snapshot cache
+  LLM-first Visualization Composer, deterministic fallback, fingerprint-based stale-on-read, and snapshot cache
 ```
 
 ## Retry and delete behavior
@@ -949,5 +975,5 @@ Soft delete sets `deleted_at`. Deleted Sources are excluded from new Source Data
 3. Realign CSV extraction and normalization.
 4. Realign PDF extraction and normalization.
 5. Implement ChromaDB indexing for all `source_content` chunks.
-6. Implement Visualization Composer with `visualization_snapshot` cache.
+6. Implement Visualization Composer with LLM cross-artifact synthesis, deterministic fallback, fingerprint stale checks, and `visualization_snapshot` cache.
 7. Route Chat through `knowledge/retrieval.py`.

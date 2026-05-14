@@ -293,7 +293,7 @@ Stores normalized Source knowledge used by Visualization Data, Chat, citations, 
 
 #### `visualization_snapshot`
 
-Stores cached Visualization Data views. Snapshots are derived from Source Artifacts and can be rebuilt.
+Stores cached Visualization Data views. Snapshots are derived from Source Artifacts and can be rebuilt. The MVP composer is LLM-first: it synthesizes cross-source patterns, findings, risks, opportunities, and gaps from ready Source Artifacts, then stores the structured result in `content_json`. If LLM composition is unavailable or invalid, the backend saves a deterministic fallback snapshot.
 
 - `id`
 - `workspace_id`
@@ -311,6 +311,8 @@ Stores cached Visualization Data views. Snapshots are derived from Source Artifa
 - `updated_at`
 
 Use a unique constraint on `workspace_id`, `period_start_month`, and `period_end_month`.
+
+`scope_hash` identifies the static Workspace + month-range scope. `content_json._fingerprint` stores the current Source/Artifact state used for stale-on-read detection. If ready Sources, categories, or Source Artifacts change for the same month range, `GET /visualizations` regenerates the snapshot. `content_json._composition_mode` is `llm` or `deterministic_fallback`.
 
 #### `chat_session`
 
@@ -547,8 +549,10 @@ The PRD expects high-level API contracts, not final OpenAPI definitions.
 #### Visualization Data
 
 - `GET /visualizations`
-  - Returns a cached period-based Visualization Snapshot composed from ready overlapping Sources.
+  - Returns a cached period-based Visualization Snapshot composed from ready overlapping Sources and their Source Artifacts.
   - Requires `workspace_id`, `period_start_month`, and `period_end_month`.
+  - Performs stale-on-read by comparing the cached fingerprint with current Source/Artifact state. Stale snapshots are regenerated before returning.
+  - Uses LLM cross-artifact synthesis when configured and falls back to deterministic composition when LLM output is unavailable or invalid.
 - `POST /visualizations/refresh`
   - Regenerates the Visualization Snapshot for the given Workspace and month range.
 
@@ -611,14 +615,19 @@ flowchart TD
 ```mermaid
 flowchart TD
   A[User opens Visualization Data] --> B[Workspace + month range]
-  B --> C[Find visualization_snapshot]
-  C --> D{Valid cache?}
-  D -->|Yes| E[Return snapshot]
-  D -->|No| F[Find ready overlapping Sources]
-  F --> G[Load source_summary and source_insight]
-  G --> H[Compose coverage, findings, risks, opportunities, gaps]
-  H --> I[Save visualization_snapshot]
-  I --> E
+  B --> C[Find ready overlapping Sources]
+  C --> D[Load source_summary, source_insight, source_content refs]
+  D --> E[Compute Source/Artifact fingerprint]
+  E --> F[Find visualization_snapshot]
+  F --> G{Cached fingerprint matches?}
+  G -->|Yes| H[Return snapshot]
+  G -->|No| I[Build compact artifact payload]
+  I --> J[LLM cross-artifact synthesis]
+  J --> K{Valid cited output?}
+  K -->|Yes| L[Save LLM snapshot]
+  K -->|No| M[Save deterministic fallback]
+  L --> H
+  M --> H
 ```
 
 ### Chat Consultant Flow
