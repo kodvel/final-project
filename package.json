@@ -11,7 +11,8 @@
     "test": "node scripts/run-task.mjs test",
     "lint": "node scripts/run-task.mjs lint",
     "format": "node scripts/run-task.mjs format",
-    "check": "node scripts/run-task.mjs check"
+    "check": "node scripts/run-task.mjs check",
+    "worker": "pnpm --filter @final-project/api worker"
   },
   "devDependencies": {
     "@moonrepo/cli": "2.2.3",

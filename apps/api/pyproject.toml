@@ -5,6 +5,7 @@ description = "FastAPI backend for the final project foundation template."
 requires-python = "==3.13.*"
 dependencies = [
   "alembic==1.18.4",
+  "celery[redis]>=5.4",
   "chonkie==1.6.5",
   "chromadb>=1.5.9",
   "fastapi==0.136.1",

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+    "worker": "uv run celery -A app.jobs.celery_app worker --loglevel=info",
     "build": "uv sync --locked && uv run python -c \"from pathlib import Path; import compileall; assert compileall.compile_dir('app', quiet=1); Path('dist').mkdir(exist_ok=True); Path('dist/.keep').write_text('ok\\n')\"",
     "test": "uv run pytest",
     "lint": "uv run ruff check .",
