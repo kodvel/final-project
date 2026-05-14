@@ -1,11 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
 from app.db.session import get_session
 from app.schemas.chat import (
-    ChatMessageCreate,
-    ChatMessagePairRead,
     ChatMessageRead,
     ChatSessionCreate,
     ChatSessionDetail,
@@ -76,28 +74,9 @@ def get_chat_session(
     )
 
 
-@router.post("/sessions/{session_id}/messages", response_model=ChatMessagePairRead, status_code=status.HTTP_201_CREATED)
-def send_chat_message(
-    session_id: int,
-    payload: ChatMessageCreate,
-    workspace_id: int = Query(..., description="Workspace ID from client-selected active workspace"),
-    session: Session = Depends(get_session),
-) -> ChatMessagePairRead:
-    """Persist a user message and dummy assistant response."""
-    try:
-        user_message, assistant_message = chat_service.send_message(session, session_id, workspace_id, payload.content)
-    except ValueError as exc:
-        detail = str(exc)
-        status_code = status.HTTP_404_NOT_FOUND if "not found" in detail.lower() else status.HTTP_400_BAD_REQUEST
-        raise HTTPException(status_code=status_code, detail=detail) from exc
-    return ChatMessagePairRead(
-        user_message=ChatMessageRead.model_validate(user_message),
-        assistant_message=ChatMessageRead.model_validate(assistant_message),
-    )
-
-
 @router.post("/messages/stream")
-def stream_chat_message(
+async def stream_chat_message(
+    request: Request,
     payload: ChatStreamRequest,
     session: Session = Depends(get_session),
 ) -> StreamingResponse:
@@ -107,7 +86,7 @@ def stream_chat_message(
     Returns ``text/event-stream`` with DeltaKit-compatible SSE events.
     """
     return StreamingResponse(
-        chat_service.stream_chat(session, payload.workspace_id, payload.session_id, payload.message),
+        chat_service.stream_chat(session, payload.workspace_id, payload.session_id, payload.message, request.is_disconnected),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

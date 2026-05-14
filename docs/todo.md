@@ -371,7 +371,7 @@ storage/uploads/{workspace_id}/{source_id}/original.{ext}
   - remove local uploaded file only if no past citation or Decision Brief Draft depends on it
 - On retry processing:
   - allow Failed Sources to move back toward Processing
-  - enqueue background processing again
+  - user-triggered only via `POST /sources/{source_id}/retry-processing`; no Celery auto-retry/backoff
 
 ### Frontend work
 
@@ -407,6 +407,7 @@ storage/uploads/{workspace_id}/{source_id}/original.{ext}
   - period end month
 - Add loading, empty, success, and error states.
 - Add delete confirmation.
+- Source Data frontend polls every 3 seconds while any Source status is `uploaded` or `processing`, stops when all are `ready` or `failed`.
 
 ### Tests
 
@@ -469,7 +470,7 @@ User uploads a CSV in Source Data. Processing computes reliable facts from the C
   - identifier
   - text
 - Compute row count, column count, missing values, numeric stats, date ranges, top categories, data quality warnings, and obvious patterns.
-- Use an LLM second pass to turn computed facts into business-readable summary, findings, risks, opportunities, assumptions, and retrieval-friendly prose chunks.
+- Use shared OpenAI structured extraction (`apps/api/app/services/llm_extraction.py`) to turn computed facts into business-readable summary, findings, risks, opportunities, assumptions, and retrieval-friendly prose chunks. LLM input uses sanitized compact profile data with no local file paths and no raw sample cell values.
 - Generate artifacts:
   - `source_summary` as the required minimum artifact
   - `source_content` as required searchable chunks
@@ -523,12 +524,15 @@ User uploads a PDF in Source Data. Processing OCRs the document, preserves page 
 ### Backend work
 
 - Add PDF OCR and Document Insight services.
-- Add Task 3 dependencies: `mistralai`, `litellm`, and `chonkie`.
+- Add Task 3 dependencies: `mistralai`, `openai`, and `chonkie`.
 - Add Task 3 config fields:
   - `RAG_MISTRAL_API_KEY`
-  - `RAG_OPENAI_API_BASE_URL`
+  - `RAG_OPENAI_API_BASE_URL` (default `https://openrouter.ai/api/v1`)
   - `RAG_OPENAI_API_KEY`
-  - `RAG_OPENAI_MODEL`, default `google/gemini-3.1-flash-lite-preview`
+  - `RAG_OPENAI_MODEL`, default `google/gemini-2.5-flash-lite`
+  - `RAG_EMBEDDING_API_BASE_URL`, default `https://api.openai.com/v1`
+  - `RAG_EMBEDDING_API_KEY`
+  - `RAG_EMBEDDING_MODEL`, default `text-embedding-3-small`
   - `RAG_MAX_FILE_SIZE_MB`, default `30`
   - `RAG_ENABLE_BACKGROUND_PROCESSING`, default `false`
 - Read PDF from server-side file storage.
@@ -543,19 +547,18 @@ storage/extracted/{workspace_id}/{source_id}/ocr.md
 
 - Add page markers to extracted markdown so later chunks can keep page references.
 - Chunk extracted markdown with Chonkie `RecursiveChunker` using `chunk_size=3000` and `min_characters_per_chunk=300`.
-- Use LiteLLM for chunk labeling with `RAG_OPENAI_API_BASE_URL`, `RAG_OPENAI_API_KEY`, and `RAG_OPENAI_MODEL`, defaulting to `google/gemini-3.1-flash-lite-preview`.
+- Use shared OpenAI structured extraction (`apps/api/app/services/llm_extraction.py`) for chunk labeling with `client.chat.completions.parse()` and Pydantic `response_format=ChunkLabelResponse`. Config uses `RAG_OPENAI_API_BASE_URL`, `RAG_OPENAI_API_KEY`, and `RAG_OPENAI_MODEL`, defaulting to `google/gemini-2.5-flash-lite`.
 - Chunk labeling metadata uses fixed labels for `document_section` and `content_type`, plus free-text `topics`, `entities`, and `time_periods`.
 - `document_section` labels are `executive_summary`, `market_context`, `customer_insight`, `competitor_analysis`, `financials`, `product_feature`, `risks`, `opportunities`, `recommendation`, `methodology`, `appendix`, and `unknown`.
 - `content_type` labels are `narrative`, `table`, `metric`, `quote`, `assumption`, `risk`, `opportunity`, `recommendation`, and `raw_text`.
-- LiteLLM JSON outputs must be parsed, repaired once if invalid, and then treated as Failed if still invalid.
-- If a chunk labeling call fails after one retry, fail the PDF processing instead of silently skipping the chunk.
+- Structured extraction uses Pydantic validation; no manual JSON repair needed. If extraction fails after retries, fail the PDF processing instead of silently skipping the chunk.
 - Save chunk metadata to:
 
 ```text
 storage/extracted/{workspace_id}/{source_id}/chunks.json
 ```
 
-- Use a LiteLLM synthesis call to create final Source Artifacts from chunk metadata and representative evidence.
+- Use shared OpenAI structured extraction for synthesis to create final Source Artifacts from chunk metadata and representative evidence.
 - Generate artifacts:
   - `source_summary` as the required minimum artifact
   - `source_content` as required citation-ready chunks
@@ -603,7 +606,7 @@ storage/extracted/{workspace_id}/{source_id}/chunks.json
 
 ### Tests
 
-- Backend test: mocked Mistral OCR and LiteLLM output create `source_summary`, `source_content`, and `source_insight` artifacts.
+- Backend test: mocked Mistral OCR and structured extraction output create `source_summary`, `source_content`, and `source_insight` artifacts.
 - Backend test: short OCR text creates `source_summary` with warning and skips `source_insight`.
 - Backend test: extraction failure marks source as Failed.
 - Backend test: PDF `source_content` chunks are indexed in ChromaDB with page metadata.
@@ -635,15 +638,16 @@ User asks Chat a question that needs company context. The AI retrieves relevant 
 
 ### Backend work
 
-- Configure ChromaDB.
+- Configure ChromaDB with collection `embedding_function` so it owns embeddings.
 - Create/use collection:
 
 ```text
 company_knowledge
 ```
 
-- Index every indexable `source_content.chunks` item.
-- Embed chunks.
+- Index every indexable `source_content.chunks` item using `collection.upsert(documents=..., ids=..., metadatas=...)`.
+- Retrieval uses `collection.query(query_texts=[query], ...)`.
+- No manual app-generated embeddings; no `knowledge/embeddings.py` runtime path.
 - Store chunks in ChromaDB with metadata:
   - workspace_id
   - source_id
@@ -814,6 +818,8 @@ User opens **Chat**, sees a GPT-like interface, sends a message, receives a basi
   - `text/event-stream`
   - `data:` JSON objects with a `type` field
   - `data: [DONE]` sentinel
+  - normal Chat events: `metadata`, `text_delta`, `tool_call`, `tool_result`, `error`
+  - no normal Chat `session_created`, `user_message_saved`, `assistant_started`, `sources_used`, `web_sources_used`, or `assistant_completed` events
 - Store messages with:
   - role: user, assistant, system
   - content
@@ -833,13 +839,18 @@ User opens **Chat**, sees a GPT-like interface, sends a message, receives a basi
   - loading state
 - Match the Chat design shell:
   - left chat area
-  - right Sources Used panel
+  - right Sources Used panel shown only after citations exist
   - pinned input bar
-  - assistant response card with evidence, interpretation, recommended action, View Sources, View Trace, and Generate Decision Brief actions
+  - user bubble right-aligned
+  - assistant response rendered as natural ChatGPT-like text, not a bubble or heavy card
+  - compact assistant process state for safe tool activity, such as `Thinking…`, `Searching company Sources…`, and `Searching web…`
 - Load existing session messages.
 - Send message to backend through DeltaKit streaming.
 - Render user and assistant messages.
 - Render streaming text deltas.
+- Use `[DONE]` as the completion signal, then refetch the Chat Session to render canonical persisted messages, citations, and tool calls.
+- Preserve typed draft text when the user stops or a stream errors.
+- Provide a Stop button that aborts the stream; the backend records partial assistant content as `interrupted`.
 - Render command result message type if available.
 - Chat history should be available from a top dropdown, not the app sidebar and not a Chat left panel.
 - Chat history initially shows the latest 5 sessions and supports Show More.
@@ -891,9 +902,10 @@ User asks a strategic question in Chat. The Company Strategy Consultant retrieve
 ### Backend work
 
 - Add AI Consultant orchestration service.
-- Current implementation decision: pre-retrieval is gated by a small LLM classifier that returns only whether local Source retrieval is needed. If classification fails, default to retrieval. The agent still has access to the retrieval tool for follow-up/refinement.
+- Current implementation decision: pre-retrieval is gated by an OpenAI structured-output classifier that returns `RetrievalClassification(needs_retrieval, reason)` via `client.chat.completions.parse()` with Pydantic `response_format`. If classification fails, default to retrieval. The agent still has access to the retrieval tool for follow-up/refinement.
 - Use OpenAI Agents SDK with `openai-agents[litellm]` for the single Company Strategy Consultant agent. Convert Agents SDK stream events into DeltaKit-compatible `data:` SSE JSON events. Do not use named SSE `event:` fields or native browser `EventSource` for the POST stream.
 - Stream tool activity safely: `tool_call` exposes tool name and call ID only; `tool_result` exposes status only; tool errors expose a safe error message. Do not stream private reasoning, prompts, full tool arguments, raw retrieved chunks, Tavily raw results, or secrets.
+- Do not stream raw reasoning. The UI may show muted process status based on tool events.
 - Use the configured OpenAI-compatible client/model for LLM calls. Do not make Decision Brief generation an autonomous agent workflow in this task.
 - Keep retrieval deterministic and service-owned. The model must not query raw DB directly.
 - Build normal Chat model context through ContextBuilder:
@@ -913,6 +925,7 @@ User asks a strategic question in Chat. The Company Strategy Consultant retrieve
   - from ChromaDB retrieval
 - Extend simplified `agent_tool_call` schema:
   - message_id
+  - call_id nullable
   - tool_name
   - status
   - summary
@@ -960,6 +973,7 @@ User asks a strategic question in Chat. The Company Strategy Consultant retrieve
   - Recommendation / Next Step
   - Confidence + Gaps
 - Store assistant response, tool summaries, and citations.
+- Store tool calls after the run finishes when possible; interrupted or failed runs may persist any tool calls already observed.
 - Save only citations actually used in the final answer, not every retrieved candidate.
 - The model should return used citation IDs; backend must validate that every used citation ID was included in the provided EvidenceBundle before persisting citations.
 - Auto-select relevant Sources by default.
@@ -970,10 +984,10 @@ User asks a strategic question in Chat. The Company Strategy Consultant retrieve
 
 ### Frontend work
 
-- Render semi-structured AI responses clearly.
-- Add View Sources action on assistant messages.
-- View Sources shows citations from DB.
-- Sources Used can render both uploaded Source citations and web citations.
+- Render AI responses naturally by default; use sections only when the user asks for structured analysis or when content is complex.
+- Sources Used shows citations from DB after stream completion and session refetch.
+- Sources Used can render both uploaded Source citations and web citations, grouped per Source with expandable citation detail.
+- Hide Sources Used until the active Chat Session has citations; keep session switching available through the Chat header when the panel is hidden.
 - Old citations that point to deleted/failed/reprocessed Sources render with a warning/disabled state.
 - Show tool call summaries in a collapsed/secondary area if useful.
 

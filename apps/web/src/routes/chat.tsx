@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Bot, ChevronRight, Eye, FileSpreadsheet, FileText, Lightbulb, Mic, Paperclip, Send, Workflow, X } from 'lucide-react'
-import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { Bot, ChevronRight, Eye, FileSpreadsheet, FileText, Mic, Paperclip, Send, Workflow, X } from 'lucide-react'
+import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { useChatSession, useChatSessions, useStreamChat } from '../features/chat/hooks'
 import { useActiveWorkspace } from '../features/workspaces/hooks/use-active-workspace'
 import type { AgentToolCall, ChatMessage, MessageSourceCitation } from '../types/chat'
@@ -27,6 +27,12 @@ type OptimisticAssistantMessage = {
   content: string
 }
 
+type StreamingToolCall = {
+  callId: string
+  toolName: string
+  status: 'running' | 'done' | 'failed'
+}
+
 type DisplayMessage = ChatMessage | OptimisticUserMessage | OptimisticAssistantMessage
 
 function isOptimistic(msg: DisplayMessage): msg is OptimisticUserMessage | OptimisticAssistantMessage {
@@ -43,15 +49,18 @@ export function ChatPage() {
   const { data: sessions = [], isLoading: isLoadingSessions, error: sessionsError } = useChatSessions(workspaceId)
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null)
   const { data: activeSession, isLoading: isLoadingSession } = useChatSession(activeSessionId, workspaceId)
-  const { sendMessage } = useStreamChat()
+  const { sendMessage, abort, isStreaming } = useStreamChat()
 
   const [input, setInput] = useState('')
+  const [isDraftNewChat, setIsDraftNewChat] = useState(false)
   const [isThinking, setIsThinking] = useState(false)
   const [optimisticMessages, setOptimisticMessages] = useState<DisplayMessage[]>([])
   const [streamingText, setStreamingText] = useState('')
+  const [streamingToolCalls, setStreamingToolCalls] = useState<StreamingToolCall[]>([])
   const optIdCounter = useRef(0)
+  const streamingTextRef = useRef('')
 
-  const persistedMessages: ChatMessage[] = activeSession?.messages ?? []
+  const persistedMessages: ChatMessage[] = (activeSession?.messages ?? []).filter((message) => !(isThinking && message.role === 'assistant' && message.status === 'streaming'))
 
   // Compose displayed messages: persisted + any optimistic that aren't replaced yet
   const messages: DisplayMessage[] = [
@@ -60,24 +69,30 @@ export function ChatPage() {
   ]
 
   // If we have streaming text, append a streaming assistant message
-  const streamingMessage: OptimisticAssistantMessage | null = streamingText
-    ? { __optimistic: true, id: `opt-stream-${Date.now()}`, role: 'assistant', content: streamingText }
+  const streamingMessage: OptimisticAssistantMessage | null = isThinking
+    ? { __optimistic: true, id: 'opt-streaming-assistant', role: 'assistant', content: streamingText }
     : null
   const displayMessages: DisplayMessage[] = streamingMessage ? [...messages, streamingMessage] : messages
+  const hasSessionCitations = (activeSession?.citations.length ?? 0) > 0
 
   // Reset on workspace change
   useEffect(() => {
     if (activeSession?.workspaceId !== workspaceId) {
       setActiveSessionId(null)
+      setIsDraftNewChat(false)
+      setOptimisticMessages([])
+      setStreamingText('')
+      streamingTextRef.current = ''
+      setStreamingToolCalls([])
     }
   }, [activeSession?.workspaceId, workspaceId])
 
   // Auto-select first session
   useEffect(() => {
-    if (activeSessionId === null && sessions.length > 0) {
+    if (activeSessionId === null && sessions.length > 0 && !isDraftNewChat) {
       setActiveSessionId(sessions[0].id)
     }
-  }, [activeSessionId, sessions])
+  }, [activeSessionId, sessions, isDraftNewChat])
 
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -86,15 +101,12 @@ export function ChatPage() {
       if (!value || isThinking || !workspaceId) return
 
       const userOptId = `opt-user-${++optIdCounter.current}` as const
-      const assistantOptId = `opt-assistant-${++optIdCounter.current}` as const
 
-      // Optimistically render user message + empty assistant placeholder
-      setOptimisticMessages((prev) => [
-        ...prev,
-        { __optimistic: true, id: userOptId, role: 'user', content: value },
-        { __optimistic: true, id: assistantOptId, role: 'assistant', content: '' },
-      ])
+      // Optimistically render user message only; streaming text serves as the assistant placeholder
+      setOptimisticMessages((prev) => [...prev, { __optimistic: true, id: userOptId, role: 'user', content: value }])
       setStreamingText('')
+      streamingTextRef.current = ''
+      setStreamingToolCalls([])
       setIsThinking(true)
       setInput('')
 
@@ -105,31 +117,50 @@ export function ChatPage() {
           message: value,
         },
         {
-          onSessionCreated: (event) => {
-            setActiveSessionId(event.session.id)
-          },
-          onUserMessageSaved: () => {
-            // Backend persisted user message; optimistic one will be hidden once session refetches
-          },
-          onAssistantStarted: () => {
-            // Assistant placeholder already shown
+          onMetadata: (event) => {
+            setActiveSessionId(event.session_id)
+            setIsDraftNewChat(false)
           },
           onTextDelta: (event) => {
-            setStreamingText((prev) => prev + event.delta)
+            streamingTextRef.current += event.delta
+            setStreamingText(streamingTextRef.current)
           },
-          onAssistantCompleted: () => {
+          onToolCall: (event) => {
+            const callId = event.call_id || `${event.tool_name}-${Date.now()}`
+            setStreamingToolCalls((prev) => [...prev, { callId, toolName: event.tool_name, status: 'running' }])
+          },
+          onToolResult: (event) => {
+            if (!event.call_id) return
+            setStreamingToolCalls((prev) => prev.map((tool) => (tool.callId === event.call_id ? { ...tool, status: event.ok ? 'done' : 'failed' } : tool)))
+          },
+          onDone: () => {
             // Refetch happens inside useStreamChat; clear optimistic state
+            const finalStreamedText = streamingTextRef.current
+            if (finalStreamedText.trim()) {
+              setOptimisticMessages((prev) => [
+                ...prev,
+                { __optimistic: true, id: `opt-assistant-${++optIdCounter.current}`, role: 'assistant', content: finalStreamedText },
+              ])
+            }
             setStreamingText('')
-            setOptimisticMessages([])
+            streamingTextRef.current = ''
+            setStreamingToolCalls([])
             setIsThinking(false)
           },
           onError: (event) => {
             console.error('Stream error:', event.error)
+            const finalStreamedText = streamingTextRef.current
+            if (finalStreamedText.trim()) {
+              setOptimisticMessages((prev) => [
+                ...prev,
+                { __optimistic: true, id: `opt-assistant-${++optIdCounter.current}`, role: 'assistant', content: finalStreamedText },
+              ])
+            }
             setStreamingText('')
-            setOptimisticMessages([])
+            streamingTextRef.current = ''
+            setStreamingToolCalls([])
             setIsThinking(false)
-            // Restore input so user can retry
-            setInput(value)
+            setInput((current) => (current.trim() ? current : value))
           },
         },
       )
@@ -140,12 +171,20 @@ export function ChatPage() {
   function handleNewChat() {
     // New Chat = local draft only: clear active session, no backend POST
     setActiveSessionId(null)
+    setIsDraftNewChat(true)
     setOptimisticMessages([])
     setStreamingText('')
+    streamingTextRef.current = ''
+    setStreamingToolCalls([])
+  }
+
+  function handleStop() {
+    abort()
+    setIsThinking(false)
   }
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_376px] overflow-hidden text-foreground">
+    <div className={`grid h-full min-h-0 ${hasSessionCitations ? 'grid-cols-[minmax(0,1fr)_376px]' : 'grid-cols-1'} overflow-hidden text-foreground`}>
       <section className="flex min-h-0 min-w-0 flex-col border-r border-border">
         <div className="min-h-0 flex-1 overflow-y-auto px-10 py-8">
           <div className="mb-7 flex items-center justify-center gap-4">
@@ -153,13 +192,38 @@ export function ChatPage() {
               {activeSession ? `Session started: ${formatDate(activeSession.createdAt)}` : 'Start a Workspace-scoped Chat Session'}
             </p>
             {activeWorkspace && (
-              <button
-                type="button"
-                onClick={handleNewChat}
-                className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-surface-subtle"
-              >
-                New Chat
-              </button>
+              <>
+                {!hasSessionCitations && sessions.length > 0 && (
+                  <select
+                    value={activeSessionId ?? ''}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      if (!value) {
+                        handleNewChat()
+                        return
+                      }
+                      setIsDraftNewChat(false)
+                      setActiveSessionId(Number(value))
+                    }}
+                    className="max-w-48 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground outline-none hover:bg-surface-subtle"
+                    aria-label="Select Chat Session"
+                  >
+                    <option value="">New Chat</option>
+                    {sessions.map((session) => (
+                      <option key={session.id} value={session.id}>
+                        {session.title}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  type="button"
+                  onClick={handleNewChat}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-surface-subtle"
+                >
+                  New Chat
+                </button>
+              </>
             )}
           </div>
 
@@ -180,23 +244,16 @@ export function ChatPage() {
                 message.role === 'user' ? (
                   <UserBubble key={message.id} content={message.content} />
                 ) : (
-                  <AssistantCard
+                  <AssistantMessage
                     key={message.id}
                     message={message}
                     citations={!isOptimistic(message) ? (activeSession?.citations.filter((citation) => citation.messageId === message.id) ?? []) : []}
                     toolCalls={!isOptimistic(message) ? (activeSession?.toolCalls.filter((toolCall) => toolCall.messageId === message.id) ?? []) : []}
+                    streamingToolCalls={isOptimistic(message) ? streamingToolCalls : []}
+                    showThinking={isOptimistic(message) && isThinking && !streamingText}
                   />
                 ),
               )
-            )}
-
-            {isThinking && !streamingText && (
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                <div className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-primary">
-                  <Bot className="h-4 w-4" />
-                </div>
-                Intelligence Copilot is synthesizing Sources...
-              </div>
             )}
           </div>
         </div>
@@ -216,14 +273,25 @@ export function ChatPage() {
               <button type="button" className="text-text-hint hover:text-primary" aria-label="Voice input">
                 <Mic className="h-5 w-5" />
               </button>
-              <button
-                type="submit"
-                disabled={!input.trim() || isThinking || !activeWorkspace}
-                className="grid h-10 w-10 place-items-center rounded-xl bg-primary text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Send message"
-              >
-                <Send className="h-4 w-4" />
-              </button>
+              {isStreaming || isThinking ? (
+                <button
+                  type="button"
+                  onClick={handleStop}
+                  className="grid h-10 w-10 place-items-center rounded-xl bg-foreground text-card transition hover:bg-foreground/90"
+                  aria-label="Stop response"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!input.trim() || !activeWorkspace}
+                  className="grid h-10 w-10 place-items-center rounded-xl bg-primary text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Send message"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              )}
             </div>
             <div className="mt-3 flex items-center gap-3 text-xs text-text-hint">
               <CommandChip command="/decision-brief" label="Generate Brief" />
@@ -233,13 +301,18 @@ export function ChatPage() {
         </form>
       </section>
 
-      <SourcesPanel
-        sessions={sessions}
-        activeSessionId={activeSessionId}
-        onSelectSession={setActiveSessionId}
-        citations={activeSession?.citations ?? []}
-        toolCalls={activeSession?.toolCalls ?? []}
-      />
+      {hasSessionCitations && (
+        <SourcesPanel
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          onSelectSession={(id) => {
+            setIsDraftNewChat(false)
+            setActiveSessionId(id)
+          }}
+          citations={activeSession?.citations ?? []}
+          toolCalls={activeSession?.toolCalls ?? []}
+        />
+      )}
     </div>
   )
 }
@@ -256,91 +329,73 @@ function UserBubble({ content }: { content: string }) {
   )
 }
 
-function AssistantCard({
+function AssistantMessage({
   message,
   citations,
   toolCalls,
+  streamingToolCalls,
+  showThinking,
 }: {
   message: DisplayMessage
   citations: MessageSourceCitation[]
   toolCalls: AgentToolCall[]
+  streamingToolCalls: StreamingToolCall[]
+  showThinking: boolean
 }) {
+  const processItems = [
+    ...streamingToolCalls.map((tool) => ({ id: tool.callId, label: processLabelForTool(tool.toolName), status: tool.status })),
+    ...toolCalls.map((toolCall) => ({
+      id: String(toolCall.id),
+      label: processLabelForTool(toolCall.toolName),
+      status: toolCall.status === 'failed' ? 'failed' : toolCall.status === 'running' ? 'running' : 'done',
+    })),
+  ]
+
   return (
-    <article>
-      <div className="mb-5 flex items-center gap-3">
-        <div className="grid h-10 w-10 place-items-center rounded-lg bg-accent text-primary">
-          <Bot className="h-5 w-5" />
-        </div>
-        <h2 className="font-heading text-lg font-semibold text-foreground">Intelligence Copilot</h2>
+    <article className="space-y-3">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-text-hint">
+        <Bot className="h-4 w-4 text-primary" />
+        Intelligence Copilot
       </div>
 
-      <div className="rounded-2xl border border-border bg-card p-8 shadow-sm">
-        <div className="border-l-4 border-highlight pl-7">
-          <p className="whitespace-pre-line text-sm leading-7 text-foreground">{message.content}</p>
-
-          {/* Only show evidence / action sections when content is non-empty (i.e. not the streaming placeholder) */}
-          {message.content.length > 0 && !isOptimistic(message) && (
-            <>
-              <div className="mt-7 rounded-xl border border-border bg-surface-subtle p-5">
-                <div className="mb-4 flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                  <FileText className="h-4 w-4" />
-                  Cited Evidence
-                </div>
-                {citations.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No persisted citations for this response.</p>
-                ) : (
-                  <div className="flex flex-wrap gap-3">
-                    {citations.map((citation) => (
-                      <EvidenceChip key={citation.id} citation={citation} />
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {toolCalls.length > 0 && (
-                <div className="mt-7 rounded-xl border border-border bg-card p-5">
-                  <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-                    <Workflow className="h-4 w-4" />
-                    Tools Used
-                  </div>
-                  <div className="space-y-2">
-                    {toolCalls.map((toolCall) => (
-                      <p key={toolCall.id} className="text-sm text-muted-foreground">
-                        <span className="font-mono text-xs uppercase tracking-[0.12em] text-text-hint">{toolCall.status}</span> {toolCall.toolName}:{' '}
-                        {toolCall.summary}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="mt-7 rounded-xl border border-highlight-soft bg-accent p-5">
-                <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-primary">
-                  <Lightbulb className="h-4 w-4" />
-                  Recommended Action
-                </div>
-                <p className="text-sm leading-6 text-foreground">
-                  Continue the discussion here; this Chat Session remains scoped to its original Workspace.
-                </p>
-              </div>
-
-              <div className="mt-7 grid grid-cols-3 gap-3">
-                <ActionButton icon={<Eye className="h-4 w-4" />} label="View Sources" />
-                <ActionButton icon={<Workflow className="h-4 w-4" />} label="View Trace" />
-                <button
-                  type="button"
-                  className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
-                >
-                  <FileText className="h-4 w-4" />
-                  Generate Decision Brief
-                </button>
-              </div>
-            </>
-          )}
+      {(showThinking || processItems.length > 0) && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          {showThinking && processItems.length === 0 && <ProcessPill label="Thinking…" status="running" />}
+          {processItems.map((item) => (
+            <ProcessPill key={item.id} label={item.label} status={item.status} />
+          ))}
         </div>
-      </div>
+      )}
+
+      {message.content && <p className="whitespace-pre-line text-[15px] leading-8 text-foreground">{message.content}</p>}
+
+      {message.content.length > 0 && citations.length > 0 && (
+        <div className="flex flex-wrap gap-2 pt-1">
+          {citations.map((citation) => (
+            <EvidenceChip key={citation.id} citation={citation} />
+          ))}
+        </div>
+      )}
     </article>
   )
+}
+
+function ProcessPill({ label, status }: { label: string; status: string }) {
+  return (
+    <span className="inline-flex items-center gap-2 rounded-full border border-border bg-surface-subtle px-3 py-1 font-mono text-[11px] text-text-hint">
+      <Workflow className="h-3.5 w-3.5" />
+      {label}
+      <span className={status === 'failed' ? 'text-status-failed-foreground' : status === 'done' ? 'text-status-ready-foreground' : 'text-text-hint'}>
+        {status === 'running' ? 'running' : status}
+      </span>
+    </span>
+  )
+}
+
+function processLabelForTool(toolName: string) {
+  if (toolName === 'retrieve_company_knowledge') return 'Searching company Sources…'
+  if (toolName === 'tavily_web_search') return 'Searching web…'
+  return 'Using tool…'
 }
 
 function EvidenceChip({ citation }: { citation: MessageSourceCitation }) {
@@ -356,18 +411,6 @@ function EvidenceChip({ citation }: { citation: MessageSourceCitation }) {
       <Icon className={`h-4 w-4 ${color}`} />[{citation.ordinal ?? citation.id}] {label}
       {citation.citationStatus !== 'available' && <span className="text-status-failed-foreground">warning</span>}
     </span>
-  )
-}
-
-function ActionButton({ icon, label }: { icon: ReactNode; label: string }) {
-  return (
-    <button
-      type="button"
-      className="flex items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-3 text-sm font-semibold text-foreground shadow-sm hover:bg-surface-subtle"
-    >
-      {icon}
-      {label}
-    </button>
   )
 }
 
@@ -447,19 +490,10 @@ function SourcesPanel({
 }
 
 function SessionSources({ citations, toolCalls }: { citations: MessageSourceCitation[]; toolCalls: AgentToolCall[] }) {
-  if (citations.length === 0 && toolCalls.length === 0) {
-    return (
-      <SourceCard
-        type="csv"
-        name="No citations yet"
-        badge="Sources"
-        quote="Ask a source-grounded question after uploading ready Sources. Citations will appear here."
-      />
-    )
-  }
-
   const uploadedCitations = citations.filter((c) => c.citationType === 'uploaded_source')
   const webCitations = citations.filter((c) => c.citationType === 'web')
+  const uploadedGroups = groupCitations(uploadedCitations)
+  const webGroups = groupCitations(webCitations)
 
   return (
     <div className="space-y-4">
@@ -467,16 +501,8 @@ function SessionSources({ citations, toolCalls }: { citations: MessageSourceCita
         <div>
           <p className="mb-3 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-text-hint">Uploaded Sources</p>
           <div className="space-y-3">
-            {uploadedCitations.map((citation) => (
-              <SourceCard
-                key={citation.id}
-                type={citation.title?.toLowerCase().endsWith('.pdf') ? 'pdf' : 'csv'}
-                name={citation.title || `Source #${citation.sourceId ?? 'unknown'}`}
-                badge={citation.citationStatus === 'available' ? 'Uploaded Source' : citation.citationStatus}
-                quote={citation.quote || 'Citation available without quote.'}
-                pageNumber={citation.pageNumber}
-                citationStatus={citation.citationStatus}
-              />
+            {uploadedGroups.map((group) => (
+              <SourceGroupCard key={group.key} group={group} type={group.title.toLowerCase().endsWith('.pdf') ? 'pdf' : 'csv'} />
             ))}
           </div>
         </div>
@@ -486,17 +512,8 @@ function SessionSources({ citations, toolCalls }: { citations: MessageSourceCita
         <div>
           <p className="mb-3 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-text-hint">Web Sources</p>
           <div className="space-y-3">
-            {webCitations.map((citation) => (
-              <SourceCard
-                key={citation.id}
-                type="web"
-                name={citation.title || citation.domain || 'Web Source'}
-                badge="Web Source"
-                quote={citation.quote || citation.url || 'Web citation without quote.'}
-                url={citation.url}
-                domain={citation.domain}
-                citationStatus={citation.citationStatus}
-              />
+            {webGroups.map((group) => (
+              <SourceGroupCard key={group.key} group={group} type="web" />
             ))}
           </div>
         </div>
@@ -519,6 +536,68 @@ function SessionSources({ citations, toolCalls }: { citations: MessageSourceCita
     </div>
   )
 }
+
+type CitationGroup = {
+  key: string
+  title: string
+  badge: string
+  citations: MessageSourceCitation[]
+}
+
+function groupCitations(citations: MessageSourceCitation[]): CitationGroup[] {
+  const groups = new Map<string, CitationGroup>()
+  for (const citation of citations) {
+    const key = citation.citationType === 'web' ? citation.url || citation.domain || citation.title || `web-${citation.id}` : String(citation.sourceId ?? citation.title ?? citation.id)
+    const title = citation.citationType === 'web' ? citation.title || citation.domain || 'Web Source' : citation.title || `Source #${citation.sourceId ?? 'unknown'}`
+    const badge = citation.citationType === 'web' ? 'Web Source' : citation.citationStatus === 'available' ? 'Uploaded Source' : citation.citationStatus
+    const group = groups.get(key)
+    if (group) {
+      group.citations.push(citation)
+    } else {
+      groups.set(key, { key, title, badge, citations: [citation] })
+    }
+  }
+  return Array.from(groups.values())
+}
+
+function SourceGroupCard({ group, type }: { group: CitationGroup; type: 'pdf' | 'csv' | 'web' }) {
+  const firstCitation = group.citations[0]
+  const Icon = type === 'pdf' ? FileText : type === 'web' ? Eye : FileSpreadsheet
+  const color = type === 'pdf' ? 'text-status-failed-foreground' : type === 'web' ? 'text-primary' : 'text-status-ready-foreground'
+  const hasWarning = group.citations.some((citation) => citation.citationStatus !== 'available')
+
+  return (
+    <details className={`rounded-xl border bg-card p-5 shadow-sm ${hasWarning ? 'border-status-failed-foreground/40' : 'border-border'}`}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Icon className={`h-4 w-4 shrink-0 ${color}`} />
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-semibold text-foreground">{group.title}</h3>
+            <p className="mt-1 font-mono text-[11px] text-text-hint">{group.citations.length} citation{group.citations.length > 1 ? 's' : ''}</p>
+          </div>
+        </div>
+        <span className="rounded bg-chip-gray px-2 py-1 font-mono text-[11px] text-text-hint">{group.badge}</span>
+      </summary>
+      <div className="mt-4 space-y-3">
+        {group.citations.map((citation) => (
+          <blockquote key={citation.id} className="border-l-2 border-border pl-4 text-sm italic leading-6 text-muted-foreground">
+            “{citation.quote || citation.snippet || citation.url || 'Citation available without quote.'}”
+            <span className="mt-2 block text-xs not-italic text-text-hint">
+              [{citation.ordinal ?? citation.id}]
+              {citation.pageNumber != null ? ` p.${citation.pageNumber}` : ''}
+              {citation.domain ? ` · ${citation.domain}` : ''}
+            </span>
+          </blockquote>
+        ))}
+        {firstCitation?.url && (
+          <a href={firstCitation.url} target="_blank" rel="noopener noreferrer" className="block truncate font-mono text-xs text-primary hover:underline">
+            {firstCitation.url}
+          </a>
+        )}
+      </div>
+    </details>
+  )
+}
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('en', {
     month: 'short',
@@ -526,58 +605,6 @@ function formatDate(value: string) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value))
-}
-
-function SourceCard({
-  type,
-  name,
-  badge,
-  quote,
-  pageNumber,
-  url,
-  domain,
-  citationStatus,
-}: {
-  type: 'pdf' | 'csv' | 'web'
-  name: string
-  badge: string
-  quote: string
-  pageNumber?: number | null
-  url?: string | null
-  domain?: string | null
-  citationStatus?: string | null
-}) {
-  const Icon = type === 'pdf' ? FileText : type === 'web' ? Eye : FileSpreadsheet
-  const color = type === 'pdf' ? 'text-status-failed-foreground' : type === 'web' ? 'text-primary' : 'text-status-ready-foreground'
-  const isWarning = citationStatus && citationStatus !== 'available'
-  return (
-    <article className={`rounded-xl border bg-card p-5 shadow-sm ${isWarning ? 'border-status-failed-foreground/40' : 'border-border'}`}>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <Icon className={`h-4 w-4 shrink-0 ${color}`} />
-          <h3 className="truncate text-sm font-semibold text-foreground">{name}</h3>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {isWarning && (
-            <span className="rounded bg-status-failed-foreground/10 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-status-failed-foreground">
-              {citationStatus}
-            </span>
-          )}
-          <span className="rounded bg-chip-gray px-2 py-1 font-mono text-[11px] text-text-hint">{badge}</span>
-        </div>
-      </div>
-      <blockquote className="border-l-2 border-border pl-4 text-sm italic leading-6 text-muted-foreground">"{quote}"</blockquote>
-      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-text-hint">
-        {pageNumber != null && <span className="font-mono">p.{pageNumber}</span>}
-        {domain && <span className="font-mono">{domain}</span>}
-        {url && (
-          <a href={url} target="_blank" rel="noopener noreferrer" className="truncate font-mono text-primary hover:underline">
-            {url}
-          </a>
-        )}
-      </div>
-    </article>
-  )
 }
 
 function PanelLink({ label }: { label: string }) {

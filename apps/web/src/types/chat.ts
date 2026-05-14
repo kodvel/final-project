@@ -87,22 +87,6 @@ export type CreateChatSessionInput = {
   title?: string
 }
 
-export type SendChatMessageInput = {
-  sessionId: number
-  workspaceId: number
-  content: string
-}
-
-export type ChatMessagePair = {
-  userMessage: ChatMessage
-  assistantMessage: ChatMessage
-}
-
-export type ChatMessagePairApi = {
-  user_message: ChatMessageApi
-  assistant_message: ChatMessageApi
-}
-
 // ---------------------------------------------------------------------------
 // Stream input
 // ---------------------------------------------------------------------------
@@ -117,29 +101,16 @@ export type StreamChatMessageInput = {
 // Stream event types (discriminated union on `type`)
 // ---------------------------------------------------------------------------
 
-export type SessionCreatedEvent = {
-  type: 'session_created'
-  session: ChatSessionApi
-}
-
-export type UserMessageSavedEvent = {
-  type: 'user_message_saved'
-  message: ChatMessageApi
-}
-
-export type AssistantStartedEvent = {
-  type: 'assistant_started'
-  message: ChatMessageApi
+export type MetadataEvent = {
+  type: 'metadata'
+  session_id: number
+  assistant_message_id: number
+  created_session: boolean
 }
 
 export type TextDeltaEvent = {
   type: 'text_delta'
   delta: string
-}
-
-export type AssistantCompletedEvent = {
-  type: 'assistant_completed'
-  message: ChatMessageApi
 }
 
 export type StreamErrorEvent = {
@@ -159,39 +130,20 @@ export type ToolResultEvent = {
   ok: boolean
 }
 
-export type SourcesUsedEvent = {
-  type: 'sources_used'
-  citations: MessageSourceCitationApi[]
-}
-
-export type WebSourcesUsedEvent = {
-  type: 'web_sources_used'
-  citations: MessageSourceCitationApi[]
-}
-
 export type StreamEvent =
-  | SessionCreatedEvent
-  | UserMessageSavedEvent
-  | AssistantStartedEvent
+  | MetadataEvent
   | TextDeltaEvent
-  | AssistantCompletedEvent
   | StreamErrorEvent
   | ToolCallEvent
   | ToolResultEvent
-  | SourcesUsedEvent
-  | WebSourcesUsedEvent
 
 export type StreamHandlers = {
-  onSessionCreated?: (event: SessionCreatedEvent) => void
-  onUserMessageSaved?: (event: UserMessageSavedEvent) => void
-  onAssistantStarted?: (event: AssistantStartedEvent) => void
+  onMetadata?: (event: MetadataEvent) => void
   onTextDelta?: (event: TextDeltaEvent) => void
-  onAssistantCompleted?: (event: AssistantCompletedEvent) => void
   onError?: (event: StreamErrorEvent) => void
   onToolCall?: (event: ToolCallEvent) => void
   onToolResult?: (event: ToolResultEvent) => void
-  onSourcesUsed?: (event: SourcesUsedEvent) => void
-  onWebSourcesUsed?: (event: WebSourcesUsedEvent) => void
+  onDone?: () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -204,6 +156,7 @@ export type CitationStatus = 'available' | 'source_deleted' | 'source_failed' | 
 export type AgentToolCall = {
   id: number
   messageId: number
+  callId?: string | null
   toolName: string
   status: string
   summary: string
@@ -213,6 +166,7 @@ export type AgentToolCall = {
 export type AgentToolCallApi = {
   id: number
   message_id: number
+  call_id?: string | null
   tool_name: string
   status: string
   summary: string

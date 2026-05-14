@@ -13,7 +13,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Generator
+from typing import Any, AsyncGenerator, Generator
 
 from pydantic import BaseModel, Field
 from sqlmodel import Session
@@ -73,6 +73,7 @@ class ToolCallRecord:
     tool_name: str
     status: str  # success | failed
     summary: str
+    call_id: str | None = None
     input_json: dict[str, Any] | None = None
     output_json: dict[str, Any] | None = None
 
@@ -202,7 +203,7 @@ def classify_needs_retrieval(
         return True
 
     try:
-        from openai import OpenAI
+        from openai import APIStatusError, OpenAI
 
         recent_text = ""
         for msg in context.recent_messages[-3:]:
@@ -239,6 +240,16 @@ def classify_needs_retrieval(
         )
         return parsed.needs_retrieval
 
+    except APIStatusError as exc:
+        # Common auth / base-URL mismatch: concise hint without exposing the key
+        logger.warning(
+            "Classifier API error (status=%s base_url=%s model=%s); "
+            "check RAG_OPENAI_API_BASE_URL / RAG_OPENAI_API_KEY. Defaulting to retrieval.",
+            exc.status_code,
+            settings.rag_openai_api_base_url,
+            settings.rag_openai_model,
+        )
+        return True
     except Exception:
         logger.warning("Classifier failed; defaulting to retrieval", exc_info=True)
         return True
@@ -252,7 +263,14 @@ def classify_needs_retrieval(
 def _make_retrieve_tool(db: Session, workspace_id: int):
     """Create a retrieve_company_knowledge function tool closed over db/workspace."""
 
-    def retrieve_company_knowledge_fn(query: str, source_scope: dict | None = None) -> str:
+    def retrieve_company_knowledge_fn(
+        query: str,
+        team_label: str | None = None,
+        category_labels_json: str | None = None,
+        period_start_month: str | None = None,
+        period_end_month: str | None = None,
+        source_ids_json: str | None = None,
+    ) -> str:
         """Retrieve company knowledge evidence from uploaded Sources.
 
         Searches indexed source_content chunks via vector search, validates
@@ -261,22 +279,24 @@ def _make_retrieve_tool(db: Session, workspace_id: int):
 
         Args:
             query: Natural language query for semantic search.
-            source_scope: Optional scope filters as JSON object with keys:
-                team_label, category_labels, period_start_month,
-                period_end_month, source_ids.
+            team_label: Optional team filter (e.g. "marketing", "product").
+            category_labels_json: Optional JSON array string of category labels
+                (e.g. '["analytics_metrics", "revenue_sales"]').
+            period_start_month: Optional start month "YYYY-MM".
+            period_end_month: Optional end month "YYYY-MM".
+            source_ids_json: Optional JSON array string of source integer IDs
+                (e.g. '[1, 2, 5]').
 
         Returns:
             JSON string with compact evidence items and metadata.
         """
-        scope = None
-        if source_scope:
-            scope = SourceScope(
-                team_label=source_scope.get("team_label"),
-                category_labels=source_scope.get("category_labels"),
-                period_start_month=source_scope.get("period_start_month"),
-                period_end_month=source_scope.get("period_end_month"),
-                source_ids=source_scope.get("source_ids"),
-            )
+        scope = _build_source_scope(
+            team_label=team_label,
+            category_labels_json=category_labels_json,
+            period_start_month=period_start_month,
+            period_end_month=period_end_month,
+            source_ids_json=source_ids_json,
+        )
         bundle = retrieve_company_knowledge(db, workspace_id, query, scope)
         # Return compact JSON string — no raw huge output
         items = []
@@ -297,6 +317,48 @@ def _make_retrieve_tool(db: Session, workspace_id: int):
         })
 
     return retrieve_company_knowledge_fn
+
+
+def _build_source_scope(
+    team_label: str | None = None,
+    category_labels_json: str | None = None,
+    period_start_month: str | None = None,
+    period_end_month: str | None = None,
+    source_ids_json: str | None = None,
+) -> SourceScope | None:
+    """Parse explicit scalar scope params into a SourceScope.
+
+    Returns None when no scope constraints are provided.
+    """
+    category_labels: list[str] | None = None
+    if category_labels_json:
+        try:
+            parsed = json.loads(category_labels_json)
+            if isinstance(parsed, list):
+                category_labels = [str(c) for c in parsed]
+        except (json.JSONDecodeError, TypeError):
+            logger.warning("Invalid category_labels_json: %s", category_labels_json)
+
+    source_ids: list[int] | None = None
+    if source_ids_json:
+        try:
+            parsed = json.loads(source_ids_json)
+            if isinstance(parsed, list):
+                source_ids = [int(i) for i in parsed]
+        except (json.JSONDecodeError, TypeError, ValueError):
+            logger.warning("Invalid source_ids_json: %s", source_ids_json)
+
+    has_any = any([team_label, category_labels, period_start_month, period_end_month, source_ids])
+    if not has_any:
+        return None
+
+    return SourceScope(
+        team_label=team_label,
+        category_labels=category_labels,
+        period_start_month=period_start_month,
+        period_end_month=period_end_month,
+        source_ids=source_ids,
+    )
 
 
 def _make_tavily_tool():
@@ -363,17 +425,17 @@ def _make_tavily_tool():
 
 
 # ---------------------------------------------------------------------------
-# Main consultant run (synchronous generator for SSE)
+# Main consultant run (async generator for true SSE streaming)
 # ---------------------------------------------------------------------------
 
 
-def run_consultant_stream(
+async def run_consultant_stream(
     db: Session,
     workspace_id: int,
     context: ContextWindow,
     evidence_bundle: EvidenceBundle | None = None,
-) -> Generator[tuple[ConsultantEvent, ConsultantResult], None, None]:
-    """Run the consultant agent and yield (event, result_accumulator) tuples."""
+) -> AsyncGenerator[tuple[ConsultantEvent, ConsultantResult], None]:
+    """Run the consultant agent with true streaming and yield (event, result_accumulator) tuples."""
     settings = get_settings()
     current_message = context.current_user_message or ""
     result = ConsultantResult()
@@ -405,14 +467,15 @@ def run_consultant_stream(
 
     # --- Check if chat model key is available ---
     if not settings.chat_openai_api_key:
-        yield from _fallback_run(
+        async for event_tuple in _fallback_run_async(
             current_message=current_message,
             evidence_bundle=evidence_bundle,
             result=result,
-        )
+        ):
+            yield event_tuple
         return
 
-    # --- Use Agents SDK with real function tools ---
+    # --- Use Agents SDK with true streaming ---
     try:
         from agents import Agent, Runner, function_tool
         from agents.extensions.models.litellm_model import LitellmModel
@@ -443,63 +506,78 @@ def run_consultant_stream(
             tools=[retrieve_tool, tavily_tool],
         )
 
-        run_result = Runner.run_sync(
+        stream_result = Runner.run_streamed(
             starting_agent=agent,
             input=history,
         )
 
-        full_text = run_result.final_output or ""
+        # Stream events as they arrive from the model
+        accumulated_text = ""
+        async for event in stream_result.stream_events():
+            if event.type == "raw_response_event":
+                from openai.types.responses import ResponseTextDeltaEvent
 
-        # Extract tool calls from run items — stream safe events (fix #5)
-        for item in run_result.new_items:
-            from agents.items import ToolCallItem, ToolCallOutputItem
-
-            if isinstance(item, ToolCallItem):
-                raw = item.raw_item
-                tool_name = getattr(raw, "name", "unknown")
-                call_id = getattr(raw, "call_id", "")
-                result.tool_calls.append(
-                    ToolCallRecord(
-                        tool_name=tool_name,
-                        status="success",
-                        summary=f"Called {tool_name}",
+                if isinstance(event.data, ResponseTextDeltaEvent):
+                    delta = event.data.delta
+                    accumulated_text += delta
+                    result.content = accumulated_text
+                    yield (
+                        ConsultantEvent(type="text_delta", data={"delta": delta}),
+                        result,
                     )
-                )
-                # Only tool_name and call_id streamed, no args/raw/reasoning
-                yield (
-                    ConsultantEvent(
-                        type="tool_call",
-                        data={"tool_name": tool_name, "call_id": call_id},
-                    ),
-                    result,
-                )
 
-            elif isinstance(item, ToolCallOutputItem):
-                raw = getattr(item, "raw_item", None)
-                call_id = getattr(raw, "call_id", "") if raw else ""
-                status_val = "ok"
-                output = getattr(item, "output", None)
-                if isinstance(output, str) and "error" in output.lower():
-                    status_val = "error"
-                # Only status streamed, no args/raw content
-                yield (
-                    ConsultantEvent(
-                        type="tool_result",
-                        data={"call_id": call_id, "ok": status_val == "ok"},
-                    ),
-                    result,
-                )
+            elif event.type == "run_item_stream_event":
+                if event.name == "tool_called":
+                    from agents.items import ToolCallItem
 
-        # Stream text deltas from the full response
-        if full_text:
-            chunk_size = max(1, len(full_text) // 8)
-            for i in range(0, len(full_text), chunk_size):
-                delta = full_text[i : i + chunk_size]
-                result.content += delta
-                yield (
-                    ConsultantEvent(type="text_delta", data={"delta": delta}),
-                    result,
-                )
+                    if isinstance(event.item, ToolCallItem):
+                        raw = event.item.raw_item
+                        tool_name = getattr(raw, "name", "unknown")
+                        call_id = getattr(raw, "call_id", "")
+                        result.tool_calls.append(
+                            ToolCallRecord(
+                                tool_name=tool_name,
+                                status="running",
+                                summary=f"Started {tool_name}",
+                                call_id=call_id or None,
+                            )
+                        )
+                        # Only tool_name and call_id streamed, no args/raw/reasoning
+                        yield (
+                            ConsultantEvent(
+                                type="tool_call",
+                                data={"tool_name": tool_name, "call_id": call_id},
+                            ),
+                            result,
+                        )
+
+                elif event.name == "tool_output":
+                    from agents.items import ToolCallOutputItem
+
+                    if isinstance(event.item, ToolCallOutputItem):
+                        raw = getattr(event.item, "raw_item", None)
+                        call_id = getattr(raw, "call_id", "") if raw else ""
+                        status_val = "ok"
+                        output = getattr(event.item, "output", None)
+                        if isinstance(output, str) and "error" in output.lower():
+                            status_val = "error"
+                        for tool_call in reversed(result.tool_calls):
+                            if tool_call.call_id == (call_id or None):
+                                tool_call.status = "success" if status_val == "ok" else "failed"
+                                tool_call.summary = f"{tool_call.tool_name} completed" if status_val == "ok" else f"{tool_call.tool_name} failed"
+                                break
+                        # Only status streamed, no args/raw content
+                        yield (
+                            ConsultantEvent(
+                                type="tool_result",
+                                data={"call_id": call_id, "ok": status_val == "ok"},
+                            ),
+                            result,
+                        )
+
+        # Use final_output as authoritative full text, fallback to accumulated
+        full_text = stream_result.final_output or accumulated_text or ""
+        result.content = full_text
 
         # Extract citations from the response
         _extract_citations(
@@ -512,12 +590,13 @@ def run_consultant_stream(
     except Exception as e:
         logger.exception("Agent run failed, using fallback")
         result.content = ""
-        yield from _fallback_run(
+        async for event_tuple in _fallback_run_async(
             current_message=current_message,
             evidence_bundle=evidence_bundle,
             result=result,
             error=str(e),
-        )
+        ):
+            yield event_tuple
 
 
 def _build_model_history(
@@ -669,6 +748,22 @@ def _fallback_run(
         )
 
 
+async def _fallback_run_async(
+    current_message: str,
+    evidence_bundle: EvidenceBundle | None,
+    result: ConsultantResult,
+    error: str | None = None,
+) -> AsyncGenerator[tuple[ConsultantEvent, ConsultantResult], None]:
+    """Async wrapper around _fallback_run for the async streaming path."""
+    for event_tuple in _fallback_run(
+        current_message=current_message,
+        evidence_bundle=evidence_bundle,
+        result=result,
+        error=error,
+    ):
+        yield event_tuple
+
+
 # ---------------------------------------------------------------------------
 # Persistence helpers
 # ---------------------------------------------------------------------------
@@ -684,6 +779,7 @@ def persist_tool_calls(
     for tc in tool_calls:
         record = AgentToolCall(
             message_id=message_id,
+            call_id=tc.call_id,
             tool_name=tc.tool_name,
             status=tc.status,
             summary=tc.summary,

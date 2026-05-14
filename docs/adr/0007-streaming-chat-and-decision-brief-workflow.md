@@ -10,7 +10,7 @@ The Chat page is the primary product surface for Company Intelligence Copilot. I
 
 Earlier docs assumed a simpler non-streaming Chat endpoint, slash-command status changes, and agent-oriented Decision Brief generation. The current MVP direction is more specific:
 
-- the frontend uses DeltaKit React for chat streaming;
+- the frontend uses a DeltaKit-compatible SSE shape with `fetch` and `ReadableStream` for chat streaming;
 - local uploaded Sources remain the primary evidence source;
 - Tavily can provide bounded web evidence only when local evidence is weak or empty and the question is web-answerable;
 - Decision Brief Drafts are explicit point-in-time artifacts generated through `/decision-brief`;
@@ -35,15 +35,19 @@ The backend uses `StreamingResponse` and manually formats DeltaKit SSE lines. Na
 
 OpenAI Agents SDK stream events are internal Python events. The backend converts them into DeltaKit SSE events before sending them to the browser.
 
-Built-in event types:
+Stream event types:
 
 ```text
+metadata
 text_delta
 tool_call
 tool_result
+error
 ```
 
-App-specific event types:
+The stream terminates with `data: [DONE]`. `metadata` is the only app-specific lifecycle event in normal Chat. It contains `session_id`, `assistant_message_id`, and `created_session`, so the frontend can keep lazy session creation stable without receiving full message objects.
+
+Removed normal Chat lifecycle events:
 
 ```text
 session_created
@@ -51,13 +55,13 @@ user_message_saved
 assistant_started
 sources_used
 web_sources_used
-decision_brief_created
 assistant_completed
 assistant_interrupted
-error
 ```
 
-`tool_call` events expose only tool name and call ID. `tool_result` events expose status only. Tool errors use safe messages. The stream must not expose private model reasoning, prompts, raw retrieved chunks, Tavily raw results, secrets, or full tool arguments.
+These are persisted or derived server-side instead of streamed. Sources Used appears after `[DONE]`, when the frontend refetches the session and reads canonical `message_source_citation` rows from the database.
+
+`tool_call` events expose only tool name and call ID. `tool_result` events expose status only. Tool errors use safe messages. The stream must not expose private model reasoning, prompts, raw retrieved chunks, Tavily raw results, secrets, or full tool arguments. The UI may show muted process status such as `Thinking…`, `Searching company Sources…`, or `Searching web…`; it must not show raw chain-of-thought.
 
 ### Chat Session creation and history
 
@@ -82,6 +86,8 @@ interrupted
 ```
 
 Partial interrupted assistant content should be retained for audit and UI recovery.
+
+Tool calls are stored in `agent_tool_call`, not as separate Chat Messages. Each stored tool call may include a nullable `call_id` so the live stream and persisted audit row can refer to the same tool call. Tool calls start as `running` and finish as `success` or `failed`. Interrupted runs may retain `running` tool calls for audit.
 
 ### Context window strategy
 

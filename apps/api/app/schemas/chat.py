@@ -54,15 +54,6 @@ class ChatSessionDetail(ChatSessionRead):
     tool_calls: list[ToolCallRead] = []
 
 
-class ChatMessageCreate(BaseModel):
-    content: str
-
-
-class ChatMessagePairRead(BaseModel):
-    user_message: ChatMessageRead
-    assistant_message: ChatMessageRead
-
-
 # ---------------------------------------------------------------------------
 # Streaming / SSE schemas
 # ---------------------------------------------------------------------------
@@ -84,6 +75,7 @@ class CitationRead(BaseModel):
     citation_type: CitationType = CitationType.UPLOADED_SOURCE
     ordinal: int | None = None
     quote: str | None = None
+    snippet: str | None = None
     page_number: int | None = None
     url: str | None = None
     title: str | None = None
@@ -97,6 +89,7 @@ class ToolCallRead(BaseModel):
 
     id: int
     message_id: int
+    call_id: str | None = None
     tool_name: str
     status: str
     summary: str

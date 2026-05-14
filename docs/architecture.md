@@ -46,14 +46,14 @@ flowchart TD
   F --> G{file_type}
 
   G -->|csv| H[CSV extractor<br/>parse, infer schema, compute stats]
-  H --> I[CSV normalizer<br/>LLM interprets computed facts]
+  H --> I[CSV normalizer<br/>shared OpenAI structured extraction<br/>interprets sanitized compact profile]
   I --> J[Build normalized artifacts<br/>source_summary, source_content, optional source_insight]
 
   G -->|pdf| K[PDF extractor<br/>Mistral OCR]
   K --> L[Normalize markdown by code<br/>preserve page evidence]
   L --> M[Chunk markdown by code]
-  M --> N[LLM labels chunks<br/>document_section + content_type]
-  N --> O[PDF normalizer<br/>LLM synthesis]
+  M --> N[LLM labels chunks<br/>shared OpenAI structured extraction<br/>Pydantic response_format]
+  N --> O[PDF normalizer<br/>shared OpenAI structured extraction]
   O --> P[Build normalized artifacts<br/>source_summary, source_content, optional source_insight]
   L --> Q[Server-side file storage<br/>ocr.md]
   M --> R[Server-side file storage<br/>chunks.json]
@@ -88,7 +88,7 @@ flowchart TD
   E --> F[Detect analytical roles<br/>metric, time, segment, id, text]
   F --> G[Compute facts<br/>row count, missing values, stats, top categories]
   G --> H[Detect patterns<br/>trend, anomaly, quality warning]
-  H --> I[LLM interpretation<br/>summary, findings, risks, opportunities]
+  H --> I[LLM interpretation<br/>OpenAI structured extraction<br/>summary, findings, risks, opportunities]
   I --> J[source_summary<br/>common content_json]
   I --> K[source_insight<br/>optional content_json]
   G --> L[source_content chunks<br/>compact factual snippets]
@@ -116,10 +116,10 @@ flowchart TD
   F --> G[Save ocr.md]
   F --> H[Chunk markdown by code]
   H --> I[Save chunks.json]
-  H --> J[LLM chunk labeling]
-  J --> K{Labels valid JSON?}
-  K -->|No after repair| E
-  K -->|Yes| L[LLM document synthesis]
+  H --> J[LLM chunk labeling<br/>OpenAI structured parse]
+  J --> K{Labels valid?}
+  K -->|No after retry| E
+  K -->|Yes| L[LLM document synthesis<br/>OpenAI structured parse]
   L --> M[source_summary<br/>summary, sections, stats, warnings]
   L --> N[source_insight<br/>findings, risks, opportunities, assumptions, quotes]
   J --> O[source_content chunks<br/>text + page + labels]
@@ -323,8 +323,9 @@ Code handles facts:
 - detect analytical roles such as metric, time dimension, segment dimension, identifier, and text;
 - detect obvious trends, anomalies, and data quality warnings.
 
-The LLM interprets computed facts:
+The LLM interprets computed facts via shared OpenAI structured extraction (`apps/api/app/services/llm_extraction.py`):
 
+- LLM input uses sanitized compact profile data with no local file paths and no raw sample cell values;
 - write a business-readable summary;
 - turn detected patterns into findings, risks, opportunities, and assumptions;
 - produce retrieval-friendly prose chunks for `source_content`.
@@ -333,20 +334,20 @@ CSV `source_content` should not index every raw row. It should index compact, fa
 
 ## PDF processing
 
-PDF processing uses OCR, conservative normalization, chunking, LLM labeling, and LLM synthesis.
+PDF processing uses OCR, conservative normalization, chunking, shared OpenAI structured extraction for labeling, and shared OpenAI structured extraction for synthesis.
 
 ```text
 PDF
   -> Mistral OCR
   -> normalized markdown by code
   -> chunks by code
-  -> chunk labels by LLM
-  -> source_summary/source_insight by LLM
+  -> chunk labels by shared OpenAI structured extraction (Pydantic response_format)
+  -> source_summary/source_insight by shared OpenAI structured extraction
   -> source_content by code from chunks + labels
   -> ChromaDB index
 ```
 
-Markdown normalization is code, not LLM. It preserves evidence, adds page markers, normalizes whitespace, and avoids rewriting source text.
+Markdown normalization is code, not LLM. It preserves evidence, adds page markers, normalizes whitespace, and avoids rewriting source text. Chunk labeling and synthesis use `client.chat.completions.parse()` with Pydantic `response_format` — no direct LiteLLM JSON calls or manual JSON repair.
 
 Chunk labels use two concepts:
 
@@ -362,6 +363,12 @@ All `source_content.chunks` are indexed in ChromaDB when indexable.
 - CSV: summarized factual chunks, not all raw rows.
 - PDF: OCR chunks with page references and chunk labels.
 - Future visual formats: extracted text and visual element descriptions.
+
+ChromaDB owns embeddings via the collection `embedding_function`. Indexing uses `collection.upsert(documents=..., ids=..., metadatas=...)` and retrieval uses `collection.query(query_texts=[query], ...)`. There is no manual app-generated embedding step and no `knowledge/embeddings.py` runtime path.
+
+Embedding config: `RAG_EMBEDDING_API_BASE_URL` (default `https://api.openai.com/v1`), `RAG_EMBEDDING_API_KEY`, `RAG_EMBEDDING_MODEL` (default `text-embedding-3-small`).
+
+RAG structuring config: `RAG_OPENAI_API_BASE_URL` (default `https://openrouter.ai/api/v1`), `RAG_OPENAI_MODEL` (default `google/gemini-2.5-flash-lite`).
 
 Chroma collection:
 
@@ -599,49 +606,43 @@ streaming -> interrupted
 - If generation fails before any useful output, the assistant message becomes `failed`.
 - If generation fails after partial output, the assistant message becomes `interrupted`; partial content is retained for audit and UI recovery.
 
-### DeltaKit streaming protocol
+### Chat streaming protocol
 
-The frontend uses DeltaKit React. The backend streams Server-Sent Events as `text/event-stream` with JSON objects in `data:` lines. Each JSON event uses a `type` field. The stream ends with the DeltaKit sentinel `data: [DONE]`.
+The backend streams Server-Sent Events as `text/event-stream` with JSON objects in `data:` lines. Each JSON event uses a `type` field. The stream ends with the DeltaKit-compatible sentinel `data: [DONE]`.
 
 Do not use named SSE `event:` fields for the MVP contract.
 
-The backend uses `StreamingResponse` and manually formats DeltaKit SSE lines. Native browser `EventSource` is not used because the Chat stream endpoint is a POST with a JSON request body; the frontend reads the stream with `fetch` and a `ReadableStream` parser.
+The backend uses `StreamingResponse` and manually formats SSE lines. Native browser `EventSource` is not used because the Chat stream endpoint is a POST with a JSON request body; the frontend reads the stream with `fetch` and a `ReadableStream` parser.
 
 OpenAI Agents SDK stream events are internal Python events, not the frontend wire format. The backend converts them into DeltaKit SSE events before sending them to the browser.
 
 Example stream:
 
 ```text
-data: {"type":"session_created","session_id":"..."}
-
-data: {"type":"user_message_saved","message_id":"..."}
-
-data: {"type":"assistant_started","message_id":"..."}
+data: {"type":"metadata","session_id":12,"assistant_message_id":34,"created_session":true}
 
 data: {"type":"tool_call","tool_name":"retrieve_company_knowledge","call_id":"call_1"}
 
 data: {"type":"tool_result","call_id":"call_1","ok":true}
 
-data: {"type":"sources_used","citations":[...]}
-
 data: {"type":"text_delta","delta":"The main risk is..."}
-
-data: {"type":"assistant_completed","message_id":"...","status":"completed"}
 
 data: [DONE]
 ```
 
-Built-in DeltaKit-compatible event types:
+Stream event types:
 
 ```text
+metadata     Sends session_id, assistant_message_id, and created_session.
 text_delta   Appends streamed assistant text.
 tool_call    Shows a server-side tool invocation.
 tool_result  Shows the server-side tool result summary.
+error        Sends a safe failure message before DONE when possible.
 ```
 
 `tool_call` events expose only `tool_name` and `call_id`; they do not expose tool arguments. `tool_result` events expose status only. Tool errors are sent as safe error messages. The stream must not expose private model reasoning, prompts, raw retrieved chunks, Tavily raw results, secrets, or full tool arguments.
 
-Custom app event types:
+Normal Chat does not stream these older lifecycle events:
 
 ```text
 session_created
@@ -649,45 +650,52 @@ user_message_saved
 assistant_started
 sources_used
 web_sources_used
-decision_brief_created
 assistant_completed
 assistant_interrupted
-error
 ```
+
+The database owns those lifecycle states. Sources Used is derived after `[DONE]` by refetching the Chat Session and reading persisted `message_source_citation` rows.
 
 ### Normal chat response flow
 
 ```mermaid
 flowchart TD
-  A[User sends message] --> B[POST /chat/messages/stream]
-  B --> C{session_id provided?}
-  C -->|No| D[Create Chat Session<br/>title from first message]
+  A[User sends message] --> B[POST /chat/messages/stream<br/>workspace_id, session_id?, message]
+  B --> C{session_id present?}
+  C -->|No| D[Lazy create Chat Session<br/>derive title from first message]
   C -->|Yes| E[Validate session belongs to workspace_id]
   D --> F[Save user chat_message<br/>status completed]
   E --> F
-  F --> G[Create assistant chat_message<br/>status streaming]
-  G --> H[Build conversation context<br/>summary + recent raw + current raw]
-  H --> I[Classify whether local Source retrieval is needed]
-  I -->|Needed or classifier fails| J[Retrieve company knowledge]
-  I -->|Not needed| Q[Agent generates answer]
-  J --> K[SQL eligible Sources<br/>ready, not deleted, same Workspace]
-  K --> L[ChromaDB search<br/>within eligible Source IDs]
-  L --> M[SQL validate and hydrate evidence]
-  M --> N{Evidence sufficient?}
-  N -->|Yes| O[Stream sources_used]
-  N -->|Weak or empty and web-capable| P[Tavily web search]
-  N -->|Weak or empty and not web-capable| Q
-  O --> Q
-  P --> R[Stream web_sources_used]
-  R --> Q
-  Q --> S[Stream text_delta]
-  S --> T[Save final assistant content]
-  T --> U[Save citations actually used]
-  U --> V[Mark assistant completed]
-  V --> W[Stream assistant_completed + DONE]
+  F --> G[Build context<br/>conversation_summary + recent raw + current raw]
+  G --> H[Create assistant chat_message<br/>status streaming]
+  H --> I[Stream metadata<br/>session_id + assistant_message_id]
+  I --> J[Classifier decides whether local Source retrieval is needed]
+  J -->|Not needed| R[Run Company Strategy Consultant agent]
+  J -->|Needed or classifier fails| K[Stream tool_call<br/>retrieve_company_knowledge]
+  K --> L[SQL eligible Sources<br/>ready, not deleted, same Workspace]
+  L --> M[ChromaDB source_content search]
+  M --> N[SQL validate, hydrate, dedupe, rerank, diversity cap, quality gate]
+  N --> O[Stream tool_result<br/>ok true/false]
+  O --> P{Evidence weak or empty<br/>and question web-capable?}
+  P -->|Yes| Q[Stream tool_call/tool_result<br/>tavily_web_search]
+  P -->|No| R
+  Q --> R
+  R --> S[Agent may stream tool_call/tool_result<br/>for follow-up tools]
+  S --> T[Stream text_delta chunks<br/>assistant answer types in UI]
+  T --> U{Client disconnected or generation error?}
+  U -->|Disconnected| V[Save partial content<br/>status interrupted<br/>persist available tool calls]
+  U -->|Error| W[Save partial content<br/>status failed<br/>persist available tool calls<br/>stream error + DONE if possible]
+  U -->|Finished| X[Extract inline citation ordinals<br/>validate against EvidenceBundle]
+  X --> Y[Save final assistant content<br/>status completed]
+  Y --> Z[Persist used citations<br/>uploaded Source and web]
+  Z --> AA[Persist tool calls<br/>with call_id and final status]
+  AA --> AB[Stream DONE]
+  AB --> AC[Frontend refetches Chat Session]
+  AC --> AD[Render final assistant answer]
+  AC --> AE[Render Sources Used panel<br/>from persisted citations]
 ```
 
-Chat runs a small LLM classifier before pre-retrieval. If the message needs uploaded company evidence, or if classification fails, the backend retrieves company knowledge before the consultant agent answers. The consultant agent also has the retrieval tool available during the run. It may answer without local retrieval for clearly off-context chat, but it must not invent unsupported internal facts.
+Chat runs a small LLM classifier before pre-retrieval. The classifier uses OpenAI structured parse with Pydantic `RetrievalClassification(needs_retrieval, reason)` to decide if local Source retrieval is needed. If the message needs uploaded company evidence, or if classification fails, the backend retrieves company knowledge before the consultant agent answers. The consultant agent also has the retrieval tool available during the run. It may answer without local retrieval for clearly off-context chat, but it must not invent unsupported internal facts.
 
 ### Tavily web search policy
 
@@ -887,6 +895,12 @@ services/sources.py
 services/source_processing.py
   Load Source, choose extractor, run normalizer, upsert artifacts, index content
 
+services/llm_extraction.py
+  Shared OpenAI structured extraction using client.chat.completions.parse() with Pydantic response_format.
+  Provides extract_structured(), extract_chunk_label(), extract_aggregate(),
+  extract_csv_content(), extract_csv_insight() and related Pydantic schemas.
+  Replaces direct LiteLLM JSON calls and manual JSON repair.
+
 services/extractors/csv_extractor.py
   Parse CSV, infer schema, compute stats, detect patterns
 
@@ -917,7 +931,7 @@ services/visualizations.py
 
 ## Retry and delete behavior
 
-Retry is idempotent:
+Retry is user-triggered only via `POST /sources/{source_id}/retry-processing`. There is no Celery auto-retry/backoff. Retry is idempotent:
 
 - clear `processing_error`;
 - set status to `processing`;

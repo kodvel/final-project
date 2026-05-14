@@ -26,7 +26,7 @@ The Visualization Data page turns ready Sources into a cached, period-based inte
 
 The Source Data page is the Single Source of Truth for uploaded company context. Users can add CSV and PDF files, choose team labels, choose one or more category labels, set a month-level period, and track processing status. CSV and PDF files are extracted through file-specific processors, then normalized into shared `source_summary`, `source_content`, and optional `source_insight` artifacts.
 
-The backend uses FastAPI as the API layer, Python for AI/RAG/data processing, SQLModel and Alembic for relational app data, ChromaDB as the vector database for searchable `source_content`, optional Redis and Celery for later background file processing, an OpenAI-compatible LLM client for consultant responses and structured workflows, Tavily for bounded web search fallback, and Langfuse for observability. The frontend uses TanStack Start, TanStack Router, React, TypeScript, and DeltaKit for chat streaming.
+The backend uses FastAPI as the API layer, Python for AI/RAG/data processing, SQLModel and Alembic for relational app data, ChromaDB as the vector database for searchable `source_content`, optional Redis and Celery for later background file processing, an OpenAI-compatible LLM client for consultant responses and structured workflows, Tavily for bounded web search fallback, and Langfuse for observability. The frontend uses TanStack Start, TanStack Router, React, TypeScript, and a DeltaKit-compatible SSE stream shape for chat streaming.
 
 ## User Stories
 
@@ -124,15 +124,17 @@ The backend uses FastAPI as the API layer, Python for AI/RAG/data processing, SQ
 - Visualization Data is scoped by Workspace and month range only. Team and category labels remain Source metadata for grouping and Chat scope, not Visualization filters.
 - File processing uses four statuses: Uploaded, Processing, Ready, and Failed. Processing runs synchronously by default for the demo and can later use background jobs.
 - Structured CSV data is parsed, profiled, interpreted, and normalized into shared Source Artifacts.
-- CSV processing uses deterministic code for facts and an LLM for business-readable interpretation.
+- CSV processing uses deterministic code for facts and shared OpenAI structured extraction (`apps/api/app/services/llm_extraction.py`) for business-readable `source_content` and `source_insight`. LLM input uses sanitized compact profile data with no local file paths and no raw sample cell values.
 - CSV `source_content` indexes summarized factual chunks, not every raw row.
 - Unstructured PDF data is not forced into charts.
 - PDF processing generates `source_summary`, `source_content`, and optional `source_insight` with key findings, assumptions, risks, opportunities, and source quotes.
 - PDF OCR uses Mistral OCR with model `mistral-ocr-latest`, inline base64 document input, `table_format="html"`, and image base64 disabled.
-- PDF structuring uses LiteLLM with `RAG_OPENAI_API_BASE_URL`, `RAG_OPENAI_API_KEY`, and `RAG_OPENAI_MODEL`, defaulting to `google/gemini-3.1-flash-lite-preview`.
+- PDF structuring uses shared OpenAI structured extraction (`apps/api/app/services/llm_extraction.py`) with `client.chat.completions.parse()` and Pydantic `response_format`. Config: `RAG_OPENAI_API_BASE_URL` (default `https://openrouter.ai/api/v1`), `RAG_OPENAI_API_KEY`, `RAG_OPENAI_MODEL` (default `google/gemini-2.5-flash-lite`). No direct LiteLLM JSON calls or manual JSON repair.
 - PDF processing writes extracted markdown to `storage/extracted/{workspace_id}/{source_id}/ocr.md` and chunk metadata to `storage/extracted/{workspace_id}/{source_id}/chunks.json`.
 - Source processing runs synchronously by default for the demo. `RAG_ENABLE_BACKGROUND_PROCESSING=false` keeps sync processing; when enabled later, background failures should fall back to sync processing with a warning.
-- Chat can use relevant Sources by default when the message needs uploaded company evidence. A small LLM classifier may skip pre-retrieval for clearly off-context chat; if the classifier fails, the backend retrieves by default.
+- Retry is user-triggered only via `POST /sources/{source_id}/retry-processing`. There is no Celery auto-retry/backoff.
+- Source Data frontend polls every 3 seconds while any Source status is `uploaded` or `processing`, and stops when all are `ready` or `failed`.
+- Chat can use relevant Sources by default when the message needs uploaded company evidence. A small LLM classifier uses OpenAI structured parse with Pydantic `RetrievalClassification(needs_retrieval, reason)` to decide whether to run pre-retrieval; classifier failure defaults to retrieval. The consultant agent still has the retrieval tool available for follow-up/refinement.
 - Chat users can override scope by mentioning team, category, period, or source constraints in natural language.
 - Chat is full-session-aware. The backend loads all Chat Session messages and builds bounded model context with a conversation summary for older messages, recent raw messages, and the current user message.
 - Chat context assembly is budgeted across conversation history, uploaded Source RAG evidence, optional Tavily web evidence, and reserved output tokens. Grounding rules and the current user message are never dropped.
@@ -154,7 +156,8 @@ The backend uses FastAPI as the API layer, Python for AI/RAG/data processing, SQ
 - Python remains the primary place for RAG, AI Agent work, and data analysis, consistent with the accepted foundation ADR.
 - Backend FastAPI/Pydantic/SQLModel schemas are the validation source of truth. Frontend TypeScript types live locally under `apps/web/src/types`, and `/openapi.json` is the contract reference for source data, visualizations, chat messages, source citations, and decision briefs.
 - SQLModel and Alembic should be used for relational app data such as sources, metadata labels, periods, processing jobs, chat sessions, chat messages, generated artifacts, and trace references.
-- ChromaDB should be used as the vector database for all indexable `source_content` chunks. SQL remains the source of truth.
+- ChromaDB should be used as the vector database for all indexable `source_content` chunks. ChromaDB owns embeddings via the collection `embedding_function`; indexing uses `collection.upsert(documents=..., ids=..., metadatas=...)`; retrieval uses `collection.query(query_texts=[query], ...)`. There is no manual app-generated embedding step and no `knowledge/embeddings.py` runtime path. SQL remains the source of truth.
+- Embedding config: `RAG_EMBEDDING_API_BASE_URL` (default `https://api.openai.com/v1`), `RAG_EMBEDDING_API_KEY`, `RAG_EMBEDDING_MODEL` (default `text-embedding-3-small`).
 - Redis and Celery should be available for optional background source processing, but demo processing defaults to synchronous execution.
 - OpenAI-compatible LLM calls should be used for consultant responses and deterministic structured workflows. Autonomous agent behavior is not required for Decision Brief generation in the MVP.
 - Langfuse should be used for AI agent observability.
@@ -374,8 +377,9 @@ Tool-call stream events expose only tool name, call ID, and status. They must no
 
 - `id`
 - `message_id`
+- `call_id`: nullable, used to correlate live stream events with persisted tool-call audit rows
 - `tool_name`
-- `status`: `success`, `failed`
+- `status`: `running`, `success`, `failed`
 - `summary`
 - `input_json`
 - `output_json`
@@ -564,7 +568,7 @@ The PRD expects high-level API contracts, not final OpenAPI definitions.
 
 Chat auto-selects relevant Sources by default when the message needs uploaded company evidence. A small LLM classifier decides whether to run local pre-retrieval before the consultant agent. If classification fails, the backend retrieves by default. The consultant agent still has the retrieval tool available for follow-up or refinement. User messages may narrow Source Scope by mentioning team, category, period, or source constraints in natural language; this scope is evaluated per message and is not a persistent chat filter in MVP.
 
-Stream events are SSE `data:` JSON objects with a `type` field. Built-in DeltaKit-compatible event types include `text_delta`, `tool_call`, and `tool_result`. App-specific event types include `session_created`, `user_message_saved`, `assistant_started`, `sources_used`, `web_sources_used`, `decision_brief_created`, `assistant_completed`, `assistant_interrupted`, and `error`. The stream ends with `data: [DONE]`. The backend converts OpenAI Agents SDK stream events into this DeltaKit SSE format and uses `fetch`/ReadableStream on the frontend for the POST stream. It does not use named SSE `event:` fields or native `EventSource` for the MVP stream contract.
+Stream events are SSE `data:` JSON objects with a `type` field. Normal Chat event types are `metadata`, `text_delta`, `tool_call`, `tool_result`, and `error`. The stream ends with `data: [DONE]`; `[DONE]` is the completion signal. `metadata` includes `session_id`, `assistant_message_id`, and `created_session`. The frontend uses `fetch` and `ReadableStream` for the POST stream. The backend does not use named SSE `event:` fields or native `EventSource` for the MVP stream contract. Normal Chat does not stream `sources_used` or `assistant_completed`; Sources Used is shown after `[DONE]` by refetching the session and reading persisted citations.
 
 #### Decision Briefs
 
@@ -627,28 +631,28 @@ flowchart TD
   C -->|Present| E[Validate session Workspace]
   D --> F[Save user chat_message completed]
   E --> F
-  F --> G[Create assistant chat_message streaming]
-  G --> H[Build context: conversation summary + recent raw messages + current message]
-  H --> I[Reserve output budget]
+  F --> G[Build context: conversation summary + recent raw messages + current message]
+  G --> H[Create assistant chat_message streaming]
+  H --> I[Stream metadata: session_id + assistant_message_id]
   I --> J[Classify whether local Source retrieval is needed]
-  J -->|Needed or classifier fails| K[Retrieve company knowledge]
   J -->|Not needed| R[Agent generates answer]
+  J -->|Needed or classifier fails| K[Stream tool_call: retrieve_company_knowledge]
   K --> L[SQL eligible ready Sources]
   L --> M[ChromaDB source_content search]
   M --> N[Validate, dedupe, rerank, diversity-cap, and quality-gate evidence]
-  N --> O{Local evidence sufficient?}
-  O -->|Yes| P[Stream sources_used]
-  O -->|Weak/empty and web-capable| Q[Tavily web search]
-  O -->|Weak/empty not web-capable| R
-  P --> R
-  Q --> S[Stream web_sources_used]
-  S --> R
-  R --> T[Stream text_delta answer]
-  T --> U[Validate used citation IDs]
+  N --> O[Stream tool_result]
+  O --> P{Local evidence weak/empty and web-capable?}
+  P -->|Yes| Q[Stream tool_call/tool_result: tavily_web_search]
+  P -->|No| R
+  Q --> R
+  R --> S[Agent may stream tool_call/tool_result for follow-up tools]
+  S --> T[Stream text_delta answer]
+  T --> U[Validate cited ordinals against EvidenceBundle]
   U --> V[Save final assistant content]
   V --> W[Save citations actually used]
-  W --> X[Record tool calls and optional trace]
+  W --> X[Record tool calls with call_id and optional trace]
   X --> Y[Mark assistant completed and stream DONE]
+  Y --> Z[Frontend refetches session and renders Sources Used]
 ```
 
 ### Decision Brief Draft Flow

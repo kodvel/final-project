@@ -2,8 +2,6 @@ import { API_BASE_URL, apiFetch } from '../../lib/api-client'
 import type {
   AgentToolCall,
   AgentToolCallApi,
-  AssistantCompletedEvent,
-  AssistantStartedEvent,
   ChatMessage,
   ChatMessageApi,
   ChatSession,
@@ -13,17 +11,13 @@ import type {
   CreateChatSessionInput,
   MessageSourceCitation,
   MessageSourceCitationApi,
-  SendChatMessageInput,
-  SessionCreatedEvent,
-  SourcesUsedEvent,
+  MetadataEvent,
   StreamChatMessageInput,
   StreamErrorEvent,
   StreamHandlers,
   TextDeltaEvent,
   ToolCallEvent,
   ToolResultEvent,
-  UserMessageSavedEvent,
-  WebSourcesUsedEvent,
 } from '../../types/chat'
 
 function messageFromApi(message: ChatMessageApi): ChatMessage {
@@ -61,6 +55,7 @@ function toolCallFromApi(toolCall: AgentToolCallApi): AgentToolCall {
   return {
     id: toolCall.id,
     messageId: toolCall.message_id,
+    callId: toolCall.call_id,
     toolName: toolCall.tool_name,
     status: toolCall.status,
     summary: toolCall.summary,
@@ -78,6 +73,7 @@ function citationFromApi(citation: MessageSourceCitationApi): MessageSourceCitat
     citationType: citation.citation_type,
     ordinal: citation.ordinal,
     quote: citation.quote,
+    snippet: citation.snippet,
     pageNumber: citation.page_number,
     url: citation.url,
     title: citation.title,
@@ -98,7 +94,7 @@ function sessionDetailFromApi(session: ChatSessionDetailApi): ChatSessionDetail 
 }
 
 // ---------------------------------------------------------------------------
-// Legacy CRUD
+// CRUD
 // ---------------------------------------------------------------------------
 
 export async function createChatSession(input: CreateChatSessionInput): Promise<ChatSession> {
@@ -119,34 +115,12 @@ export async function getChatSession(sessionId: number, workspaceId: number): Pr
   return sessionDetailFromApi(await apiFetch<ChatSessionDetailApi>(`/chat/sessions/${sessionId}?workspace_id=${workspaceId}`))
 }
 
-// ---------------------------------------------------------------------------
-// Legacy JSON send (kept for reference; prefer streamChatMessage)
-// ---------------------------------------------------------------------------
-
-export async function sendChatMessage(input: SendChatMessageInput): Promise<{ userMessage: ChatMessage; assistantMessage: ChatMessage }> {
-  const pair = await apiFetch<{ user_message: ChatMessageApi; assistant_message: ChatMessageApi }>(
-    `/chat/sessions/${input.sessionId}/messages?workspace_id=${input.workspaceId}`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ content: input.content }),
-    },
-  )
-  return {
-    userMessage: messageFromApi(pair.user_message),
-    assistantMessage: messageFromApi(pair.assistant_message),
-  }
-}
-
-// ---------------------------------------------------------------------------
-// SSE streaming
-// ---------------------------------------------------------------------------
-
 /**
  * Send a chat message via the SSE stream endpoint and dispatch parsed events
  * to the provided handlers. Returns a promise that resolves when the stream
  * ends (either `[DONE]` sentinel or the reader closes).
  */
-export async function streamChatMessage(input: StreamChatMessageInput, handlers: StreamHandlers): Promise<void> {
+export async function streamChatMessage(input: StreamChatMessageInput, handlers: StreamHandlers, signal?: AbortSignal): Promise<void> {
   const body: Record<string, unknown> = {
     workspace_id: input.workspaceId,
     message: input.message,
@@ -159,6 +133,7 @@ export async function streamChatMessage(input: StreamChatMessageInput, handlers:
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
     body: JSON.stringify(body),
+    signal,
   })
 
   if (!response.ok) {
@@ -176,6 +151,7 @@ export async function streamChatMessage(input: StreamChatMessageInput, handlers:
 
   const decoder = new TextDecoder()
   let buffer = ''
+  let completed = false
 
   try {
     while (true) {
@@ -194,19 +170,17 @@ export async function streamChatMessage(input: StreamChatMessageInput, handlers:
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue
           const payload = line.slice(6).trim()
-          if (payload === '[DONE]') return
+          if (payload === '[DONE]') {
+            completed = true
+            handlers.onDone?.()
+            return
+          }
 
           try {
             const event = JSON.parse(payload) as { type: string }
             switch (event.type) {
-              case 'session_created':
-                handlers.onSessionCreated?.(event as SessionCreatedEvent)
-                break
-              case 'user_message_saved':
-                handlers.onUserMessageSaved?.(event as UserMessageSavedEvent)
-                break
-              case 'assistant_started':
-                handlers.onAssistantStarted?.(event as AssistantStartedEvent)
+              case 'metadata':
+                handlers.onMetadata?.(event as MetadataEvent)
                 break
               case 'text_delta':
                 handlers.onTextDelta?.(event as TextDeltaEvent)
@@ -217,15 +191,6 @@ export async function streamChatMessage(input: StreamChatMessageInput, handlers:
               case 'tool_result':
                 handlers.onToolResult?.(event as ToolResultEvent)
                 break
-              case 'sources_used':
-                handlers.onSourcesUsed?.(event as SourcesUsedEvent)
-                break
-              case 'web_sources_used':
-                handlers.onWebSourcesUsed?.(event as WebSourcesUsedEvent)
-                break
-              case 'assistant_completed':
-                handlers.onAssistantCompleted?.(event as AssistantCompletedEvent)
-                break
               case 'error':
                 handlers.onError?.(event as StreamErrorEvent)
                 break
@@ -235,6 +200,9 @@ export async function streamChatMessage(input: StreamChatMessageInput, handlers:
           }
         }
       }
+    }
+    if (!completed) {
+      handlers.onError?.({ type: 'error', error: 'Stream closed before completion' })
     }
   } finally {
     reader.releaseLock()

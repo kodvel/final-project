@@ -17,6 +17,7 @@ from datetime import datetime
 from sqlmodel import Session, select
 
 from app.models.chat import ChatMessage, ChatSession
+from app.models.enums import MessageStatus
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +148,7 @@ def _deterministic_summary(messages: list[ChatMessage], max_chars: int) -> str:
     lines: list[str] = []
     for msg in messages:
         # Truncate individual message content to ~120 chars
-        content = msg.content.replace("\n", " ").strip()
+        content = _context_content(msg)
         if len(content) > 120:
             content = content[:117] + "..."
         lines.append(f"{msg.role}: {content}")
@@ -181,5 +182,12 @@ def _message_to_dict(msg: ChatMessage) -> dict:
     return {
         "id": msg.id,
         "role": msg.role,
-        "content": msg.content,
+        "content": _context_content(msg),
     }
+
+
+def _context_content(msg: ChatMessage) -> str:
+    content = msg.content.replace("\n", " ").strip()
+    if msg.status == MessageStatus.INTERRUPTED:
+        return f"[Interrupted assistant response] {content}" if content else "[Interrupted assistant response]"
+    return content

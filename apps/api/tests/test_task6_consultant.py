@@ -69,22 +69,21 @@ def test_stream_uses_consultant_fallback_without_api_key(client) -> None:
     events = parse_sse_events(response)
     types = [e["type"] for e in events]
 
-    assert "session_created" in types
-    assert "user_message_saved" in types
-    assert "assistant_started" in types
+    assert "metadata" in types
     assert "text_delta" in types
-    assert "assistant_completed" in types
     assert "[DONE]" in types
 
-    # Check fallback content mentions gaps/confidence naturally (no rigid format enforced)
-    completed_event = next(e for e in events if e["type"] == "assistant_completed")
-    content = completed_event["message"]["content"]
-    content_lower = content.lower()
+    # Check fallback content via DB (session detail)
+    metadata_event = next(e for e in events if e["type"] == "metadata")
+    session_id = metadata_event["session_id"]
+    detail = client.get(f"/chat/sessions/{session_id}?workspace_id={workspace['id']}").json()
+    assistant_msg = next(m for m in detail["messages"] if m["role"] == "assistant")
+    content_lower = assistant_msg["content"].lower()
     assert "gap" in content_lower or "confidence" in content_lower or "unavailable" in content_lower
 
 
 def test_stream_preserves_all_task5_event_types(client) -> None:
-    """All Task 5 event types still work after Task 6 integration."""
+    """All core SSE event types still work after Task 6 integration."""
     workspace = create_workspace(client)
 
     response = client.post(
@@ -95,12 +94,9 @@ def test_stream_preserves_all_task5_event_types(client) -> None:
     events = parse_sse_events(response)
     types = [e["type"] for e in events]
 
-    # All original Task 5 event types must be present
-    assert "session_created" in types
-    assert "user_message_saved" in types
-    assert "assistant_started" in types
+    # Core event types that must be present
+    assert "metadata" in types
     assert "text_delta" in types
-    assert "assistant_completed" in types
     assert "[DONE]" in types
 
 
@@ -110,8 +106,8 @@ def test_stream_continuation_with_session_id(client) -> None:
 
     r1 = client.post("/chat/messages/stream", json={"workspace_id": workspace["id"], "message": "First"})
     events1 = parse_sse_events(r1)
-    session_event = next(e for e in events1 if e["type"] == "session_created")
-    session_id = session_event["session"]["id"]
+    metadata1 = next(e for e in events1 if e["type"] == "metadata")
+    session_id = metadata1["session_id"]
 
     r2 = client.post(
         "/chat/messages/stream",
@@ -120,8 +116,11 @@ def test_stream_continuation_with_session_id(client) -> None:
 
     events2 = parse_sse_events(r2)
     types2 = [e["type"] for e in events2]
-    assert "session_created" not in types2
-    assert "assistant_completed" in types2
+
+    # metadata should show created_session=False for existing session
+    metadata2 = next(e for e in events2 if e["type"] == "metadata")
+    assert metadata2["created_session"] is False
+    assert "[DONE]" in types2
 
 
 # ---------------------------------------------------------------------------
@@ -327,6 +326,37 @@ def test_classifier_defaults_to_retrieval_on_failure(monkeypatch) -> None:
     assert classify_needs_retrieval(context, "What about marketing?") is True
 
     # Cleanup
+    get_settings.cache_clear()
+
+
+def test_classifier_defaults_to_retrieval_on_auth_error(monkeypatch) -> None:
+    """When classifier gets 401/403 APIStatusError, defaults to True with concise warning."""
+    from unittest.mock import MagicMock
+
+    from openai import APIStatusError
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.parse.side_effect = APIStatusError(
+        message="Invalid API key",
+        response=MagicMock(status_code=401),
+        body=None,
+    )
+
+    monkeypatch.setattr("openai.OpenAI", lambda **kw: mock_client)
+    monkeypatch.setenv("RAG_OPENAI_API_KEY", "sk-or-v1-test-key")
+    monkeypatch.setenv("RAG_OPENAI_API_BASE_URL", "https://api.openai.com/v1")
+
+    from app.core.config import get_settings
+    get_settings.cache_clear()
+
+    context = ContextWindow(
+        conversation_summary=None,
+        recent_messages=[],
+        current_user_message="What is our revenue?",
+    )
+    # Should not raise, just return True
+    assert classify_needs_retrieval(context, "What is our revenue?") is True
+
     get_settings.cache_clear()
 
 
@@ -622,8 +652,8 @@ def test_session_detail_includes_tool_calls_and_citations(client) -> None:
         json={"workspace_id": workspace["id"], "message": "Test message"},
     )
     events = parse_sse_events(r)
-    session_event = next(e for e in events if e["type"] == "session_created")
-    session_id = session_event["session"]["id"]
+    metadata_event = next(e for e in events if e["type"] == "metadata")
+    session_id = metadata_event["session_id"]
 
     # Get session detail
     detail = client.get(f"/chat/sessions/{session_id}?workspace_id={workspace['id']}").json()
@@ -730,8 +760,8 @@ def test_consultant_uses_conversation_summary_for_long_sessions(client) -> None:
         )
         events = parse_sse_events(r)
         if session_id is None:
-            created = next(e for e in events if e["type"] == "session_created")
-            session_id = created["session"]["id"]
+            metadata = next(e for e in events if e["type"] == "metadata")
+            session_id = metadata["session_id"]
 
     # Verify session has summary
     detail = client.get(f"/chat/sessions/{session_id}?workspace_id={workspace['id']}").json()
@@ -752,10 +782,20 @@ def test_consultant_uses_conversation_summary_for_long_sessions(client) -> None:
 def test_tavily_returns_error_without_api_key(monkeypatch) -> None:
     """Tavily search returns error dict when API key is not configured."""
     from app.agents.tools import tavily_web_search
+    from app.core.config import Settings, get_settings
+
+    # Patch get_settings to return a Settings with tavily_api_key=None
+    monkeypatch.setattr(
+        "app.core.config.get_settings",
+        lambda: Settings(tavily_api_key=None),
+    )
+    get_settings.cache_clear()
 
     result = tavily_web_search("test query")
     assert result["results"] == []
     assert result.get("error") is not None
+
+    get_settings.cache_clear()
 
 
 # ---------------------------------------------------------------------------
@@ -839,8 +879,8 @@ def test_session_detail_returns_citations_and_tool_calls_lists(client) -> None:
         json={"workspace_id": workspace["id"], "message": "Hello test"},
     )
     events = parse_sse_events(r)
-    session_event = next(e for e in events if e["type"] == "session_created")
-    session_id = session_event["session"]["id"]
+    metadata_event = next(e for e in events if e["type"] == "metadata")
+    session_id = metadata_event["session_id"]
 
     detail = client.get(f"/chat/sessions/{session_id}?workspace_id={workspace['id']}").json()
 
@@ -863,8 +903,8 @@ def test_session_detail_citations_persisted_after_stream(client) -> None:
         json={"workspace_id": workspace["id"], "message": "Revenue check"},
     )
     events = parse_sse_events(r)
-    session_event = next(e for e in events if e["type"] == "session_created")
-    session_id = session_event["session"]["id"]
+    metadata_event = next(e for e in events if e["type"] == "metadata")
+    session_id = metadata_event["session_id"]
 
     # Manually add a citation to the assistant message via DB
     db_gen = app.dependency_overrides[get_session]()
@@ -958,3 +998,125 @@ def test_tool_call_events_only_contain_safe_fields(client) -> None:
     assert "output" not in result_event.data
     assert "content" not in result_event.data
     assert "ok" in result_event.data
+
+
+# ---------------------------------------------------------------------------
+# Retrieve tool strict-schema safety (no dict / additionalProperties)
+# ---------------------------------------------------------------------------
+
+
+def test_retrieve_tool_params_are_strict_safe() -> None:
+    """_make_retrieve_tool returns a function with only scalar/string params — no dict."""
+    import inspect
+
+    from app.agents.consultant import _make_retrieve_tool
+    from unittest.mock import MagicMock
+
+    mock_db = MagicMock()
+    fn = _make_retrieve_tool(mock_db, workspace_id=1)
+
+    sig = inspect.signature(fn)
+    # Ensure no parameter has type annotation `dict` or `dict | None`
+    for name, param in sig.parameters.items():
+        ann = param.annotation
+        # annotation may be a string or a real type; stringify for robust check
+        ann_str = str(ann)
+        assert "dict" not in ann_str.lower(), (
+            f"Parameter '{name}' has dict-like annotation '{ann_str}' which is not strict-safe"
+        )
+
+
+def test_retrieve_tool_function_tool_creation_succeeds() -> None:
+    """function_tool(retrieve_fn) does not raise additionalProperties error."""
+    from unittest.mock import MagicMock
+
+    from app.agents.consultant import _make_retrieve_tool
+
+    mock_db = MagicMock()
+    fn = _make_retrieve_tool(mock_db, workspace_id=1)
+
+    from agents import function_tool
+
+    # This would previously raise:
+    #   UserError: additionalProperties should not be set for object types
+    tool = function_tool(fn, name_override="retrieve_company_knowledge")
+    assert tool is not None
+
+
+def test_retrieve_tool_schema_no_additional_properties() -> None:
+    """Generated JSON schema must have additionalProperties=false (strict-safe), not an open object."""
+    import json
+
+    from unittest.mock import MagicMock
+
+    from agents import function_tool
+    from app.agents.consultant import _make_retrieve_tool
+
+    mock_db = MagicMock()
+    fn = _make_retrieve_tool(mock_db, workspace_id=1)
+    tool = function_tool(fn, name_override="retrieve_company_knowledge")
+
+    schema = tool.params_json_schema
+    # strict-safe: additionalProperties must be false, not true or an open schema
+    assert schema.get("additionalProperties") is False, (
+        f"Schema additionalProperties must be false, got: {schema.get('additionalProperties')}"
+    )
+    # All param types must be scalar/string, no free objects
+    for prop_name, prop_schema in schema.get("properties", {}).items():
+        prop_type = prop_schema.get("type")
+        if prop_type is None:
+            # anyOf union (e.g. str | null) — check none of the variants is object
+            for variant in prop_schema.get("anyOf", []):
+                assert variant.get("type") != "object", (
+                    f"Property '{prop_name}' has object type variant which is not strict-safe"
+                )
+        else:
+            assert prop_type != "object", (
+                f"Property '{prop_name}' is type 'object' which is not strict-safe"
+            )
+
+
+# ---------------------------------------------------------------------------
+# _build_source_scope helper
+# ---------------------------------------------------------------------------
+
+
+def test_build_source_scope_returns_none_when_empty() -> None:
+    """No scope params → None."""
+    from app.agents.consultant import _build_source_scope
+
+    assert _build_source_scope() is None
+
+
+def test_build_source_scope_parses_json_params() -> None:
+    """Parses category_labels_json and source_ids_json into lists."""
+    from app.agents.consultant import _build_source_scope
+
+    scope = _build_source_scope(
+        team_label="marketing",
+        category_labels_json='["analytics_metrics", "revenue_sales"]',
+        period_start_month="2026-01",
+        period_end_month="2026-06",
+        source_ids_json="[1, 2, 5]",
+    )
+    assert scope is not None
+    assert scope.team_label == "marketing"
+    assert scope.category_labels == ["analytics_metrics", "revenue_sales"]
+    assert scope.period_start_month == "2026-01"
+    assert scope.period_end_month == "2026-06"
+    assert scope.source_ids == [1, 2, 5]
+
+
+def test_build_source_scope_handles_invalid_json_gracefully() -> None:
+    """Invalid JSON strings → None for those fields, still builds scope if other fields present."""
+    from app.agents.consultant import _build_source_scope
+
+    scope = _build_source_scope(
+        team_label="product",
+        category_labels_json="not-valid-json",
+        source_ids_json="also-bad",
+    )
+    assert scope is not None
+    assert scope.team_label == "product"
+    assert scope.category_labels is None
+    assert scope.source_ids is None

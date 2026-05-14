@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime
-from typing import Generator
+from typing import AsyncGenerator, Awaitable, Callable
 
 from sqlalchemy import asc, desc
 from sqlmodel import Session, select
 
 from app.agents.consultant import (
     ConsultantResult,
+    ToolCallRecord,
     classify_needs_retrieval,
     parse_source_scope,
     persist_citations,
@@ -26,7 +28,7 @@ from app.knowledge.retrieval import (
 from app.models.chat import AgentToolCall, ChatMessage, ChatSession, MessageSourceCitation
 from app.models.enums import ChatMessageRole, ChatMessageType, MessageStatus
 from app.models.workspace import Workspace
-from app.services.context_builder import ContextWindow, build_context
+from app.services.context_builder import build_context
 
 logger = logging.getLogger(__name__)
 
@@ -122,59 +124,6 @@ def list_tool_calls_for_session(session: Session, session_id: int) -> list[Agent
 
 
 # ---------------------------------------------------------------------------
-# Legacy non-streaming send (kept for backward compat)
-# ---------------------------------------------------------------------------
-
-def send_message(session: Session, session_id: int, workspace_id: int, content: str) -> tuple[ChatMessage, ChatMessage]:
-    """Persist a user message and a dummy assistant response for Task 5."""
-    chat_session = get_session_for_workspace(session, session_id, workspace_id)
-    if chat_session is None:
-        raise ValueError(f"Chat Session {session_id} not found for Workspace {workspace_id}")
-
-    clean_content = content.strip()
-    if not clean_content:
-        raise ValueError("Message content is required")
-
-    now = datetime.utcnow()
-    user_message = ChatMessage(
-        session_id=session_id,
-        role=ChatMessageRole.USER,
-        content=clean_content,
-        message_type=ChatMessageType.NORMAL,
-        status=MessageStatus.COMPLETED,
-        completed_at=now,
-        updated_at=now,
-    )
-    session.add(user_message)
-    session.flush()
-
-    if chat_session.title == DEFAULT_SESSION_TITLE:
-        chat_session.title = _title_from_message(clean_content)
-
-    # Build context window (triggers summary refresh for long sessions)
-    build_context_for_session(session, chat_session, clean_content)
-
-    assistant_message = ChatMessage(
-        session_id=session_id,
-        role=ChatMessageRole.ASSISTANT,
-        content=_dummy_assistant_response(clean_content),
-        message_type=ChatMessageType.NORMAL,
-        status=MessageStatus.COMPLETED,
-        completed_at=now,
-        updated_at=now,
-    )
-    session.add(assistant_message)
-    chat_session.updated_at = now
-    chat_session.last_message_at = now
-    session.add(chat_session)
-
-    session.commit()
-    session.refresh(user_message)
-    session.refresh(assistant_message)
-    return user_message, assistant_message
-
-
-# ---------------------------------------------------------------------------
 # SSE streaming orchestration
 # ---------------------------------------------------------------------------
 
@@ -188,10 +137,16 @@ def _sse_event(data: dict | str) -> str:
     return f"data: {payload}\n\n"
 
 
-def stream_chat(db: Session, workspace_id: int, session_id: int | None, message: str) -> Generator[str, None, None]:
+async def stream_chat(
+    db: Session,
+    workspace_id: int,
+    session_id: int | None,
+    message: str,
+    is_disconnected: Callable[[], Awaitable[bool]] | None = None,
+) -> AsyncGenerator[str, None]:
     """Yield SSE-formatted events for a chat interaction.
 
-    This generator handles:
+    This async generator handles:
     - workspace validation
     - lazy session creation
     - user message persistence (completed)
@@ -206,12 +161,14 @@ def stream_chat(db: Session, workspace_id: int, session_id: int | None, message:
     clean_message = message.strip()
     if not clean_message:
         yield _sse_event({"type": "error", "error": "Message content is required"})
+        yield _sse_event("[DONE]")
         return
 
     # Validate workspace
     workspace = db.get(Workspace, workspace_id)
     if workspace is None:
         yield _sse_event({"type": "error", "error": f"Workspace {workspace_id} not found"})
+        yield _sse_event("[DONE]")
         return
 
     now = datetime.utcnow()
@@ -227,15 +184,14 @@ def stream_chat(db: Session, workspace_id: int, session_id: int | None, message:
         db.commit()
         db.refresh(chat_session)
         session_id = chat_session.id
-        yield _sse_event({
-            "type": "session_created",
-            "session": _session_dict(db, session_id),  # type: ignore[arg-type]
-        })
+        created_session = True
     else:
         chat_session = get_session_for_workspace(db, session_id, workspace_id)
         if chat_session is None:
             yield _sse_event({"type": "error", "error": f"Chat Session {session_id} not found for Workspace {workspace_id}"})
+            yield _sse_event("[DONE]")
             return
+        created_session = False
 
     # Save user message as completed
     user_msg = ChatMessage(
@@ -258,45 +214,76 @@ def stream_chat(db: Session, workspace_id: int, session_id: int | None, message:
     db.commit()
     db.refresh(user_msg)
 
+    try:
+        # Build context window (triggers summary refresh for long sessions)
+        context = build_context_for_session(db, chat_session, clean_message)
+        logger.debug(
+            "Context built for session %s: total=%d, recent=%d, summary=%s",
+            session_id,
+            context.total_message_count,
+            len(context.recent_messages),
+            "yes" if context.conversation_summary else "no",
+        )
+
+        # Create assistant message as streaming
+        assistant_msg = ChatMessage(
+            session_id=session_id,
+            role=ChatMessageRole.ASSISTANT,
+            content="",
+            message_type=ChatMessageType.NORMAL,
+            status=MessageStatus.STREAMING,
+            updated_at=datetime.utcnow(),
+        )
+        db.add(assistant_msg)
+        db.commit()
+        db.refresh(assistant_msg)
+    except Exception:
+        logger.exception("Failed to initialise chat stream")
+        failed_msg = ChatMessage(
+            session_id=session_id,
+            role=ChatMessageRole.ASSISTANT,
+            content="",
+            message_type=ChatMessageType.NORMAL,
+            status=MessageStatus.FAILED,
+            error_message="Stream failed",
+            updated_at=datetime.utcnow(),
+        )
+        db.add(failed_msg)
+        db.commit()
+        yield _sse_event({"type": "error", "error": "Stream failed"})
+        yield _sse_event("[DONE]")
+        return
+
     yield _sse_event({
-        "type": "user_message_saved",
-        "message": _message_dict(user_msg),
+        "type": "metadata",
+        "session_id": session_id,
+        "assistant_message_id": assistant_msg.id,
+        "created_session": created_session,
     })
 
-    # Build context window (triggers summary refresh for long sessions)
-    context = build_context_for_session(db, chat_session, clean_message)
-    logger.debug(
-        "Context built for session %s: total=%d, recent=%d, summary=%s",
-        session_id,
-        context.total_message_count,
-        len(context.recent_messages),
-        "yes" if context.conversation_summary else "no",
-    )
-
-    # Create assistant message as streaming
-    assistant_msg = ChatMessage(
-        session_id=session_id,
-        role=ChatMessageRole.ASSISTANT,
-        content="",
-        message_type=ChatMessageType.NORMAL,
-        status=MessageStatus.STREAMING,
-        updated_at=datetime.utcnow(),
-    )
-    db.add(assistant_msg)
-    db.commit()
-    db.refresh(assistant_msg)
-
-    yield _sse_event({
-        "type": "assistant_started",
-        "message": _message_dict(assistant_msg),
-    })
+    if is_disconnected is not None and await is_disconnected():
+        _mark_assistant_interrupted(db, assistant_msg, [], "Stream interrupted")
+        return
 
     # --- Task 6: Pre-retrieval classification and evidence ---
     evidence_bundle: EvidenceBundle | None = None
     web_results: list[dict] = []
+    pre_tool_calls: list[ToolCallRecord] = []
     needs_retrieval = classify_needs_retrieval(context, clean_message)
 
     if needs_retrieval:
+        retrieval_call_id = f"pre-retrieval-{assistant_msg.id}"
+        retrieval_record = ToolCallRecord(
+            tool_name="retrieve_company_knowledge",
+            status="running",
+            summary="Started company Source retrieval",
+            call_id=retrieval_call_id,
+        )
+        pre_tool_calls.append(retrieval_record)
+        yield _sse_event({"type": "tool_call", "tool_name": "retrieve_company_knowledge", "call_id": retrieval_call_id})
+        if is_disconnected is not None and await is_disconnected():
+            _mark_assistant_interrupted(db, assistant_msg, [], "Stream interrupted", pre_tool_calls)
+            return
         try:
             # Parse natural-language source scope from user message
             source_scope = parse_source_scope(clean_message)
@@ -309,59 +296,86 @@ def stream_chat(db: Session, workspace_id: int, session_id: int | None, message:
         except Exception:
             logger.warning("Pre-retrieval failed", exc_info=True)
             evidence_bundle = EvidenceBundle(insufficient_evidence=True, reason="Retrieval error")
+            retrieval_record.status = "failed"
+            retrieval_record.summary = "Pre-retrieval failed"
+            yield _sse_event({"type": "tool_result", "call_id": retrieval_call_id, "ok": False})
+        else:
+            retrieval_record.status = "success"
+            retrieval_record.summary = "Retrieved company Source evidence" if evidence_bundle and evidence_bundle.items else "No matching Source evidence found"
+            yield _sse_event({"type": "tool_result", "call_id": retrieval_call_id, "ok": True})
 
-        # Stream sources_used if evidence found
-        if evidence_bundle and evidence_bundle.items:
-            citations_data = []
-            for item in evidence_bundle.items:
-                citations_data.append({
-                    "source_title": item.source_title,
-                    "file_type": item.file_type,
-                    "quote": item.quote[:200] if item.quote else None,
-                    "page_number": item.page_number,
-                    "relevance_score": item.relevance_score,
-                })
-            yield _sse_event({
-                "type": "sources_used",
-                "citations": citations_data,
-            })
+        if is_disconnected is not None and await is_disconnected():
+            _mark_assistant_interrupted(db, assistant_msg, [], "Stream interrupted", pre_tool_calls)
+            return
 
-            # Check if Tavily fallback is needed (weak evidence + web-capable question)
-            if evidence_bundle.insufficient_evidence and _is_web_capable(clean_message):
-                web_results = _try_tavily_search(clean_message)
-                if web_results:
-                    yield _sse_event({
-                        "type": "web_sources_used",
-                        "citations": web_results,
-                    })
+        # Check if Tavily fallback is needed (weak evidence + web-capable question)
+        if evidence_bundle and evidence_bundle.insufficient_evidence and _is_web_capable(clean_message):
+            tavily_call_id = f"pre-tavily-{assistant_msg.id}"
+            tavily_record = ToolCallRecord(
+                tool_name="tavily_web_search",
+                status="running",
+                summary="Started web fallback search",
+                call_id=tavily_call_id,
+            )
+            pre_tool_calls.append(tavily_record)
+            yield _sse_event({"type": "tool_call", "tool_name": "tavily_web_search", "call_id": tavily_call_id})
+            if is_disconnected is not None and await is_disconnected():
+                _mark_assistant_interrupted(db, assistant_msg, [], "Stream interrupted", pre_tool_calls)
+                return
+            web_results = _try_tavily_search(clean_message)
+            tavily_record.status = "success" if web_results else "failed"
+            tavily_record.summary = "Retrieved web fallback evidence" if web_results else "No web fallback evidence found"
+            yield _sse_event({"type": "tool_result", "call_id": tavily_call_id, "ok": bool(web_results)})
+
+            if is_disconnected is not None and await is_disconnected():
+                _mark_assistant_interrupted(db, assistant_msg, [], "Stream interrupted", pre_tool_calls)
+                return
 
     # --- Run consultant agent ---
     collected_content: list[str] = []
     final_result: ConsultantResult | None = None
 
     try:
-        for event, result in run_consultant_stream(
+        async for event, result in run_consultant_stream(
             db=db,
             workspace_id=workspace_id,
             context=context,
             evidence_bundle=evidence_bundle,
         ):
+            if is_disconnected is not None and await is_disconnected():
+                tool_calls = pre_tool_calls + result.tool_calls
+                _mark_assistant_interrupted(db, assistant_msg, collected_content, "Stream interrupted", tool_calls)
+                return
             final_result = result
+            if event.type == "text_delta":
+                collected_content.append(str(event.data.get("delta", "")))
             yield _sse_event({"type": event.type, **event.data})
 
         if final_result:
-            collected_content.append(final_result.content)
-    except Exception:
-        logger.exception("Error during consultant streaming, marking assistant message as interrupted")
+            collected_content = [final_result.content]
+    except (asyncio.CancelledError, GeneratorExit):
+        tool_calls = pre_tool_calls + (final_result.tool_calls if final_result else [])
+        _mark_assistant_interrupted(db, assistant_msg, collected_content, "Stream interrupted", tool_calls)
+        raise
+    except Exception as exc:
+        if exc.__class__.__name__ == "ClientDisconnect":
+            tool_calls = pre_tool_calls + (final_result.tool_calls if final_result else [])
+            _mark_assistant_interrupted(db, assistant_msg, collected_content, "Stream interrupted", tool_calls)
+            raise
+        logger.exception("Error during consultant streaming, marking assistant message as failed")
         partial = "".join(collected_content)
-        interrupted_at = datetime.utcnow()
+        failed_at = datetime.utcnow()
         assistant_msg.content = partial
-        assistant_msg.status = MessageStatus.INTERRUPTED
-        assistant_msg.error_message = "Stream interrupted"
-        assistant_msg.updated_at = interrupted_at
+        assistant_msg.status = MessageStatus.FAILED
+        assistant_msg.error_message = "Stream failed"
+        assistant_msg.updated_at = failed_at
         db.add(assistant_msg)
+        tool_calls = pre_tool_calls + (final_result.tool_calls if final_result else [])
+        if tool_calls and assistant_msg.id is not None:
+            persist_tool_calls(db, assistant_msg.id, tool_calls)
         db.commit()
-        yield _sse_event({"type": "error", "error": "Stream interrupted"})
+        yield _sse_event({"type": "error", "error": "Stream failed"})
+        yield _sse_event("[DONE]")
         return
 
     # Finalise assistant message
@@ -381,8 +395,9 @@ def stream_chat(db: Session, workspace_id: int, session_id: int | None, message:
     db.add(assistant_msg)
 
     # Persist tool calls
-    if final_result and final_result.tool_calls:
-        persist_tool_calls(db, assistant_msg.id, final_result.tool_calls)
+    tool_calls = pre_tool_calls + (final_result.tool_calls if final_result else [])
+    if tool_calls:
+        persist_tool_calls(db, assistant_msg.id, tool_calls)
 
     # Persist citations
     if final_result and final_result.citations:
@@ -401,12 +416,7 @@ def stream_chat(db: Session, workspace_id: int, session_id: int | None, message:
     db.commit()
     db.refresh(assistant_msg)
 
-    yield _sse_event({
-        "type": "assistant_completed",
-        "message": _message_dict(assistant_msg),
-    })
-
-    yield "data: [DONE]\n\n"
+    yield _sse_event("[DONE]")
 
 
 # ---------------------------------------------------------------------------
@@ -463,35 +473,22 @@ def _try_tavily_search(query: str) -> list[dict]:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _session_dict(db: Session, session_id: int) -> dict:
-    chat_session = db.get(ChatSession, session_id)
-    return {
-        "id": chat_session.id,
-        "workspace_id": chat_session.workspace_id,
-        "title": chat_session.title,
-        "created_at": chat_session.created_at.isoformat(),
-        "updated_at": chat_session.updated_at.isoformat(),
-        "last_message_at": chat_session.last_message_at.isoformat() if chat_session.last_message_at else None,
-        "conversation_summary": chat_session.conversation_summary,
-        "summary_cutoff_message_id": chat_session.summary_cutoff_message_id,
-        "summary_updated_at": chat_session.summary_updated_at.isoformat() if chat_session.summary_updated_at else None,
-    }
-
-
-def _message_dict(msg: ChatMessage) -> dict:
-    return {
-        "id": msg.id,
-        "session_id": msg.session_id,
-        "role": msg.role,
-        "content": msg.content,
-        "message_type": msg.message_type,
-        "status": msg.status,
-        "error_message": msg.error_message,
-        "trace_id": msg.trace_id,
-        "created_at": msg.created_at.isoformat(),
-        "updated_at": msg.updated_at.isoformat(),
-        "completed_at": msg.completed_at.isoformat() if msg.completed_at else None,
-    }
+def _mark_assistant_interrupted(
+    db: Session,
+    assistant_msg: ChatMessage,
+    collected_content: list[str],
+    error_message: str,
+    tool_calls: list[ToolCallRecord] | None = None,
+) -> None:
+    interrupted_at = datetime.utcnow()
+    assistant_msg.content = "".join(collected_content)
+    assistant_msg.status = MessageStatus.INTERRUPTED
+    assistant_msg.error_message = error_message
+    assistant_msg.updated_at = interrupted_at
+    db.add(assistant_msg)
+    if tool_calls and assistant_msg.id is not None:
+        persist_tool_calls(db, assistant_msg.id, tool_calls)
+    db.commit()
 
 
 def _clean_title(title: str | None) -> str | None:
@@ -504,13 +501,3 @@ def _clean_title(title: str | None) -> str | None:
 def _title_from_message(content: str) -> str:
     title = " ".join(content.split())
     return title[:77] + "..." if len(title) > 80 else title
-
-
-def _dummy_assistant_response(content: str) -> str:
-    return (
-        "Direct Answer: I saved your message to this Workspace-scoped Chat Session. "
-        "Task 5 uses a placeholder assistant response until the source-grounded AI Consultant is implemented.\n\n"
-        f"Your question: {content}\n\n"
-        "Next Step: Upload or process Sources, then Task 6 can replace this dummy response with grounded evidence, citations, "
-        "interpretation, recommendation, confidence, and gaps."
-    )

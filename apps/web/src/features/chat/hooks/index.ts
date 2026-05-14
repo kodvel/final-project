@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { StreamChatMessageInput, StreamHandlers } from '../../../types/chat'
 import { getChatSession, listChatSessions, streamChatMessage } from '../api'
 
@@ -27,7 +27,7 @@ export function useChatSession(sessionId: number | null, workspaceId: number | n
 export function useStreamChat() {
   const queryClient = useQueryClient()
   const abortRef = useRef<AbortController | null>(null)
-  const streamingRef = useRef(false)
+  const [isStreaming, setIsStreaming] = useState(false)
 
   const sendMessage = useCallback(
     async (input: StreamChatMessageInput, handlers: StreamHandlers) => {
@@ -35,31 +35,52 @@ export function useStreamChat() {
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
-      streamingRef.current = true
+      setIsStreaming(true)
+
+      // Track the actual session ID — may differ from input.sessionId when
+      // the backend lazily creates a new session mid-stream.
+      let resolvedSessionId: number | null = input.sessionId ?? null
 
       const wrappedHandlers: StreamHandlers = {
         ...handlers,
-        onAssistantCompleted: (event) => {
-          handlers.onAssistantCompleted?.(event)
-          // Refetch session detail + session list after streaming completes
-          const sid = input.sessionId
+        onMetadata: (event) => {
+          resolvedSessionId = event.session_id
+          handlers.onMetadata?.(event)
+        },
+        onDone: () => {
+          handlers.onDone?.()
+          // Refetch session detail + session list after streaming completes.
+          // Use the resolved session ID (covers lazy-created sessions).
+          const sid = resolvedSessionId
           if (sid != null) {
             queryClient.invalidateQueries({ queryKey: ['chat-session', sid, input.workspaceId] })
           }
           queryClient.invalidateQueries({ queryKey: ['chat-sessions', input.workspaceId] })
-          streamingRef.current = false
+          setIsStreaming(false)
         },
         onError: (event) => {
           handlers.onError?.(event)
-          streamingRef.current = false
+          const sid = resolvedSessionId
+          if (sid != null) {
+            queryClient.invalidateQueries({ queryKey: ['chat-session', sid, input.workspaceId] })
+          }
+          queryClient.invalidateQueries({ queryKey: ['chat-sessions', input.workspaceId] })
+          setIsStreaming(false)
         },
       }
 
       try {
-        await streamChatMessage(input, wrappedHandlers)
+        await streamChatMessage(input, wrappedHandlers, controller.signal)
       } catch (err: unknown) {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        streamingRef.current = false
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          const sid = resolvedSessionId
+          if (sid != null) {
+            queryClient.invalidateQueries({ queryKey: ['chat-session', sid, input.workspaceId] })
+          }
+          queryClient.invalidateQueries({ queryKey: ['chat-sessions', input.workspaceId] })
+          return
+        }
+        setIsStreaming(false)
         wrappedHandlers.onError?.({ type: 'error', error: err instanceof Error ? err.message : 'Stream failed' })
       }
     },
@@ -68,10 +89,10 @@ export function useStreamChat() {
 
   const abort = useCallback(() => {
     abortRef.current?.abort()
-    streamingRef.current = false
+    setIsStreaming(false)
   }, [])
 
-  return { sendMessage, abort, isStreaming: streamingRef }
+  return { sendMessage, abort, isStreaming }
 }
 
 /** Re-export the message helper for building optimistic messages in the page. */

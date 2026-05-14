@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     rag_max_file_size_mb: int = 30
     rag_enable_background_processing: bool = False
 
+    # RAG embedding configuration
+    rag_embedding_api_base_url: str = "https://api.openai.com/v1"
+    rag_embedding_api_key: str | None = None
+    rag_embedding_model: str = "text-embedding-3-small"
+
     # Chat / AI Consultant configuration
     chat_openai_api_base_url: str = "https://api.openai.com/v1"
     chat_openai_api_key: str | None = None

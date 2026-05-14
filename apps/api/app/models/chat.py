@@ -43,6 +43,7 @@ class AgentToolCall(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     message_id: int = Field(index=True, foreign_key="chat_message.id")
+    call_id: str | None = Field(default=None, index=True)
     tool_name: str
     status: str
     summary: str

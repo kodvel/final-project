@@ -231,9 +231,9 @@ The internal layout of this white card changes per page. Some pages split it int
 
 ## White Card — Internal Layouts Per Page
 
-### Chat Page — internal 2-column split
+### Chat Page — internal layout
 
-The white card is split internally into two columns. There is a vertical divider line inside the card separating them.
+The white card starts as one chat column. When the active Chat Session has citations, it splits into chat area plus a right Sources Used panel with a vertical divider.
 
 ```
 +--------------------------------------------------------------+
@@ -245,7 +245,7 @@ The white card is split internally into two columns. There is a vertical divider
 |  |                              | | |  [source card 1]    | |
 |  |  [user bubble - right]       | | |  [source card 2]    | |
 |  |                              | | |                     | |
-|  |  [AI response card]          | | |  Trace Reference >  | |
+|  |  [assistant text stream]     | | |  Trace Reference >  | |
 |  |                              | | |  Drafted Briefs  >  | |
 |  |  [input bar - pinned bottom] | | |                     | |
 |  +-------------------------------+---+---------------------+ |
@@ -283,7 +283,7 @@ The white card uses its full internal width. No column split.
 
 ## Page 1: Chat
 
-**White card internal layout**: chat area (left, flex-1) + sources panel (right, ~300px), divided by a `1px` internal border.
+**White card internal layout**: chat area first. When citations exist, show chat area (left, flex-1) + Sources Used panel (right, ~300px), divided by a `1px` internal border.
 
 ### Chat Area
 
@@ -296,30 +296,24 @@ The white card uses its full internal width. No column split.
 - Max-width: 65%, padding `16px 20px`
 - Border-radius: `16px 16px 4px 16px`
 
-**Assistant message card:**
+**Assistant message:**
 
 ```
-+----------------------------------------------------------+
-|  [AI icon]  Analysis & Proposed Enterprise Strategy      |
-|                                                          |
-|  [Main answer paragraph]                                 |
-|                                                          |
-|  +------------------------------------------------------+|
-|  |  CITED EVIDENCE                                      ||
-|  |  [Q2-Revenue.csv]  [Enterprise_Feedback.pdf]        ||
-|  +------------------------------------------------------+|
-|                                                          |
-|  INTERPRETATION                                          |
-|  [paragraph]                                             |
-|                                                          |
-|  +------------------------------------------------------+|
-|  |  [bulb] RECOMMENDED ACTION           (indigo tint)  ||
-|  |  [paragraph]                                        ||
-|  +------------------------------------------------------+|
-|                                                          |
-|  [View Sources]  [View Trace]  [Generate Decision Brief] |
-+----------------------------------------------------------+
+[AI icon] Intelligence Copilot
+
+[Thinking…]
+[Searching company Sources… running] [Searching company Sources… done]
+
+[assistant answer streams as natural text]
+
+[Q2-Revenue.csv] [Enterprise_Feedback.pdf]
 ```
+
+- No assistant bubble or heavy bordered response card.
+- Assistant text is left-aligned in the main chat column, with generous spacing and readable line height.
+- Process pills are muted and status-only. They never show raw model reasoning.
+- Default process text is `Thinking…`. Retrieval changes it to `Searching company Sources…`; web fallback changes it to `Searching web…`.
+- Source chips under a message are compact shortcuts. Full citation detail lives in Sources Used after the stream finishes and the session refetches.
 
 **Input bar (pinned to bottom of chat area):**
 
@@ -331,28 +325,33 @@ The white card uses its full internal width. No column split.
   Copilot can make mistakes. Consider verifying.
 ```
 
-### Sources Panel (right, inside white card)
+### Sources Used Panel (right, inside white card)
+
+The panel is hidden until the active Chat Session has at least one persisted citation. When hidden, session switching remains available from the Chat header.
 
 ```
 +---------------------+
 |  Sources Used       |
 |                     |
+|  Uploaded Sources   |
 |  +---------------+ ||
 |  | [pdf] Q3_Fin. | ||
-|  |  Finance  [1] | ||
-|  |  "quote..."   | ||
+|  |  3 citations  | ||
+|  |  expand >     | ||
 |  +---------------+ ||
 |                     |
+|  Web Sources        |
 |  +---------------+ ||
-|  | [csv] CRM_Pi. | ||
-|  |  Sales   [2]  | ||
-|  |  "quote..."   | ||
+|  | [web] Market  | ||
+|  |  1 citation   | ||
 |  +---------------+ ||
 |                     |
 |  Trace Reference > ||
 |  Drafted Briefs  > ||
 +---------------------+
 ```
+
+Sources are grouped per uploaded Source or web URL/domain. Each group expands to show citation quotes, ordinals, page numbers, and warning states for deleted/failed Sources.
 
 ---
 

@@ -1,4 +1,15 @@
-"""Task 5 tests: Chat session, streaming, lifecycle, and message status."""
+"""Task 5 tests: Chat session, streaming, lifecycle, and message status.
+
+SSE event contract (current):
+- metadata: {session_id, assistant_message_id, created_session}
+- text_delta: {delta}
+- tool_call / tool_result
+- error
+- [DONE]: stream terminator
+
+Removed events: session_created, user_message_saved, assistant_started,
+assistant_completed, sources_used, web_sources_used.
+"""
 
 from __future__ import annotations
 
@@ -26,8 +37,14 @@ def parse_sse_events(response) -> list[dict]:
     return events
 
 
+def _extract_session_id_from_metadata(events: list[dict]) -> int:
+    """Extract session_id from the metadata event in a parsed SSE event list."""
+    metadata = next(e for e in events if e["type"] == "metadata")
+    return metadata["session_id"]
+
+
 # ---------------------------------------------------------------------------
-# Legacy non-streaming tests (kept for backward compatibility)
+# Session CRUD tests
 # ---------------------------------------------------------------------------
 
 def test_create_chat_session(client) -> None:
@@ -52,44 +69,52 @@ def test_list_chat_sessions_scoped_by_workspace(client) -> None:
     assert [item["id"] for item in response.json()] == [first_session["id"]]
 
 
-def test_send_message_creates_user_and_assistant_messages(client) -> None:
+def test_stream_creates_user_and_assistant_messages(client) -> None:
+    """Stream endpoint creates both user and assistant messages in the session."""
     workspace = create_workspace(client)
-    chat_session = client.post("/chat/sessions", json={"workspace_id": workspace["id"]}).json()
 
     response = client.post(
-        f"/chat/sessions/{chat_session['id']}/messages?workspace_id={workspace['id']}",
-        json={"content": "What should we do next quarter?"},
+        "/chat/messages/stream",
+        json={"workspace_id": workspace["id"], "message": "What should we do next quarter?"},
     )
 
-    assert response.status_code == 201, response.text
-    payload = response.json()
-    assert payload["user_message"]["role"] == "user"
-    assert payload["user_message"]["content"] == "What should we do next quarter?"
-    assert payload["assistant_message"]["role"] == "assistant"
-    assert "placeholder" in payload["assistant_message"]["content"].lower()
+    assert response.status_code == 200
+    events = parse_sse_events(response)
+    session_id = _extract_session_id_from_metadata(events)
+
+    # Verify messages via session detail
+    detail = client.get(f"/chat/sessions/{session_id}?workspace_id={workspace['id']}").json()
+    messages = detail["messages"]
+    assert len(messages) == 2
+
+    user_msg = next(m for m in messages if m["role"] == "user")
+    assert user_msg["content"] == "What should we do next quarter?"
+    assert user_msg["status"] == "completed"
+
+    assistant_msg = next(m for m in messages if m["role"] == "assistant")
+    assert assistant_msg["role"] == "assistant"
+    assert len(assistant_msg["content"]) > 0
+    assert assistant_msg["status"] == "completed"
 
 
 def test_get_chat_session_returns_messages(client) -> None:
     workspace = create_workspace(client)
-    chat_session = client.post("/chat/sessions", json={"workspace_id": workspace["id"]}).json()
-    client.post(f"/chat/sessions/{chat_session['id']}/messages?workspace_id={workspace['id']}", json={"content": "Analyze churn risk"})
 
-    response = client.get(f"/chat/sessions/{chat_session['id']}?workspace_id={workspace['id']}")
+    # Use stream endpoint to send a message (lazy session creation)
+    response = client.post(
+        "/chat/messages/stream",
+        json={"workspace_id": workspace["id"], "message": "Analyze churn risk"},
+    )
+    events = parse_sse_events(response)
+    session_id = _extract_session_id_from_metadata(events)
 
-    assert response.status_code == 200
-    payload = response.json()
+    detail = client.get(f"/chat/sessions/{session_id}?workspace_id={workspace['id']}")
+
+    assert detail.status_code == 200
+    payload = detail.json()
     assert payload["workspace_id"] == workspace["id"]
     assert payload["title"] == "Analyze churn risk"
     assert [message["role"] for message in payload["messages"]] == ["user", "assistant"]
-
-
-def test_send_empty_message_is_rejected(client) -> None:
-    workspace = create_workspace(client)
-    chat_session = client.post("/chat/sessions", json={"workspace_id": workspace["id"]}).json()
-
-    response = client.post(f"/chat/sessions/{chat_session['id']}/messages?workspace_id={workspace['id']}", json={"content": "   "})
-
-    assert response.status_code == 400
 
 
 def test_chat_session_detail_rejects_wrong_workspace(client) -> None:
@@ -102,17 +127,25 @@ def test_chat_session_detail_rejects_wrong_workspace(client) -> None:
     assert response.status_code == 404
 
 
-def test_send_message_rejects_wrong_workspace(client) -> None:
+def test_stream_message_rejects_wrong_workspace(client) -> None:
+    """Stream with session_id belonging to different workspace → error event."""
     first = create_workspace(client, "Workspace A")
     second = create_workspace(client, "Workspace B")
-    chat_session = client.post("/chat/sessions", json={"workspace_id": first["id"]}).json()
 
-    response = client.post(
-        f"/chat/sessions/{chat_session['id']}/messages?workspace_id={second['id']}",
-        json={"content": "Should not persist"},
+    # Create session in first workspace via stream
+    r1 = client.post("/chat/messages/stream", json={"workspace_id": first["id"], "message": "Hello"})
+    events1 = parse_sse_events(r1)
+    session_id = _extract_session_id_from_metadata(events1)
+
+    # Try to continue from second workspace
+    r2 = client.post(
+        "/chat/messages/stream",
+        json={"workspace_id": second["id"], "session_id": session_id, "message": "Should not persist"},
     )
 
-    assert response.status_code == 404
+    events2 = parse_sse_events(r2)
+    types2 = [e["type"] for e in events2]
+    assert "error" in types2
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +153,7 @@ def test_send_message_rejects_wrong_workspace(client) -> None:
 # ---------------------------------------------------------------------------
 
 def test_stream_first_message_lazily_creates_session(client) -> None:
-    """POST /chat/messages/stream without session_id → session_created event + new session."""
+    """POST /chat/messages/stream without session_id → metadata event with created_session=True."""
     workspace = create_workspace(client)
 
     response = client.post(
@@ -134,21 +167,19 @@ def test_stream_first_message_lazily_creates_session(client) -> None:
     events = parse_sse_events(response)
     types = [e["type"] for e in events]
 
-    assert "session_created" in types
-    assert "user_message_saved" in types
-    assert "assistant_started" in types
+    assert "metadata" in types
     assert "text_delta" in types
-    assert "assistant_completed" in types
     assert "[DONE]" in types
 
-    # session_created event should contain session data
-    session_event = next(e for e in events if e["type"] == "session_created")
-    assert session_event["session"]["workspace_id"] == workspace["id"]
-    assert session_event["session"]["id"] is not None
+    # metadata event should contain session data
+    metadata_event = next(e for e in events if e["type"] == "metadata")
+    assert metadata_event["session_id"] is not None
+    assert metadata_event["created_session"] is True
+    assert metadata_event["assistant_message_id"] is not None
 
     # Title starts as default; gets updated after user message is saved
     # Check the final title via the session detail endpoint
-    session_id = session_event["session"]["id"]
+    session_id = metadata_event["session_id"]
     detail = client.get(f"/chat/sessions/{session_id}?workspace_id={workspace['id']}").json()
     assert detail["title"] != "New Chat"
     assert detail["title"] == "Hello streaming"
@@ -161,8 +192,7 @@ def test_stream_existing_session_continuation(client) -> None:
     # First stream creates session
     r1 = client.post("/chat/messages/stream", json={"workspace_id": workspace["id"], "message": "First message"})
     events1 = parse_sse_events(r1)
-    session_event = next(e for e in events1 if e["type"] == "session_created")
-    session_id = session_event["session"]["id"]
+    session_id = _extract_session_id_from_metadata(events1)
 
     # Second stream continues
     r2 = client.post(
@@ -174,10 +204,10 @@ def test_stream_existing_session_continuation(client) -> None:
     events2 = parse_sse_events(r2)
     types2 = [e["type"] for e in events2]
 
-    # No session_created since we provided session_id
-    assert "session_created" not in types2
-    assert "user_message_saved" in types2
-    assert "assistant_completed" in types2
+    # metadata event present but created_session should be False
+    metadata2 = next(e for e in events2 if e["type"] == "metadata")
+    assert metadata2["created_session"] is False
+    assert metadata2["session_id"] == session_id
     assert "[DONE]" in types2
 
 
@@ -189,8 +219,7 @@ def test_stream_wrong_workspace_rejection(client) -> None:
     # Create session in first workspace
     r1 = client.post("/chat/messages/stream", json={"workspace_id": first["id"], "message": "Hello"})
     events1 = parse_sse_events(r1)
-    session_event = next(e for e in events1 if e["type"] == "session_created")
-    session_id = session_event["session"]["id"]
+    session_id = _extract_session_id_from_metadata(events1)
 
     # Try to use from second workspace
     r2 = client.post(
@@ -224,7 +253,7 @@ def test_stream_events_parse_as_data_json_and_done(client) -> None:
 
 
 def test_stream_message_status_transitions_to_completed(client) -> None:
-    """After stream completes, assistant message status is 'completed'."""
+    """After stream completes, assistant message status is 'completed' in the DB."""
     workspace = create_workspace(client)
 
     response = client.post(
@@ -233,16 +262,21 @@ def test_stream_message_status_transitions_to_completed(client) -> None:
     )
 
     events = parse_sse_events(response)
-    completed_event = next(e for e in events if e["type"] == "assistant_completed")
-    msg = completed_event["message"]
+    metadata_event = next(e for e in events if e["type"] == "metadata")
+    session_id = metadata_event["session_id"]
 
-    assert msg["status"] == "completed"
-    assert msg["completed_at"] is not None
-    assert msg["content"] != ""
+    # Verify messages via DB (session detail endpoint)
+    detail = client.get(f"/chat/sessions/{session_id}?workspace_id={workspace['id']}").json()
+    messages = detail["messages"]
+
+    assistant_msg = next(m for m in messages if m["role"] == "assistant")
+    assert assistant_msg["status"] == "completed"
+    assert assistant_msg["completed_at"] is not None
+    assert assistant_msg["content"] != ""
 
     # User message should also be completed
-    user_event = next(e for e in events if e["type"] == "user_message_saved")
-    assert user_event["message"]["status"] == "completed"
+    user_msg = next(m for m in messages if m["role"] == "user")
+    assert user_msg["status"] == "completed"
 
 
 def test_stream_empty_message_returns_error(client) -> None:
@@ -372,8 +406,8 @@ def _send_stream_turns(client, workspace_id: int, session_id: int | None, count:
         events = parse_sse_events(r)
         all_events.extend(events)
         if sid is None:
-            created = next(e for e in events if e["type"] == "session_created")
-            sid = created["session"]["id"]
+            metadata = next(e for e in events if e["type"] == "metadata")
+            sid = metadata["session_id"]
     return sid, all_events
 
 
