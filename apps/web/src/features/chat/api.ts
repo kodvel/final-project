@@ -8,7 +8,9 @@ import type {
   ChatSessionApi,
   ChatSessionDetail,
   ChatSessionDetailApi,
+  CommandResultEvent,
   CreateChatSessionInput,
+  DecisionBriefEvent,
   MessageSourceCitation,
   MessageSourceCitationApi,
   MetadataEvent,
@@ -32,6 +34,7 @@ function messageFromApi(message: ChatMessageApi): ChatMessage {
     metadataJson: message.metadata_json,
     traceId: message.trace_id,
     traceUrl: message.trace_url,
+    decisionBriefId: message.decision_brief_id ?? null,
     createdAt: message.created_at,
     updatedAt: message.updated_at,
     completedAt: message.completed_at,
@@ -191,6 +194,12 @@ export async function streamChatMessage(input: StreamChatMessageInput, handlers:
                 break
               case 'tool_result':
                 handlers.onToolResult?.(event as ToolResultEvent)
+                break
+              case 'decision_brief':
+                handlers.onDecisionBrief?.(event as DecisionBriefEvent)
+                break
+              case 'command_result':
+                handlers.onCommandResult?.(event as CommandResultEvent)
                 break
               case 'error':
                 handlers.onError?.(event as StreamErrorEvent)

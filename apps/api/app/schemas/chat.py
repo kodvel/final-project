@@ -30,6 +30,7 @@ class ChatMessageRead(BaseModel):
     metadata_json: dict[str, Any] | None = None
     trace_id: str | None = None
     trace_url: str | None = None
+    decision_brief_id: int | None = None
     created_at: datetime
 
     @model_validator(mode="after")

@@ -323,6 +323,17 @@ async def stream_chat(
     db.commit()
     db.refresh(user_msg)
 
+    # --- Task 8: /decision-brief slash command ---
+    if _is_decision_brief_command(clean_message):
+        async for event in _stream_decision_brief(
+            db=db,
+            chat_session=chat_session,
+            user_msg=user_msg,
+            created_session=created_session,
+        ):
+            yield event
+        return
+
     try:
         # Build context window (triggers summary refresh for long sessions)
         context = build_context_for_session(db, chat_session, clean_message)
@@ -644,3 +655,94 @@ def _clean_title(title: str | None) -> str | None:
 def _title_from_message(content: str) -> str:
     title = " ".join(content.split())
     return title[:77] + "..." if len(title) > 80 else title
+
+
+# ---------------------------------------------------------------------------
+# /decision-brief command
+# ---------------------------------------------------------------------------
+
+
+def _is_decision_brief_command(message: str) -> bool:
+    stripped = message.strip().lower()
+    return stripped == "/decision-brief" or stripped.startswith("/decision-brief ")
+
+
+async def _stream_decision_brief(
+    db: Session,
+    chat_session: ChatSession,
+    user_msg: ChatMessage,
+    created_session: bool,
+) -> AsyncGenerator[str, None]:
+    """Run the /decision-brief workflow and emit SSE events.
+
+    Emits a single ``decision_brief`` event on success, or one ``text_delta``
+    plus the canonical command result on insufficient context.
+    """
+    from app.services import decision_briefs as decision_brief_service
+
+    yield _sse_event({
+        "type": "metadata",
+        "session_id": chat_session.id,
+        "assistant_message_id": None,
+        "created_session": created_session,
+        "trace_id": None,
+        "trace_url": None,
+        "command": "decision-brief",
+    })
+
+    try:
+        result = decision_brief_service.generate_decision_brief(db, chat_session, user_msg)
+    except Exception:
+        logger.exception("Decision brief generation failed")
+        now = datetime.utcnow()
+        failed_msg = ChatMessage(
+            session_id=chat_session.id,
+            role=ChatMessageRole.ASSISTANT,
+            content="Decision brief generation failed.",
+            message_type=ChatMessageType.COMMAND_RESULT,
+            status=MessageStatus.FAILED,
+            error_message="Decision brief generation failed",
+            updated_at=now,
+        )
+        db.add(failed_msg)
+        db.commit()
+        yield _sse_event({"type": "error", "error": "Decision brief generation failed"})
+        yield _sse_event("[DONE]")
+        return
+
+    if isinstance(result, decision_brief_service.InsufficientContext):
+        now = datetime.utcnow()
+        msg = ChatMessage(
+            session_id=chat_session.id,
+            role=ChatMessageRole.ASSISTANT,
+            content=result.message,
+            message_type=ChatMessageType.COMMAND_RESULT,
+            status=MessageStatus.COMPLETED,
+            completed_at=now,
+            updated_at=now,
+        )
+        db.add(msg)
+        chat_session.last_message_at = now
+        chat_session.updated_at = now
+        db.add(chat_session)
+        db.commit()
+        db.refresh(msg)
+        yield _sse_event({
+            "type": "command_result",
+            "message_id": msg.id,
+            "command": "decision-brief",
+            "ok": False,
+            "content": result.message,
+        })
+        yield _sse_event("[DONE]")
+        return
+
+    yield _sse_event({
+        "type": "decision_brief",
+        "message_id": result.chat_message_id,
+        "brief_id": result.id,
+        "sequence_number": result.sequence_number,
+        "recommendation_status": str(result.recommendation_status),
+        "approval_status": str(result.approval_status),
+    })
+    yield _sse_event("[DONE]")

@@ -131,3 +131,93 @@ def reindex_source_content(session: Session, source_id: int) -> int:
     """Delete existing vectors then re-index from SQL source of truth."""
     delete_source_vectors(source_id)
     return index_source_content(session, source_id)
+
+
+# ---------------------------------------------------------------------------
+# Approved Decision Brief indexing
+# ---------------------------------------------------------------------------
+
+
+# Section keys from DecisionBriefContent.content_json that carry textual content
+# worth surfacing in retrieval. List values are joined into one document.
+_BRIEF_SECTIONS: tuple[str, ...] = (
+    "objective",
+    "context_problem",
+    "strategic_interpretation",
+    "recommendation",
+    "risks_assumptions",
+    "next_steps",
+)
+
+
+def _brief_section_text(value) -> str:
+    if isinstance(value, list):
+        return "\n".join(str(v).strip() for v in value if str(v).strip())
+    if isinstance(value, str):
+        return value.strip()
+    return ""
+
+
+def index_decision_brief(brief) -> int:
+    """Index an approved Decision Brief's content into the company_knowledge collection.
+
+    Each populated section becomes one Chroma document with metadata that
+    flags ``source_kind="decision_brief"`` so retrieval can recognise it as a
+    non-source-file knowledge item.
+    """
+    collection = get_company_knowledge_collection()
+    if collection is None:
+        logger.warning("ChromaDB unavailable; skipping decision brief %s indexing", brief.id)
+        return 0
+
+    content_json = brief.content_json or {}
+    title = brief.title or f"Decision Brief #{brief.sequence_number}"
+    source_title = f"Decision Brief #{brief.sequence_number} — {title}"
+
+    ids: list[str] = []
+    documents: list[str] = []
+    metadatas: list[dict] = []
+
+    for section in _BRIEF_SECTIONS:
+        text = _brief_section_text(content_json.get(section))
+        if not text:
+            continue
+        document = f"{title}\n\n{section.replace('_', ' ').title()}:\n{text}"
+        ids.append(f"decision_brief:{brief.id}:{section}")
+        documents.append(document)
+        metadatas.append({
+            "workspace_id": brief.workspace_id,
+            "decision_brief_id": brief.id,
+            "sequence_number": brief.sequence_number,
+            "recommendation_status": str(brief.recommendation_status),
+            "approval_status": "approved",
+            "source_kind": "decision_brief",
+            "source_title": source_title,
+            "document_section": section,
+            "content_type": "decision_brief",
+            "created_at": brief.created_at.isoformat() if brief.created_at else "",
+        })
+
+    if not ids:
+        logger.info("Decision brief %s has no indexable sections", brief.id)
+        return 0
+
+    collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
+    logger.info("Indexed %d sections for decision brief %s", len(ids), brief.id)
+    return len(ids)
+
+
+def delete_decision_brief_vectors(brief_id: int) -> None:
+    """Delete all ChromaDB vectors for a Decision Brief (best-effort)."""
+    collection = get_company_knowledge_collection()
+    if collection is None:
+        return
+    try:
+        collection.delete(where={"decision_brief_id": brief_id})
+        logger.info("Deleted vectors for decision brief %s", brief_id)
+    except Exception:
+        logger.warning(
+            "Failed to delete vectors for decision brief %s; continuing",
+            brief_id,
+            exc_info=True,
+        )

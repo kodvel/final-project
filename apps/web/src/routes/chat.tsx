@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Bot, ChevronRight, ExternalLink, Eye, FileSpreadsheet, FileText, Mic, Paperclip, Send, Workflow, X } from 'lucide-react'
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { useChatSession, useChatSessions, useCreateChatSession, useStreamChat } from '../features/chat/hooks'
+import { DecisionBriefCard } from '../features/decision-briefs/components/DecisionBriefCard'
 import { useActiveWorkspace } from '../features/workspaces/hooks/use-active-workspace'
 import type { AgentToolCall, ChatMessage, MessageSourceCitation } from '../types/chat'
 
@@ -83,7 +84,7 @@ export function ChatPage() {
 
   // Reset on workspace change
   useEffect(() => {
-    if (activeSession?.workspaceId !== workspaceId) {
+    if (activeSession && activeSession.workspaceId !== workspaceId) {
       setActiveSessionId(null)
       setIsDraftNewChat(false)
       setOptimisticMessages([])
@@ -91,7 +92,7 @@ export function ChatPage() {
       streamingTextRef.current = ''
       setStreamingToolCalls([])
     }
-  }, [activeSession?.workspaceId, workspaceId])
+  }, [activeSession, workspaceId])
 
   // Auto-select first session
   useEffect(() => {
@@ -160,6 +161,19 @@ export function ChatPage() {
           onToolResult: (event) => {
             if (!event.call_id) return
             setStreamingToolCalls((prev) => prev.map((tool) => (tool.callId === event.call_id ? { ...tool, status: event.ok ? 'done' : 'failed' } : tool)))
+          },
+          onDecisionBrief: () => {
+            // Backend has persisted the Decision Brief assistant message; clear
+            // optimistic streaming state so the refetched session renders the
+            // brief card cleanly.
+            setStreamingText('')
+            streamingTextRef.current = ''
+            setStreamingToolCalls([])
+          },
+          onCommandResult: () => {
+            setStreamingText('')
+            streamingTextRef.current = ''
+            setStreamingToolCalls([])
           },
           onDone: () => {
             // Refetch happens inside useStreamChat; clear optimistic state
@@ -278,10 +292,17 @@ export function ChatPage() {
             ) : displayMessages.length === 0 ? (
               <EmptyChatState title="Ask a strategic question" description="Messages will be persisted to this Workspace-scoped Chat Session." />
             ) : (
-              displayMessages.map((message) =>
-                message.role === 'user' ? (
-                  <UserBubble key={message.id} content={message.content} />
-                ) : (
+              displayMessages.map((message) => {
+                if (message.role === 'user') {
+                  return <UserBubble key={message.id} content={message.content} />
+                }
+                if (!isOptimistic(message) && message.messageType === 'decision_brief' && message.decisionBriefId && workspaceId) {
+                  return <DecisionBriefCard key={message.id} briefId={message.decisionBriefId} workspaceId={workspaceId} />
+                }
+                if (!isOptimistic(message) && message.messageType === 'command_result') {
+                  return <CommandResultMessage key={message.id} content={message.content} />
+                }
+                return (
                   <AssistantMessage
                     key={message.id}
                     message={message}
@@ -290,8 +311,8 @@ export function ChatPage() {
                     streamingToolCalls={isOptimistic(message) ? streamingToolCalls : []}
                     showThinking={isOptimistic(message) && isThinking && !streamingText}
                   />
-                ),
-              )
+                )
+              })
             )}
             <div ref={chatEndRef} aria-hidden="true" />
           </div>
@@ -333,7 +354,7 @@ export function ChatPage() {
               )}
             </div>
             <div className="mt-3 flex items-center gap-3 text-xs text-text-hint">
-              <CommandChip command="/decision-brief" label="Generate Brief" />
+              <CommandChip command="/decision-brief" label="Generate Brief" onClick={() => setInput('/decision-brief')} />
               <span className="ml-auto">Copilot can make mistakes. Consider verifying.</span>
             </div>
           </div>
@@ -473,11 +494,27 @@ function EvidenceChip({ citation }: { citation: MessageSourceCitation }) {
   )
 }
 
-function CommandChip({ command, label }: { command: string; label: string }) {
-  return (
-    <span>
+function CommandChip({ command, label, onClick }: { command: string; label: string; onClick?: () => void }) {
+  const content = (
+    <>
       <span className="rounded bg-chip-gray px-2 py-1 font-mono text-text-hint">{command}</span> {label}
-    </span>
+    </>
+  )
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className="inline-flex items-center gap-1 transition hover:text-foreground">
+        {content}
+      </button>
+    )
+  }
+  return <span>{content}</span>
+}
+
+function CommandResultMessage({ content }: { content: string }) {
+  return (
+    <article className="rounded-2xl border border-dashed border-border bg-surface-subtle p-5 text-sm leading-7 text-foreground whitespace-pre-line">
+      {content}
+    </article>
   )
 }
 

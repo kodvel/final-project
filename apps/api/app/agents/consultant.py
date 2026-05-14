@@ -94,29 +94,99 @@ class ConsultantResult:
 # ---------------------------------------------------------------------------
 
 
-# Team label keywords mapping
-_TEAM_KEYWORDS: dict[str, str] = {
-    "marketing": "marketing",
-    "product": "product",
-    "data analysis": "data_analysis",
-    "data analyst": "data_analysis",
-    "analytics": "data_analysis",
-    "business": "business",
-}
+# Team label patterns.
+#
+# Only trigger a team filter when the user explicitly scopes the question to a
+# team — bare mentions like "product launch" or "marketing campaign" must NOT
+# scope retrieval, since they are part of the question content, not a filter.
+#
+# Accepted phrasings:
+#   "marketing team", "the product team"
+#   "from the marketing team", "by product", "in marketing team", "for business"
+#   "team marketing", "team: product"
+_TEAM_LABELS: tuple[tuple[str, str], ...] = (
+    ("marketing", "marketing"),
+    ("product", "product"),
+    ("business", "business"),
+    ("data analysis", "data_analysis"),
+    ("data analyst", "data_analysis"),
+)
 
-# Category label keywords mapping
-_CATEGORY_KEYWORDS: dict[str, str] = {
-    "analytics": "analytics_metrics",
-    "metrics": "analytics_metrics",
+_TEAM_SCOPE_PATTERNS: tuple[re.Pattern, ...] = tuple(
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        # "<keyword> team"
+        r"\b(marketing|product|business|data\s+analysis|data\s+analyst)\s+team\b",
+        # "team <keyword>" / "team: <keyword>"
+        r"\bteam[:\s]+(marketing|product|business|data\s+analysis|data\s+analyst)\b",
+        # "from/by/in/for [the] <keyword> team"
+        r"\b(?:from|by|in|for)\s+(?:the\s+)?(marketing|product|business|data\s+analysis|data\s+analyst)\s+team\b",
+        # "tagged <keyword>"
+        r"\btagged\s+(marketing|product|business|data\s+analysis|data\s+analyst)\b",
+    )
+)
+
+
+def _detect_team_label(lower: str) -> str | None:
+    for pattern in _TEAM_SCOPE_PATTERNS:
+        match = pattern.search(lower)
+        if match:
+            raw = re.sub(r"\s+", " ", match.group(1).lower()).strip()
+            for keyword, label in _TEAM_LABELS:
+                if raw == keyword:
+                    return label
+    return None
+
+
+# Category label patterns.
+#
+# Multi-word category names (e.g. "competitor analysis") are specific enough to
+# match as-is. Single-word categories (analytics, metrics, revenue, sales) must
+# appear in an explicit scoping phrase to avoid false positives on content
+# words.
+_MULTIWORD_CATEGORY_KEYWORDS: dict[str, str] = {
     "market research": "market_research",
     "product feature": "product_feature",
     "product / feature": "product_feature",
     "customer insight": "customer_insight",
     "business model": "business_model",
     "competitor analysis": "competitor_analysis",
-    "revenue": "revenue_sales",
-    "sales": "revenue_sales",
 }
+
+_SINGLEWORD_CATEGORIES: tuple[tuple[str, str], ...] = (
+    ("analytics", "analytics_metrics"),
+    ("metrics", "analytics_metrics"),
+    ("revenue", "revenue_sales"),
+    ("sales", "revenue_sales"),
+)
+
+_CATEGORY_SCOPE_PATTERNS: tuple[re.Pattern, ...] = tuple(
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        # "<keyword> category" / "<keyword> categories"
+        r"\b(analytics|metrics|revenue|sales)\s+categor(?:y|ies)\b",
+        # "category: <keyword>" / "categories: <keyword>"
+        r"\bcategor(?:y|ies)[:\s]+(analytics|metrics|revenue|sales)\b",
+        # "tagged <keyword>"
+        r"\btagged\s+(analytics|metrics|revenue|sales)\b",
+    )
+)
+
+
+def _detect_category_labels(lower: str) -> list[str]:
+    labels: list[str] = []
+    for keyword, label in _MULTIWORD_CATEGORY_KEYWORDS.items():
+        if keyword in lower and label not in labels:
+            labels.append(label)
+    for pattern in _CATEGORY_SCOPE_PATTERNS:
+        for match in pattern.finditer(lower):
+            raw = match.group(1).lower()
+            for keyword, label in _SINGLEWORD_CATEGORIES:
+                if raw == keyword and label not in labels:
+                    labels.append(label)
+                    break
+    return labels
+
 
 # Month pattern
 _MONTH_RE = re.compile(r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{4}", re.IGNORECASE)
@@ -126,29 +196,23 @@ _YYYYMM_RE = re.compile(r"\b(\d{4})-(0[1-9]|1[0-2])\b")
 def parse_source_scope(message: str) -> SourceScope | None:
     """Parse natural-language source scope constraints from a user message.
 
-    Minimal deterministic parser that extracts team_label, category_labels,
-    period months, and source-specific references. Returns None if no scope
-    constraints are detected.
+    Returns None unless the user explicitly scopes by team, category, or
+    period. Incidental mentions of category/team words inside the question
+    content (e.g. "product launch", "AI analytics") do not trigger a filter.
     """
     lower = message.lower()
     parts: dict[str, Any] = {}
     found_any = False
 
-    # Team label
-    for keyword, label in _TEAM_KEYWORDS.items():
-        if keyword in lower:
-            parts["team_label"] = label
-            found_any = True
-            break
+    team_label = _detect_team_label(lower)
+    if team_label is not None:
+        parts["team_label"] = team_label
+        found_any = True
 
-    # Category labels
-    cats: list[str] = []
-    for keyword, label in _CATEGORY_KEYWORDS.items():
-        if keyword in lower and label not in cats:
-            cats.append(label)
-            found_any = True
+    cats = _detect_category_labels(lower)
     if cats:
         parts["category_labels"] = cats
+        found_any = True
 
     # Period months — look for YYYY-MM patterns
     months = _YYYYMM_RE.findall(lower)
