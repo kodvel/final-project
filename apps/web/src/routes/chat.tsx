@@ -59,6 +59,9 @@ export function ChatPage() {
   const [streamingToolCalls, setStreamingToolCalls] = useState<StreamingToolCall[]>([])
   const optIdCounter = useRef(0)
   const streamingTextRef = useRef('')
+  const chatEndRef = useRef<HTMLDivElement>(null)
+  const scrollFrameRef = useRef<number | null>(null)
+  const previousScrollStateRef = useRef<{ sessionId: number | null; messageCount: number }>({ sessionId: null, messageCount: 0 })
 
   const persistedMessages: ChatMessage[] = (activeSession?.messages ?? []).filter((message) => !(isThinking && message.role === 'assistant' && message.status === 'streaming'))
 
@@ -74,6 +77,8 @@ export function ChatPage() {
     : null
   const displayMessages: DisplayMessage[] = streamingMessage ? [...messages, streamingMessage] : messages
   const hasSessionCitations = (activeSession?.citations.length ?? 0) > 0
+  const scrollMessageCount = displayMessages.length
+  const scrollTargetKey = `${activeSessionId ?? 'draft'}:${scrollMessageCount}:${streamingText.length}:${streamingToolCalls.length}:${isLoadingSession ? 'loading' : 'ready'}`
 
   // Reset on workspace change
   useEffect(() => {
@@ -93,6 +98,28 @@ export function ChatPage() {
       setActiveSessionId(sessions[0].id)
     }
   }, [activeSessionId, sessions, isDraftNewChat])
+
+  useEffect(() => {
+    void scrollTargetKey
+
+    const previous = previousScrollStateRef.current
+    const shouldAnimate = previous.sessionId !== activeSessionId || scrollMessageCount > previous.messageCount
+    previousScrollStateRef.current = { sessionId: activeSessionId, messageCount: scrollMessageCount }
+
+    if (scrollFrameRef.current != null) {
+      window.cancelAnimationFrame(scrollFrameRef.current)
+    }
+
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      chatEndRef.current?.scrollIntoView({ behavior: shouldAnimate ? 'smooth' : 'auto', block: 'end' })
+    })
+
+    return () => {
+      if (scrollFrameRef.current != null) {
+        window.cancelAnimationFrame(scrollFrameRef.current)
+      }
+    }
+  }, [scrollTargetKey, activeSessionId, scrollMessageCount])
 
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -186,7 +213,7 @@ export function ChatPage() {
   return (
     <div className={`grid h-full min-h-0 ${hasSessionCitations ? 'grid-cols-[minmax(0,1fr)_376px]' : 'grid-cols-1'} overflow-hidden text-foreground`}>
       <section className="flex min-h-0 min-w-0 flex-col border-r border-border">
-        <div className="min-h-0 flex-1 overflow-y-auto px-10 py-8">
+        <div className="min-h-0 flex-1 scroll-smooth overflow-y-auto px-10 py-8">
           <div className="mb-7 flex items-center justify-center gap-4">
             <p className="font-mono text-xs font-semibold uppercase tracking-[0.24em] text-text-hint">
               {activeSession ? `Session started: ${formatDate(activeSession.createdAt)}` : 'Start a Workspace-scoped Chat Session'}
@@ -255,6 +282,7 @@ export function ChatPage() {
                 ),
               )
             )}
+            <div ref={chatEndRef} aria-hidden="true" />
           </div>
         </div>
 
@@ -323,7 +351,7 @@ export function ChatPage() {
 
 function UserBubble({ content }: { content: string }) {
   return (
-    <div className="flex justify-end">
+    <div className="flex justify-end motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-300">
       <div className="max-w-[65%] rounded-[16px_16px_4px_16px] bg-user-bubble px-5 py-4 text-sm leading-7 text-foreground shadow-sm">{content}</div>
     </div>
   )
@@ -352,7 +380,7 @@ function AssistantMessage({
   ]
 
   return (
-    <article className="space-y-3">
+    <article className="space-y-3 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-300">
       <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-text-hint">
         <Bot className="h-4 w-4 text-primary" />
         Intelligence Copilot
