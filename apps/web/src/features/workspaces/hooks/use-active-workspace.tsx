@@ -74,15 +74,18 @@ export function WorkspaceProvider({ children, initialWorkspaceId }: WorkspacePro
     writeStoredId(id)
   }, [])
 
-  const setActiveWorkspace = useCallback((ws: Workspace | null) => {
-    const id = ws?.id ?? null
-    setActiveWorkspaceIdState(id)
-    writeStoredId(id)
-    if (ws) {
-      // Populate cache so useWorkspace resolves immediately without a refetch
-      queryClient.setQueryData(['workspaces', id], ws)
-    }
-  }, [queryClient])
+  const setActiveWorkspace = useCallback(
+    (ws: Workspace | null) => {
+      const id = ws?.id ?? null
+      setActiveWorkspaceIdState(id)
+      writeStoredId(id)
+      if (ws) {
+        // Populate cache so useWorkspace resolves immediately without a refetch
+        queryClient.setQueryData(['workspaces', id], ws)
+      }
+    },
+    [queryClient],
+  )
 
   return (
     <WorkspaceContext.Provider value={{ activeWorkspaceId, setActiveWorkspaceId, activeWorkspace, setActiveWorkspace }}>

@@ -21,9 +21,7 @@ function briefFromApi(brief: DecisionBriefApi): DecisionBrief {
 }
 
 export async function getDecisionBrief(briefId: number, workspaceId: number): Promise<DecisionBrief> {
-  return briefFromApi(
-    await apiFetch<DecisionBriefApi>(`/decision-briefs/${briefId}?workspace_id=${workspaceId}`),
-  )
+  return briefFromApi(await apiFetch<DecisionBriefApi>(`/decision-briefs/${briefId}?workspace_id=${workspaceId}`))
 }
 
 export async function updateDecisionBriefStatus(

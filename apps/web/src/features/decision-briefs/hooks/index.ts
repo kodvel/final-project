@@ -14,15 +14,8 @@ export function useDecisionBrief(briefId: number | null, workspaceId: number | n
 export function useUpdateDecisionBriefStatus() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({
-      briefId,
-      workspaceId,
-      approvalStatus,
-    }: {
-      briefId: number
-      workspaceId: number
-      approvalStatus: DecisionApprovalStatus
-    }) => updateDecisionBriefStatus(briefId, workspaceId, approvalStatus),
+    mutationFn: ({ briefId, workspaceId, approvalStatus }: { briefId: number; workspaceId: number; approvalStatus: DecisionApprovalStatus }) =>
+      updateDecisionBriefStatus(briefId, workspaceId, approvalStatus),
     onSuccess: (brief: DecisionBrief) => {
       queryClient.invalidateQueries({ queryKey: ['decision-brief', brief.id, brief.workspaceId] })
       queryClient.invalidateQueries({ queryKey: ['chat-session', brief.chatSessionId, brief.workspaceId] })

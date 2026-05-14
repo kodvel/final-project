@@ -162,9 +162,7 @@ function VisualizationDataPage() {
               <p className="text-sm leading-7 text-foreground">{executiveSummary}</p>
               {confidenceAssessment && (
                 <div className="mt-4 inline-flex max-w-full items-start gap-1 rounded-md border border-border bg-background px-2.5 py-0.5 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-                  <span className="min-w-0 whitespace-normal break-words">
-                    {confidenceAssessment}
-                  </span>
+                  <span className="min-w-0 whitespace-normal break-words">{confidenceAssessment}</span>
                 </div>
               )}
             </div>
@@ -474,9 +472,7 @@ function LoadingState() {
 
         <div>
           <p className="font-medium text-foreground">Preparing visualizations</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Analyzing data and building charts...
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Analyzing data and building charts...</p>
         </div>
       </div>
 
