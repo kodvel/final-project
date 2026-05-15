@@ -18,7 +18,7 @@ ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 RUN pnpm --filter @final-project/web build
 
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm --filter @final-project/web --prod deploy /deploy
+    pnpm --filter @final-project/web --prod --legacy deploy /deploy
 
 
 FROM node:22-bookworm-slim AS runtime

@@ -7,6 +7,14 @@ on:
         description: "Image tag (defaults to commit SHA + 'latest')"
         required: false
         default: ""
+  push:
+    branches: [develop]
+    paths:
+      - "apps/api/**"
+      - "apps/web/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/build-images.yml"
 
 env:
   REGISTRY: docker.io
