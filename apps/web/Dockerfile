@@ -9,7 +9,7 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/web/package.json apps/web/
 
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --filter @final-project/web...
+    pnpm install --no-frozen-lockfile --filter @final-project/web...
 
 COPY apps/web/ apps/web/
 
@@ -30,6 +30,7 @@ RUN useradd --create-home --uid 1001 app
 COPY --from=builder --chown=app:app /deploy/node_modules ./node_modules
 COPY --from=builder --chown=app:app /repo/apps/web/dist ./dist
 COPY --from=builder --chown=app:app /repo/apps/web/package.json ./package.json
+COPY --from=builder --chown=app:app /repo/apps/web/server-node.mjs ./server-node.mjs
 
 ENV NODE_ENV=production \
     PORT=3000 \
