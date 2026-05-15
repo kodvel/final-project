@@ -31,6 +31,7 @@ class ChatMessageRead(BaseModel):
     trace_id: str | None = None
     trace_url: str | None = None
     decision_brief_id: int | None = None
+    decision_brief_title: str | None = None
     created_at: datetime
 
     @model_validator(mode="after")

@@ -27,8 +27,7 @@ export function groupCitations(citations: MessageSourceCitation[]): CitationGrou
       citation.citationType === 'web'
         ? citation.title || citation.domain || 'Web Source'
         : citation.title || `Source #${citation.sourceId ?? 'unknown'}`
-    const badge =
-      citation.citationType === 'web' ? 'Web Source' : citation.citationStatus === 'available' ? 'Uploaded Source' : citation.citationStatus
+    const badge = citation.citationType === 'web' ? 'Web' : citation.citationStatus === 'available' ? 'Uploaded' : citation.citationStatus
     const group = groups.get(key)
     if (group) {
       group.citations.push(citation)

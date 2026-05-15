@@ -134,7 +134,7 @@ function VisualizationDataPage() {
     <div className="h-full min-w-0 overflow-auto bg-white px-6 py-7 text-foreground lg:px-8 lg:py-8">
       <div className="space-y-7">
         <header className="flex flex-col gap-5 border-b border-border/70 pb-5 xl:flex-row xl:items-start xl:justify-between">
-          <div className="max-w-3xl space-y-3">
+          <div className="w-full space-y-3">
             <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-[11px] font-medium text-indigo-700">
               <CalendarDays className="h-3.5 w-3.5" />
               Visualization Snapshot
@@ -156,7 +156,7 @@ function VisualizationDataPage() {
             </div>
           </div>
 
-          <div className="w-full xl:max-w-[760px]">
+          <div className="w-full align-self-end">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <MonthInput label="Period start" value={periodStartMonth} onChange={setPeriodStartMonth} />
               <MonthInput label="Period end" value={periodEndMonth} onChange={setPeriodEndMonth} />
@@ -165,7 +165,7 @@ function VisualizationDataPage() {
                   variant="outline"
                   onClick={() => refreshSnapshot.mutate(queryParams)}
                   disabled={!hasValidRange || refreshPending}
-                  className="w-full border-border bg-white transition hover:bg-surface-subtle"
+                  className="border-border bg-white transition hover:bg-surface-subtle w-fit"
                 >
                   <RefreshCw className={`h-4 w-4 ${refreshPending ? 'animate-spin' : ''}`} />
                   {refreshPending ? 'Refreshing' : 'Refresh'}

@@ -35,6 +35,7 @@ function messageFromApi(message: ChatMessageApi): ChatMessage {
     traceId: message.trace_id,
     traceUrl: message.trace_url,
     decisionBriefId: message.decision_brief_id ?? null,
+    decisionBriefTitle: message.decision_brief_title ?? null,
     createdAt: message.created_at,
     updatedAt: message.updated_at,
     completedAt: message.completed_at,

@@ -149,3 +149,87 @@
   --user-bubble: #E8E8F8;
   --chip-gray: #F3F4F6;
 }
+
+/* ─── Chat markdown prose ─── */
+.prose-chat {
+  line-height: 2;
+}
+.prose-chat p {
+  margin-bottom: 0.75em;
+}
+.prose-chat p:last-child {
+  margin-bottom: 0;
+}
+.prose-chat strong {
+  font-weight: 600;
+}
+.prose-chat em {
+  font-style: italic;
+}
+.prose-chat a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose-chat a:hover {
+  color: var(--primary-hover);
+}
+.prose-chat ul,
+.prose-chat ol {
+  margin: 0.5em 0 0.75em 1.5em;
+}
+.prose-chat ul {
+  list-style-type: disc;
+}
+.prose-chat ol {
+  list-style-type: decimal;
+}
+.prose-chat li {
+  margin-bottom: 0.25em;
+}
+.prose-chat blockquote {
+  margin: 0.75em 0;
+  border-left: 3px solid var(--border);
+  padding-left: 0.75em;
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.prose-chat code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--surface-subtle);
+  border-radius: 4px;
+  padding: 0.15em 0.35em;
+}
+.prose-chat pre {
+  margin: 0.75em 0;
+  border-radius: 0.5rem;
+  background: var(--surface-subtle);
+  overflow-x: auto;
+  padding: 0.75em 1em;
+}
+.prose-chat pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.85em;
+}
+.prose-chat table {
+  margin: 0.75em 0;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+.prose-chat th,
+.prose-chat td {
+  border: 1px solid var(--border);
+  padding: 0.4em 0.65em;
+  text-align: left;
+}
+.prose-chat th {
+  font-weight: 600;
+  background: var(--surface-subtle);
+}
+.prose-chat hr {
+  margin: 1em 0;
+  border-color: var(--border);
+}

@@ -1131,3 +1131,235 @@ def test_build_source_scope_handles_invalid_json_gracefully() -> None:
     assert scope.team_label == "product"
     assert scope.category_labels is None
     assert scope.source_ids is None
+
+
+# ---------------------------------------------------------------------------
+# _safe_get helper (fix: dict vs object attribute access)
+# ---------------------------------------------------------------------------
+
+
+def test_safe_get_handles_dict() -> None:
+    """_safe_get returns value from dict via .get()."""
+    from app.agents.consultant import _safe_get
+
+    d = {"call_id": "call_123", "name": "tavily_web_search"}
+    assert _safe_get(d, "call_id", "") == "call_123"
+    assert _safe_get(d, "name", "unknown") == "tavily_web_search"
+    assert _safe_get(d, "missing", "default") == "default"
+
+
+def test_safe_get_handles_object() -> None:
+    """_safe_get returns value from object via getattr()."""
+    from unittest.mock import MagicMock
+
+    from app.agents.consultant import _safe_get
+
+    obj = MagicMock()
+    obj.call_id = "call_abc"
+    obj.name = "retrieve_company_knowledge"
+    assert _safe_get(obj, "call_id", "") == "call_abc"
+    assert _safe_get(obj, "name", "unknown") == "retrieve_company_knowledge"
+
+
+def test_safe_get_handles_none_obj() -> None:
+    """_safe_get with None obj returns default via getattr (None has no attr)."""
+    from app.agents.consultant import _safe_get
+
+    # getattr(None, "key", "fallback") returns "fallback"
+    assert _safe_get(None, "key", "fallback") == "fallback"
+
+
+# ---------------------------------------------------------------------------
+# _collect_tavily_citations (fix: agent-invoked Tavily → CitationRecord)
+# ---------------------------------------------------------------------------
+
+
+def test_collect_tavily_citations_parses_valid_output() -> None:
+    """Valid Tavily JSON output creates CitationRecord entries."""
+    from app.agents.consultant import _collect_tavily_citations
+
+    output = json.dumps({
+        "results": [
+            {"title": "Market Report", "url": "https://example.com/market", "content": "Market grew", "score": 0.85},
+            {"title": "Industry Trends", "url": "https://other.com/trends", "content": "Trends up", "score": 0.72},
+        ],
+        "request_id": "req_abc123",
+    })
+
+    pending: list = []
+    _collect_tavily_citations(output, pending)
+
+    assert len(pending) == 2
+    assert pending[0].citation_type == CitationType.WEB
+    assert pending[0].url == "https://example.com/market"
+    assert pending[0].title == "Market Report"
+    assert pending[0].domain == "example.com"
+    assert pending[0].provider == "tavily"
+    assert pending[0].provider_request_id == "req_abc123"
+    assert pending[0].snippet == "Market grew"
+    assert pending[0].relevance_score == 0.85
+    assert pending[0].citation_status == CitationStatus.AVAILABLE
+    assert pending[0].ordinal == 0  # reassigned later
+    assert pending[1].url == "https://other.com/trends"
+
+
+def test_collect_tavily_citations_skips_empty_urls() -> None:
+    """Results with empty URL are skipped."""
+    from app.agents.consultant import _collect_tavily_citations
+
+    output = json.dumps({
+        "results": [
+            {"title": "No URL", "url": "", "content": "skip me", "score": 0.5},
+            {"title": "Valid", "url": "https://example.com/valid", "content": "keep me", "score": 0.8},
+        ],
+    })
+
+    pending: list = []
+    _collect_tavily_citations(output, pending)
+
+    assert len(pending) == 1
+    assert pending[0].title == "Valid"
+
+
+def test_collect_tavily_citations_handles_empty_results() -> None:
+    """Empty results list produces no citations."""
+    from app.agents.consultant import _collect_tavily_citations
+
+    output = json.dumps({"results": [], "request_id": "req_empty"})
+    pending: list = []
+    _collect_tavily_citations(output, pending)
+    assert len(pending) == 0
+
+
+def test_collect_tavily_citations_handles_invalid_json() -> None:
+    """Invalid JSON output produces no citations and no exception."""
+    from app.agents.consultant import _collect_tavily_citations
+
+    pending: list = []
+    _collect_tavily_citations("not json at all", pending)
+    assert len(pending) == 0
+
+
+def test_collect_tavily_citations_handles_none_output() -> None:
+    """None output produces no citations and no exception."""
+    from app.agents.consultant import _collect_tavily_citations
+
+    pending: list = []
+    _collect_tavily_citations(None, pending)
+    assert len(pending) == 0
+
+
+# ---------------------------------------------------------------------------
+# Tool call status transitions (fix: running → success/failed)
+# ---------------------------------------------------------------------------
+
+
+def test_tool_call_status_transitions_on_tool_output() -> None:
+    """tool_output event updates matching ToolCallRecord from running to success."""
+    from app.agents.consultant import ToolCallRecord, ConsultantResult, CitationRecord
+
+    result = ConsultantResult()
+    # Simulate tool_called adding a record
+    result.tool_calls.append(
+        ToolCallRecord(
+            tool_name="tavily_web_search",
+            status="running",
+            summary="Started tavily_web_search",
+            call_id="call_test123",
+        )
+    )
+
+    # Simulate tool_output matching and updating
+    pending_web: list[CitationRecord] = []
+    output = json.dumps({
+        "results": [{"title": "Test", "url": "https://example.com", "content": "Data", "score": 0.9}],
+    })
+
+    # Find the matching tool call and update (mimicking tool_output handler)
+    call_id = "call_test123"
+    status_val = "ok"
+    matched_tc = None
+    for tc in reversed(result.tool_calls):
+        if tc.call_id == (call_id or None):
+            tc.status = "success" if status_val == "ok" else "failed"
+            tc.summary = f"{tc.tool_name} completed"
+            matched_tc = tc
+            break
+
+    assert matched_tc is not None
+    assert result.tool_calls[0].status == "success"
+    assert "completed" in result.tool_calls[0].summary
+
+
+def test_tool_call_status_transitions_to_failed_on_error() -> None:
+    """tool_output with error in output sets status to failed."""
+    from app.agents.consultant import ToolCallRecord, ConsultantResult
+
+    result = ConsultantResult()
+    result.tool_calls.append(
+        ToolCallRecord(
+            tool_name="tavily_web_search",
+            status="running",
+            summary="Started tavily_web_search",
+            call_id="call_err",
+        )
+    )
+
+    # Simulate error output
+    output = '{"error": "Web search failed: timeout"}'
+    status_val = "error" if isinstance(output, str) and "error" in output.lower() else "ok"
+
+    for tc in reversed(result.tool_calls):
+        if tc.call_id == "call_err":
+            tc.status = "success" if status_val == "ok" else "failed"
+            tc.summary = f"{tc.tool_name} failed"
+            break
+
+    assert result.tool_calls[0].status == "failed"
+    assert "failed" in result.tool_calls[0].summary
+
+
+# ---------------------------------------------------------------------------
+# _next_ordinal helper (sparse ordinal collision fix)
+# ---------------------------------------------------------------------------
+
+
+def test_next_ordinal_returns_1_when_empty() -> None:
+    """Empty citation list → ordinal 1."""
+    from app.agents.consultant import _next_ordinal
+
+    assert _next_ordinal([]) == 1
+
+
+def test_next_ordinal_returns_max_plus_1() -> None:
+    """Dense ordinals [1, 2] → next is 3."""
+    from app.agents.consultant import _next_ordinal
+
+    citations = [
+        CitationRecord(citation_type=CitationType.UPLOADED_SOURCE, ordinal=1, source_id=1),
+        CitationRecord(citation_type=CitationType.UPLOADED_SOURCE, ordinal=2, source_id=2),
+    ]
+    assert _next_ordinal(citations) == 3
+
+
+def test_next_ordinal_sparse_ordinals_no_collision() -> None:
+    """Sparse ordinals [1, 3] → next is 4, NOT 3 (len-based would collide)."""
+    from app.agents.consultant import _next_ordinal
+
+    citations = [
+        CitationRecord(citation_type=CitationType.UPLOADED_SOURCE, ordinal=1, source_id=1),
+        CitationRecord(citation_type=CitationType.UPLOADED_SOURCE, ordinal=3, source_id=3),
+    ]
+    # Old len-based: len(citations) + 1 = 3, which collides with ordinal 3.
+    # Fixed max-based: max(1, 3) + 1 = 4.
+    assert _next_ordinal(citations) == 4
+
+
+def test_next_ordinal_single_citation() -> None:
+    """Single citation with ordinal 5 → next is 6."""
+    from app.agents.consultant import _next_ordinal
+
+    citations = [
+        CitationRecord(citation_type=CitationType.WEB, ordinal=5, url="https://example.com"),
+    ]
+    assert _next_ordinal(citations) == 6

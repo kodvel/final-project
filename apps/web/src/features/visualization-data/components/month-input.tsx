@@ -5,7 +5,7 @@ export function MonthInput({ label, value, onChange }: { label: string; value: s
   const inputId = useId()
 
   return (
-    <div className="flex min-w-0 flex-col gap-1.5">
+    <div className="flex min-w-0 flex-col gap-1.5 w-fit">
       <label htmlFor={inputId} className="text-[11px] font-medium text-muted-foreground">
         {label}
       </label>
@@ -14,7 +14,7 @@ export function MonthInput({ label, value, onChange }: { label: string; value: s
         type="month"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full min-w-0 border-border bg-white shadow-sm transition placeholder:text-muted-foreground/60 focus-visible:ring-primary/20"
+        className="w-fit min-w-0 border-border bg-white shadow-sm transition placeholder:text-muted-foreground/60 focus-visible:ring-primary/20"
       />
     </div>
   )
