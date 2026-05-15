@@ -9,4 +9,4 @@ constraints:
   enforceLayerRelationships: false
 
 vcs:
-  defaultBranch: 'main'
+  defaultBranch: 'develop'

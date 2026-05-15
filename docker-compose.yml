@@ -1,0 +1,103 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+
+  web:
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile
+      args:
+        VITE_API_BASE_URL: https://api.skandareverest.tech
+    image: skandareverest/company-intelligence-copilot-web:latest
+    restart: unless-stopped
+    expose:
+      - "3000"
+    depends_on:
+      - api
+
+  migrate:
+    build: ./apps/api
+    image: skandareverest/company-intelligence-copilot-api:latest
+    command: alembic upgrade head
+    restart: "no"
+    env_file: ./apps/api/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    image: skandareverest/company-intelligence-copilot-api:latest
+    restart: unless-stopped
+    expose:
+      - "8000"
+    env_file: ./apps/api/.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CHROMA_PERSIST_DIRECTORY: /app/storage/chroma
+      CORS_ALLOWED_ORIGINS: '["https://skandareverest.tech"]'
+      RAG_ENABLE_BACKGROUND_PROCESSING: "true"
+    volumes:
+      - api_storage:/app/storage
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    image: skandareverest/company-intelligence-copilot-api:latest
+    restart: unless-stopped
+    command: celery -A app.jobs.celery_app worker --loglevel=info --concurrency=2
+    env_file: ./apps/api/.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CHROMA_PERSIST_DIRECTORY: /app/storage/chroma
+      RAG_ENABLE_BACKGROUND_PROCESSING: "true"
+    volumes:
+      - api_storage:/app/storage
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: ./apps/api/.env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  caddy_data:
+  caddy_config:
+  api_storage:
+  postgres_data:
+  redis_data:

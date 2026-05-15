@@ -7,7 +7,7 @@ from scalar_fastapi import get_scalar_api_reference
 from sqlmodel import Session
 
 from app.core.config import get_settings
-from app.db.session import engine, init_db
+from app.db.session import engine
 from app.routes import chat, decision_briefs, sources, visualizations, workspaces
 from app.services.workspaces import seed_default_workspaces
 
@@ -34,7 +34,6 @@ async def lifespan(app: FastAPI):
         langfuse_client = get_client()
         OpenAIAgentsInstrumentor().instrument()
 
-    init_db()
     with Session(engine) as session:
         seed_default_workspaces(session)
     yield
