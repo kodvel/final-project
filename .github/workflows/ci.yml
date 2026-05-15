@@ -43,5 +43,5 @@ jobs:
         working-directory: apps/api
         run: uv sync --frozen
 
-      - name: Run checks
-        run: pnpm check
+      - name: Run tests & build
+        run: pnpm test && pnpm build
