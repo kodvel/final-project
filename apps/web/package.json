@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite dev --host 0.0.0.0",
     "build": "vite build",
-    "start": "node dist/server/server.js",
+    "start": "node server-node.mjs",
     "test": "vitest run",
     "lint": "biome check . && tsc -p tsconfig.json --noEmit",
     "format": "biome format --write ."
