@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlmodel import Session
+from sqlalchemy import desc
+from sqlmodel import Session, select
 
 from app.db.session import get_session
 from app.models.decision_brief import DecisionBrief
+from app.models.enums import DecisionApprovalStatus
 from app.schemas.decision_brief import DecisionBriefRead, DecisionBriefStatusUpdate
 from app.services import decision_briefs as decision_brief_service
 
@@ -14,6 +16,26 @@ def _load_brief(session: Session, brief_id: int, workspace_id: int) -> DecisionB
     if brief is None or brief.workspace_id != workspace_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Decision Brief not found")
     return brief
+
+
+@router.get("", response_model=list[DecisionBriefRead])
+def list_decision_briefs(
+    workspace_id: int = Query(..., description="Workspace ID from client-selected active workspace"),
+    approval_status: DecisionApprovalStatus | None = Query(
+        None, description="Optional approval status filter"
+    ),
+    session: Session = Depends(get_session),
+) -> list[DecisionBriefRead]:
+    """List Decision Briefs scoped to the workspace, newest first."""
+    statement = (
+        select(DecisionBrief)
+        .where(DecisionBrief.workspace_id == workspace_id)
+        .order_by(desc(DecisionBrief.created_at), desc(DecisionBrief.sequence_number))
+    )
+    if approval_status is not None:
+        statement = statement.where(DecisionBrief.approval_status == approval_status)
+    rows = session.exec(statement).all()
+    return [DecisionBriefRead.model_validate(row) for row in rows]
 
 
 @router.get("/{brief_id}", response_model=DecisionBriefRead)

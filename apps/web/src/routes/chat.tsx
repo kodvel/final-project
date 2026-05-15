@@ -345,10 +345,6 @@ export function ChatPage() {
     setThinkingSessionKey(null)
   }
 
-  function scrollToMessage(messageId: number) {
-    document.getElementById(`message-${messageId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }
-
   return (
     <main className="flex h-full min-h-0 flex-col overflow-hidden bg-card text-foreground">
       <div
@@ -387,7 +383,7 @@ export function ChatPage() {
                 />
               ) : sessionsError ? (
                 <EmptyChatState title="Could not load Chat" description="Check that the API is running, then try again." />
-              ) : isLoadingSessions || isLoadingSession ? (
+              ) : isLoadingSessions || (isLoadingSession && displayMessages.length === 0) ? (
                 <EmptyChatState title="Loading Chat" description="Fetching persisted Chat Sessions and messages." />
               ) : displayMessages.length === 0 ? (
                 <EmptyChatState title="Ask a strategic question" description="Messages will be persisted to this Workspace-scoped Chat Session." />
@@ -485,8 +481,6 @@ export function ChatPage() {
             }}
             citations={activeSession?.citations ?? []}
             toolCalls={activeSession?.toolCalls ?? []}
-            messages={activeSession?.messages ?? []}
-            onScrollToMessage={scrollToMessage}
           />
         )}
       </div>

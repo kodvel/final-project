@@ -20,6 +20,16 @@ function briefFromApi(brief: DecisionBriefApi): DecisionBrief {
   }
 }
 
+export async function listDecisionBriefs(
+  workspaceId: number,
+  approvalStatus?: 'draft' | 'reviewed' | 'approved' | 'rejected',
+): Promise<DecisionBrief[]> {
+  const params = new URLSearchParams({ workspace_id: String(workspaceId) })
+  if (approvalStatus) params.set('approval_status', approvalStatus)
+  const rows = await apiFetch<DecisionBriefApi[]>(`/decision-briefs?${params.toString()}`)
+  return rows.map(briefFromApi)
+}
+
 export async function getDecisionBrief(briefId: number, workspaceId: number): Promise<DecisionBrief> {
   return briefFromApi(await apiFetch<DecisionBriefApi>(`/decision-briefs/${briefId}?workspace_id=${workspaceId}`))
 }

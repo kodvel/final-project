@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as VisualizationDataRouteImport } from './routes/visualization-data'
 import { Route as SourceDataRouteImport } from './routes/source-data'
+import { Route as DecisionBriefsRouteImport } from './routes/decision-briefs'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as IndexRouteImport } from './routes/index'
 
@@ -22,6 +23,11 @@ const VisualizationDataRoute = VisualizationDataRouteImport.update({
 const SourceDataRoute = SourceDataRouteImport.update({
   id: '/source-data',
   path: '/source-data',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DecisionBriefsRoute = DecisionBriefsRouteImport.update({
+  id: '/decision-briefs',
+  path: '/decision-briefs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatRoute = ChatRouteImport.update({
@@ -38,12 +44,14 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/chat': typeof ChatRoute
+  '/decision-briefs': typeof DecisionBriefsRoute
   '/source-data': typeof SourceDataRoute
   '/visualization-data': typeof VisualizationDataRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/chat': typeof ChatRoute
+  '/decision-briefs': typeof DecisionBriefsRoute
   '/source-data': typeof SourceDataRoute
   '/visualization-data': typeof VisualizationDataRoute
 }
@@ -51,20 +59,38 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/chat': typeof ChatRoute
+  '/decision-briefs': typeof DecisionBriefsRoute
   '/source-data': typeof SourceDataRoute
   '/visualization-data': typeof VisualizationDataRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/chat' | '/source-data' | '/visualization-data'
+  fullPaths:
+    | '/'
+    | '/chat'
+    | '/decision-briefs'
+    | '/source-data'
+    | '/visualization-data'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/chat' | '/source-data' | '/visualization-data'
-  id: '__root__' | '/' | '/chat' | '/source-data' | '/visualization-data'
+  to:
+    | '/'
+    | '/chat'
+    | '/decision-briefs'
+    | '/source-data'
+    | '/visualization-data'
+  id:
+    | '__root__'
+    | '/'
+    | '/chat'
+    | '/decision-briefs'
+    | '/source-data'
+    | '/visualization-data'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ChatRoute: typeof ChatRoute
+  DecisionBriefsRoute: typeof DecisionBriefsRoute
   SourceDataRoute: typeof SourceDataRoute
   VisualizationDataRoute: typeof VisualizationDataRoute
 }
@@ -83,6 +109,13 @@ declare module '@tanstack/react-router' {
       path: '/source-data'
       fullPath: '/source-data'
       preLoaderRoute: typeof SourceDataRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/decision-briefs': {
+      id: '/decision-briefs'
+      path: '/decision-briefs'
+      fullPath: '/decision-briefs'
+      preLoaderRoute: typeof DecisionBriefsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/chat': {
@@ -105,6 +138,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ChatRoute: ChatRoute,
+  DecisionBriefsRoute: DecisionBriefsRoute,
   SourceDataRoute: SourceDataRoute,
   VisualizationDataRoute: VisualizationDataRoute,
 }

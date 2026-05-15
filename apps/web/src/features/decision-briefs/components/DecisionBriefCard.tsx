@@ -1,11 +1,14 @@
-import { CheckCircle2, ClipboardList, Lock, ShieldAlert, XCircle } from 'lucide-react'
+import { CheckCircle2, ClipboardCheck, ClipboardList, Eye, FilePen, FileSpreadsheet, FileText, Globe, Lock, ShieldAlert, XCircle } from 'lucide-react'
 
-import type { DecisionApprovalStatus, DecisionBrief, DecisionRecommendationStatus } from '../../../types/decision-brief'
+import { useChatSession } from '../../chat/hooks'
+import type { MessageSourceCitation } from '../../../types/chat'
+import type { DecisionApprovalStatus, DecisionRecommendationStatus } from '../../../types/decision-brief'
 import { useDecisionBrief, useUpdateDecisionBriefStatus } from '../hooks'
 
 type DecisionBriefCardProps = {
   briefId: number
   workspaceId: number
+  onActionComplete?: () => void
 }
 
 const RECOMMENDATION_LABELS: Record<DecisionRecommendationStatus, string> = {
@@ -21,9 +24,10 @@ const APPROVAL_LABELS: Record<DecisionApprovalStatus, string> = {
   rejected: 'Rejected',
 }
 
-export function DecisionBriefCard({ briefId, workspaceId }: DecisionBriefCardProps) {
+export function DecisionBriefCard({ briefId, workspaceId, onActionComplete }: DecisionBriefCardProps) {
   const { data: brief, isLoading, error } = useDecisionBrief(briefId, workspaceId)
   const { mutate: updateStatus, isPending } = useUpdateDecisionBriefStatus()
+  const { data: session } = useChatSession(brief?.chatSessionId ?? null, workspaceId)
 
   if (isLoading) {
     return <BriefCardShell>Loading Decision Brief…</BriefCardShell>
@@ -35,9 +39,21 @@ export function DecisionBriefCard({ briefId, workspaceId }: DecisionBriefCardPro
   const content = brief.contentJson
   const locked = brief.approvalStatus === 'approved' || brief.approvalStatus === 'rejected'
 
+  // Resolve each source_evidence ordinal to its actual citation from the
+  // originating chat session.
+  const citationByOrdinal = new Map<number, MessageSourceCitation>()
+  for (const citation of session?.citations ?? []) {
+    if (citation.ordinal != null && !citationByOrdinal.has(citation.ordinal)) {
+      citationByOrdinal.set(citation.ordinal, citation)
+    }
+  }
+
   function transitionTo(approvalStatus: DecisionApprovalStatus) {
     if (!brief || isPending) return
-    updateStatus({ briefId: brief.id, workspaceId, approvalStatus })
+    updateStatus(
+      { briefId: brief.id, workspaceId, approvalStatus },
+      { onSuccess: () => onActionComplete?.() },
+    )
   }
 
   return (
@@ -51,18 +67,19 @@ export function DecisionBriefCard({ briefId, workspaceId }: DecisionBriefCardPro
           <h3 className="font-heading text-lg font-semibold text-foreground">{brief.title}</h3>
           {brief.objective && <p className="text-sm leading-6 text-muted-foreground">{brief.objective}</p>}
         </div>
-        <div className="flex flex-col items-end gap-1.5">
-          <RecommendationBadge status={brief.recommendationStatus} />
-          <ApprovalBadge status={brief.approvalStatus} />
+        <div className="flex flex-wrap items-start gap-x-5 gap-y-2">
+          <BadgeWithLabel label="Recommendation">
+            <RecommendationBadge status={brief.recommendationStatus} />
+          </BadgeWithLabel>
+          <BadgeWithLabel label="Approval">
+            <ApprovalBadge status={brief.approvalStatus} />
+          </BadgeWithLabel>
         </div>
       </header>
 
       <div className="space-y-4 text-sm leading-7 text-foreground">
         <BriefSection title="Context / Problem" body={content.context_problem} />
-        <BriefBulletSection
-          title="Source Evidence"
-          items={content.source_evidence.map((ref) => `[${ref.ordinal}]${ref.note ? ` — ${ref.note}` : ''}`)}
-        />
+        <EvidenceSection refs={content.source_evidence} citationByOrdinal={citationByOrdinal} />
         <BriefSection title="Strategic Interpretation" body={content.strategic_interpretation} />
         <BriefSection title="Recommendation" body={content.recommendation} />
         <BriefBulletSection title="Alternatives Considered" items={content.alternatives_considered} />
@@ -110,6 +127,87 @@ function BriefSection({ title, body }: { title: string; body: string | undefined
   )
 }
 
+function EvidenceSection({
+  refs,
+  citationByOrdinal,
+}: {
+  refs: { ordinal: number; note?: string | null }[]
+  citationByOrdinal: Map<number, MessageSourceCitation>
+}) {
+  if (!refs || refs.length === 0) return null
+  return (
+    <div className="space-y-1.5">
+      <h4 className="font-mono text-[11px] uppercase tracking-[0.18em] text-text-hint">Source Evidence</h4>
+      <ul className="space-y-2">
+        {refs.map((ref, idx) => {
+          const citation = citationByOrdinal.get(ref.ordinal)
+          return (
+            <li key={`${ref.ordinal}-${idx}`} className="rounded-lg border border-border/60 bg-surface-subtle/50 p-3">
+              <EvidenceRefRow ordinal={ref.ordinal} note={ref.note ?? null} citation={citation} />
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+function EvidenceRefRow({
+  ordinal,
+  note,
+  citation,
+}: {
+  ordinal: number
+  note: string | null
+  citation: MessageSourceCitation | undefined
+}) {
+  if (!citation) {
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="rounded-md bg-chip-gray px-1.5 py-0.5 font-mono text-[11px] text-text-hint">[{ordinal}]</span>
+          <span className="text-xs text-text-hint italic">Citation not found in this session.</span>
+        </div>
+        {note && <p className="pl-2 text-xs leading-5 text-muted-foreground">{note}</p>}
+      </div>
+    )
+  }
+
+  const isWeb = citation.citationType === 'web'
+  const isPdf = !isWeb && (citation.title?.toLowerCase().endsWith('.pdf') ?? false)
+  const Icon = isWeb ? Globe : isPdf ? FileText : FileSpreadsheet
+  const iconTone = isWeb ? 'text-primary' : isPdf ? 'text-status-failed-foreground' : 'text-status-ready-foreground'
+  const title = isWeb
+    ? citation.title || citation.domain || 'Web Source'
+    : citation.title || `Source #${citation.sourceId ?? 'unknown'}`
+  const quote = citation.quote || citation.snippet
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        <span className="rounded-md bg-chip-gray px-1.5 py-0.5 font-mono text-[11px] text-text-hint">[{ordinal}]</span>
+        <Icon className={`h-3.5 w-3.5 shrink-0 ${iconTone}`} />
+        <span className="truncate text-xs font-semibold text-foreground">{title}</span>
+        {citation.pageNumber != null && (
+          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-hint">p.{citation.pageNumber}</span>
+        )}
+      </div>
+      {quote && <blockquote className="border-l border-border/60 pl-3 text-xs italic leading-5 text-muted-foreground">"{quote}"</blockquote>}
+      {note && <p className="text-xs leading-5 text-muted-foreground">{note}</p>}
+      {citation.url && (
+        <a
+          href={citation.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block truncate font-mono text-[11px] text-primary transition-colors duration-200 hover:underline"
+        >
+          {citation.url}
+        </a>
+      )}
+    </div>
+  )
+}
+
 function BriefBulletSection({ title, items }: { title: string; items: string[] }) {
   if (!items || items.length === 0) return null
   return (
@@ -124,16 +222,29 @@ function BriefBulletSection({ title, items }: { title: string; items: string[] }
   )
 }
 
+function BadgeWithLabel({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-text-hint">{label}</span>
+      {children}
+    </div>
+  )
+}
+
+// Shared shape so the two badges line up regardless of label length and visual style.
+const BADGE_BASE = 'inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold tracking-wide'
+
 function RecommendationBadge({ status }: { status: DecisionRecommendationStatus }) {
   const Icon = status === 'go' ? CheckCircle2 : status === 'no_go' ? XCircle : ShieldAlert
+  // Solid filled — recommendation is the headline outcome.
   const tone =
     status === 'go'
-      ? 'border-status-ready/40 bg-status-ready/10 text-status-ready-foreground'
+      ? 'border-status-ready bg-status-ready text-status-ready-foreground shadow-sm'
       : status === 'no_go'
-        ? 'border-status-failed/40 bg-status-failed/10 text-status-failed-foreground'
-        : 'border-status-processing/40 bg-status-processing/10 text-status-processing-foreground'
+        ? 'border-status-failed bg-status-failed text-status-failed-foreground shadow-sm'
+        : 'border-status-processing bg-status-processing text-status-processing-foreground shadow-sm'
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-[11px] uppercase tracking-[0.12em] ${tone}`}>
+    <span className={`${BADGE_BASE} ${tone}`}>
       <Icon className="h-3.5 w-3.5" />
       {RECOMMENDATION_LABELS[status]}
     </span>
@@ -141,17 +252,29 @@ function RecommendationBadge({ status }: { status: DecisionRecommendationStatus 
 }
 
 function ApprovalBadge({ status }: { status: DecisionApprovalStatus }) {
+  // Outlined — secondary visual weight against the recommendation.
+  const Icon =
+    status === 'approved'
+      ? ClipboardCheck
+      : status === 'rejected'
+        ? XCircle
+        : status === 'reviewed'
+          ? Eye
+          : FilePen
   const tone =
     status === 'approved'
-      ? 'border-status-ready/40 bg-status-ready/10 text-status-ready-foreground'
+      ? 'border-status-ready/50 bg-status-ready/10 text-status-ready-foreground'
       : status === 'rejected'
-        ? 'border-status-failed/40 bg-status-failed/10 text-status-failed-foreground'
+        ? 'border-status-failed/50 bg-status-failed/10 text-status-failed-foreground'
         : status === 'reviewed'
-          ? 'border-primary/40 bg-primary/10 text-primary'
+          ? 'border-primary/50 bg-primary/10 text-primary'
           : 'border-border bg-surface-subtle text-text-hint'
+  const showLockHint = status === 'approved' || status === 'rejected'
   return (
-    <span className={`inline-flex items-center rounded-full border px-3 py-1 font-mono text-[11px] uppercase tracking-[0.12em] ${tone}`}>
+    <span className={`${BADGE_BASE} ${tone}`}>
+      <Icon className="h-3.5 w-3.5" />
       {APPROVAL_LABELS[status]}
+      {showLockHint && <Lock className="h-3 w-3 opacity-70" />}
     </span>
   )
 }

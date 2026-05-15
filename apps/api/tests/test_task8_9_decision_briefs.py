@@ -286,6 +286,53 @@ def test_status_update_wrong_workspace_returns_404(client) -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_list_decision_briefs_workspace_scoped(client) -> None:
+    """GET /decision-briefs lists only the active workspace's briefs."""
+    ws_a = _create_workspace(client, "WS A")
+    ws_b = _create_workspace(client, "WS B")
+    _create_brief(client, ws_a["id"])
+    _create_brief(client, ws_b["id"])
+
+    response = client.get(f"/decision-briefs?workspace_id={ws_a['id']}")
+    assert response.status_code == 200
+    rows = response.json()
+    assert len(rows) == 1
+    assert rows[0]["workspace_id"] == ws_a["id"]
+
+
+def test_list_decision_briefs_filters_by_approval_status(client) -> None:
+    """approval_status query filters the result set."""
+    workspace = _create_workspace(client)
+    draft = _create_brief(client, workspace["id"])
+    approved = _create_brief(client, workspace["id"])
+    client.patch(
+        f"/decision-briefs/{approved['id']}/status",
+        json={"workspace_id": workspace["id"], "approval_status": "approved"},
+    )
+
+    all_rows = client.get(f"/decision-briefs?workspace_id={workspace['id']}").json()
+    assert len(all_rows) == 2
+
+    approved_rows = client.get(
+        f"/decision-briefs?workspace_id={workspace['id']}&approval_status=approved"
+    ).json()
+    assert len(approved_rows) == 1
+    assert approved_rows[0]["id"] == approved["id"]
+
+    draft_rows = client.get(
+        f"/decision-briefs?workspace_id={workspace['id']}&approval_status=draft"
+    ).json()
+    assert len(draft_rows) == 1
+    assert draft_rows[0]["id"] == draft["id"]
+
+
+def test_list_decision_briefs_empty_workspace_returns_empty(client) -> None:
+    workspace = _create_workspace(client)
+    response = client.get(f"/decision-briefs?workspace_id={workspace['id']}")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
 def test_index_decision_brief_upserts_sections(monkeypatch) -> None:
     """``index_decision_brief`` writes one Chroma doc per populated section."""
     upserts: list[dict] = []

@@ -45,8 +45,8 @@ class EvidenceItem:
     """One citation-ready chunk of evidence."""
 
     citation_id: str
-    source_id: int
-    artifact_id: int
+    source_id: int | None
+    artifact_id: int | None
     chunk_id: str
     source_title: str
     file_type: str
@@ -340,8 +340,8 @@ def retrieve_company_knowledge(
             seen_ids.add(vector_id)
             raw_items.append(EvidenceItem(
                 citation_id=vector_id,
-                source_id=-int(brief_id),  # negative sentinel to avoid colliding with real source IDs
-                artifact_id=0,
+                source_id=None,
+                artifact_id=None,
                 chunk_id=str(meta.get("document_section") or "section"),
                 source_title=str(meta.get("source_title") or brief.title),
                 file_type="decision_brief",

@@ -1,5 +1,5 @@
 import { Link, useLocation } from '@tanstack/react-router'
-import { BarChart3, ChevronLeft, ChevronsUpDown, FolderOpen, MessageSquare, Plus } from 'lucide-react'
+import { BarChart3, ChevronLeft, ChevronsUpDown, ClipboardList, FolderOpen, MessageSquare, Plus } from 'lucide-react'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useCreateWorkspace, useWorkspaces } from '../../features/workspaces/hooks'
@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { to: '/chat', label: 'Chat', icon: MessageSquare },
   { to: '/visualization-data', label: 'Visualization Data', icon: BarChart3 },
   { to: '/source-data', label: 'Source Data', icon: FolderOpen },
+  { to: '/decision-briefs', label: 'Decision Briefs', icon: ClipboardList },
 ] as const
 
 export function Sidebar() {

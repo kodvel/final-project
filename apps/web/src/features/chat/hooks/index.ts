@@ -3,10 +3,10 @@ import { useCallback, useRef, useState } from 'react'
 import type { StreamChatMessageInput, StreamHandlers } from '../../../types/chat'
 import { getChatSession, listChatSessions, streamChatMessage } from '../api'
 
-export function useChatSessions(workspaceId: number | null) {
+export function useChatSessions(workspaceId: number | null, limit = 50) {
   return useQuery({
-    queryKey: ['chat-sessions', workspaceId],
-    queryFn: () => listChatSessions(workspaceId ?? 0),
+    queryKey: ['chat-sessions', workspaceId, limit],
+    queryFn: () => listChatSessions(workspaceId ?? 0, limit),
     enabled: typeof workspaceId === 'number' && workspaceId > 0,
   })
 }

@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Check, ChevronLeft, ChevronRight, ChevronsUpDown, FileSpreadsheet, FileText, Plus, RefreshCw, Search, Trash2, Upload } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useId, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { Button } from '../components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
@@ -32,7 +32,34 @@ function SourceDataPage() {
   const retrySource = useRetrySource()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
-  // Derive stats from source data if available, otherwise mock
+  // Filter state
+  const [search, setSearch] = useState('')
+  const [teamFilter, setTeamFilter] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+
+  const filteredSources = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    return sources.filter((source) => {
+      if (term && !source.title.toLowerCase().includes(term)) return false
+      if (teamFilter && source.teamLabel !== teamFilter) return false
+      if (categoryFilter && !source.categoryLabels.includes(categoryFilter as CategoryLabel)) return false
+      if (typeFilter && source.fileType !== typeFilter) return false
+      if (statusFilter && source.processingStatus !== statusFilter) return false
+      return true
+    })
+  }, [sources, search, teamFilter, categoryFilter, typeFilter, statusFilter])
+
+  function clearFilters() {
+    setSearch('')
+    setTeamFilter('')
+    setCategoryFilter('')
+    setTypeFilter('')
+    setStatusFilter('')
+  }
+
+  // Workspace-level stats stay unchanged by filters
   const totalSources = sources.length
   const readyCount = sources.filter((s) => s.processingStatus === 'ready').length
   const processingCount = sources.filter((s) => s.processingStatus === 'processing').length
@@ -43,6 +70,8 @@ function SourceDataPage() {
   const displayReady = readyCount > 0 ? readyCount : 0
   const displayProcessing = processingCount > 0 ? processingCount : 0
   const displayFailed = failedCount > 0 ? failedCount : 0
+
+  const hasActiveFilter = Boolean(search || teamFilter || categoryFilter || typeFilter || statusFilter)
 
   return (
     <div className="h-full overflow-auto p-8">
@@ -84,20 +113,50 @@ function SourceDataPage() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-hint" />
               <input
                 type="text"
-                placeholder="Search sources..."
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search by title..."
                 className="w-full rounded-lg border border-border bg-background py-2 pl-10 pr-4 text-sm text-foreground placeholder-text-hint focus:border-primary focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
-            <FilterDropdown label="Team" options={TEAM_LABEL_OPTIONS.map((option) => option.label)} />
-            <FilterDropdown label="Category" options={CATEGORY_LABEL_OPTIONS.map((option) => option.label)} />
-            <FilterDropdown label="Period" options={['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026']} />
-            <FilterDropdown label="Type" options={SOURCE_FILE_TYPE_OPTIONS.map((option) => option.label)} />
-            <FilterDropdown label="Status" options={PROCESSING_STATUS_OPTIONS.map((option) => option.label)} />
+            <FilterDropdown
+              label="All Teams"
+              value={teamFilter}
+              onChange={setTeamFilter}
+              options={TEAM_LABEL_OPTIONS}
+            />
+            <FilterDropdown
+              label="All Categories"
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+              options={CATEGORY_LABEL_OPTIONS}
+            />
+            <FilterDropdown
+              label="All Types"
+              value={typeFilter}
+              onChange={setTypeFilter}
+              options={SOURCE_FILE_TYPE_OPTIONS}
+            />
+            <FilterDropdown
+              label="All Statuses"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={PROCESSING_STATUS_OPTIONS}
+            />
+            {hasActiveFilter && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-muted-foreground transition hover:bg-surface-subtle hover:text-foreground"
+              >
+                Clear
+              </button>
+            )}
           </div>
 
           {/* Table */}
           <SourceTable
-            sources={sources}
+            sources={filteredSources}
             onDelete={(sourceId) => {
               if (window.confirm('Delete this Source? Past citations remain auditable.')) deleteSource.mutate(sourceId)
             }}
@@ -107,7 +166,8 @@ function SourceDataPage() {
           {/* Pagination */}
           <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
             <span>
-              Showing 1 to {sources.length} of {displayTotal.toLocaleString()} sources
+              Showing {filteredSources.length} of {sources.length} source{sources.length === 1 ? '' : 's'}
+              {hasActiveFilter ? ' (filtered)' : ''}
             </span>
             <div className="flex items-center gap-2">
               <button
@@ -158,19 +218,28 @@ function StatCard({ number, label, accent }: { number: string; label: string; ac
   )
 }
 
-function FilterDropdown({ label, options }: { label: string; options: string[] }) {
-  const [selected, setSelected] = useState<string>('')
+function FilterDropdown({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: string
+  onChange: (next: string) => void
+  options: ReadonlyArray<{ value: string; label: string }>
+}) {
   return (
     <div className="relative">
       <select
-        value={selected}
-        onChange={(e) => setSelected(e.target.value)}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
         className="appearance-none rounded-lg border border-border bg-background py-2 pl-3 pr-8 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-ring"
       >
         <option value="">{label}</option>
-        {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
           </option>
         ))}
       </select>
