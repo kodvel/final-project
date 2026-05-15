@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite dev --host 0.0.0.0",
     "build": "vite build",
-    "start": "node dist/server/server.js",
+    "start": "node server-node.mjs",
     "test": "vitest run",
     "lint": "biome check . && tsc -p tsconfig.json --noEmit",
     "format": "biome format --write ."
@@ -22,6 +22,7 @@
     "radix-ui": "1.4.3",
     "react": "19.2.5",
     "react-dom": "19.2.5",
+    "srvx": "0.11.15",
     "tailwind-merge": "3.5.0"
   },
   "devDependencies": {
