@@ -59,7 +59,10 @@ export function DecisionBriefCard({ briefId, workspaceId }: DecisionBriefCardPro
 
       <div className="space-y-4 text-sm leading-7 text-foreground">
         <BriefSection title="Context / Problem" body={content.context_problem} />
-        <BriefBulletSection title="Source Evidence" items={content.source_evidence.map((ref) => `[${ref.ordinal}]${ref.note ? ` — ${ref.note}` : ''}`)} />
+        <BriefBulletSection
+          title="Source Evidence"
+          items={content.source_evidence.map((ref) => `[${ref.ordinal}]${ref.note ? ` — ${ref.note}` : ''}`)}
+        />
         <BriefSection title="Strategic Interpretation" body={content.strategic_interpretation} />
         <BriefSection title="Recommendation" body={content.recommendation} />
         <BriefBulletSection title="Alternatives Considered" items={content.alternatives_considered} />
@@ -94,9 +97,7 @@ export function DecisionBriefCard({ briefId, workspaceId }: DecisionBriefCardPro
 }
 
 function BriefCardShell({ children }: { children: React.ReactNode }) {
-  return (
-    <article className="rounded-2xl border border-dashed border-border bg-surface-subtle p-6 text-sm text-muted-foreground">{children}</article>
-  )
+  return <article className="rounded-2xl border border-dashed border-border bg-surface-subtle p-6 text-sm text-muted-foreground">{children}</article>
 }
 
 function BriefSection({ title, body }: { title: string; body: string | undefined }) {

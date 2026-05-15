@@ -20,6 +20,8 @@ depends_on: str | Sequence[str] | None = None
 def _has_column(table_name: str, column_name: str) -> bool:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
+    if not inspector.has_table(table_name):
+        return True
     return any(column["name"] == column_name for column in inspector.get_columns(table_name))
 
 

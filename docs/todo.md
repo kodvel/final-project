@@ -719,7 +719,7 @@ company_knowledge
 
 ### Product flow
 
-User opens **Visualization Data**, chooses a month range, and sees a cached intelligence view composed from all ready Sources that overlap that period.
+User opens **Visualization Data**, chooses a month range, and sees a cached cross-artifact intelligence board composed from all ready Sources that overlap that period.
 
 ### Backend work
 
@@ -740,14 +740,21 @@ User opens **Visualization Data**, chooses a month range, and sees a cached inte
 - Implement `POST /visualizations/refresh` for the same scope.
 - Compose snapshots from ready, non-deleted, overlapping Sources.
 - Load `source_summary` and `source_insight`; use `source_content` only for evidence references when needed.
+- Build a compact artifact payload from Source metadata, summaries, insights, and bounded content references.
+- Use `extract_visualization_snapshot()` for LLM cross-artifact synthesis when `RAG_OPENAI_API_KEY` is configured.
+- Validate LLM output: empty output or uncited non-gap claims must fail composition and trigger fallback.
+- Keep deterministic fallback for missing LLM config, invalid LLM output, or LLM runtime failure.
 - Build sections:
   - coverage overview
+  - executive summary
+  - cross-source patterns
   - source cards
   - key findings
   - risks and assumptions
   - opportunities
   - gaps
-- Return cached snapshot if valid; regenerate lazily when missing or stale.
+- Store `_composition_mode` and `_fingerprint` in `content_json`.
+- Return cached snapshot if valid; regenerate lazily when missing or stale by comparing current Source/Artifact fingerprint with cached `_fingerprint`.
 - Treat `visualization_snapshot` as derived cache, not source of truth.
 
 ### Frontend work
@@ -756,6 +763,7 @@ User opens **Visualization Data**, chooses a month range, and sees a cached inte
 - Use month-level period controls only.
 - Do not add team, category, or file type filters to Visualization Data.
 - Show teams and categories as grouping/context inside the snapshot.
+- Render executive summary and cross-source patterns above supporting Source cards.
 - Add a Refresh action that calls the refresh endpoint.
 
 ### Tests
@@ -764,6 +772,8 @@ User opens **Visualization Data**, chooses a month range, and sees a cached inte
 - Backend test: snapshot excludes deleted, processing, and failed Sources.
 - Backend test: stale snapshot regenerates after Source Artifact update.
 - Backend test: refresh endpoint forces regeneration.
+- Backend test: LLM snapshot composition rejects uncited claims and falls back deterministically.
+- Backend test: `content_json` includes `_composition_mode` and `_fingerprint`.
 - Frontend test: Visualization Data renders snapshot sections.
 
 ### Acceptance criteria
@@ -772,6 +782,9 @@ User opens **Visualization Data**, chooses a month range, and sees a cached inte
 - [x] Snapshot is cached by `workspace_id + period_start_month + period_end_month`.
 - [x] Snapshot can be regenerated from Source Artifacts.
 - [x] Snapshot items include evidence references where they make claims.
+- [x] Snapshot supports LLM cross-artifact composition with deterministic fallback.
+- [x] Snapshot regenerates on read when Source/Artifact fingerprint changes.
+- [x] Snapshot exposes executive summary and cross-source patterns.
 
 ---
 
@@ -1303,7 +1316,7 @@ Notes:
 
 ## Recommended Implementation Order
 
-Completed foundation and migration work: Task 0, Task 1, Task 2, Task 3, Task 4 indexing + retrieval facade, Task 4A, Task 5, Task 6, Task 8, Task 9, Task 10 baseline alignment, and Task 12 (Langfuse).
+Completed foundation and migration work: Task 0, Task 1, Task 2, Task 3, Task 4 indexing, Task 4A, Task 5, and Task 10 baseline alignment. Task 4A now includes LLM cross-artifact composition, deterministic fallback, and fingerprint-based stale-on-read.
 
 Remaining work:
 

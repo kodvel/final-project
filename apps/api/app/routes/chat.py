@@ -59,17 +59,22 @@ def get_chat_session(
     citations = chat_service.list_citations_for_session(session, session_id)
     tool_calls = chat_service.list_tool_calls_for_session(session, session_id)
 
-    # Map chat_message_id -> decision_brief_id so the frontend can render brief cards.
+    # Map chat_message_id -> (decision_brief_id, title) so the frontend can render brief cards.
     briefs = session.exec(
         select(DecisionBrief).where(DecisionBrief.chat_session_id == session_id)
     ).all()
-    brief_id_by_message: dict[int, int] = {b.chat_message_id: b.id for b in briefs}
+    brief_info_by_message: dict[int, tuple[int, str]] = {}
+    for b in briefs:
+        if b.id is not None:
+            brief_info_by_message[b.chat_message_id] = (b.id, b.title)
 
     message_reads: list[ChatMessageRead] = []
     for message in chat_service.list_messages(session, session_id):
         read = ChatMessageRead.model_validate(message)
-        if message.id in brief_id_by_message:
-            read.decision_brief_id = brief_id_by_message[message.id]
+        if message.id in brief_info_by_message:
+            brief_id, brief_title = brief_info_by_message[message.id]
+            read.decision_brief_id = brief_id
+            read.decision_brief_title = brief_title
         message_reads.append(read)
 
     return ChatSessionDetail(

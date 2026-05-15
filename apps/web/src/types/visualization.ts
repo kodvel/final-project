@@ -32,8 +32,9 @@ export type VisualizationSnapshotListItem = {
   text?: string
   detail?: string
   description?: string
-  kind?: 'finding' | 'risk' | 'assumption' | 'opportunity' | 'gap'
-  confidence?: number
+  kind?: 'finding' | 'risk' | 'assumption' | 'opportunity' | 'gap' | 'pattern'
+  confidence?: number | 'high' | 'medium' | 'low' | string
+  theme?: string | null
   evidenceRefs?: VisualizationEvidenceRef[]
 }
 
@@ -43,6 +44,9 @@ export type VisualizationRiskAssumptionItem = VisualizationSnapshotListItem & {
 
 export type VisualizationSnapshotContent = {
   coverage: VisualizationCoverageSection
+  executive_summary?: string
+  confidence_assessment?: string
+  cross_source_patterns?: VisualizationSnapshotListItem[]
   source_cards: VisualizationSourceCard[]
   key_findings: VisualizationSnapshotListItem[]
   risks_assumptions: VisualizationRiskAssumptionItem[]

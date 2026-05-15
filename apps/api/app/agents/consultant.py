@@ -28,6 +28,23 @@ from app.services.context_builder import ContextWindow
 logger = logging.getLogger(__name__)
 
 
+def _safe_get(obj: Any, key: str, default: Any = None) -> Any:
+    """Get value from dict (.get) or object (getattr), handling both cases."""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+def _next_ordinal(citations: list[CitationRecord]) -> int:
+    """Return the next available ordinal: max existing ordinal + 1, or 1 if empty.
+
+    Avoids collisions when ordinals are sparse (e.g. [1, 3] → 4).
+    """
+    if not citations:
+        return 1
+    return max(c.ordinal for c in citations) + 1
+
+
 # ---------------------------------------------------------------------------
 # Data types for consultant run results
 # ---------------------------------------------------------------------------
@@ -507,6 +524,7 @@ async def run_consultant_stream(
     settings = get_settings()
     current_message = context.current_user_message or ""
     result = ConsultantResult()
+    pending_web_citations: list[CitationRecord] = []
 
     # --- Build evidence context string ---
     evidence_text = ""
@@ -604,8 +622,8 @@ async def run_consultant_stream(
 
                     if isinstance(event.item, ToolCallItem):
                         raw = event.item.raw_item
-                        tool_name = getattr(raw, "name", "unknown")
-                        call_id = getattr(raw, "call_id", "")
+                        tool_name = _safe_get(raw, "name", "unknown")
+                        call_id = _safe_get(raw, "call_id", "")
                         result.tool_calls.append(
                             ToolCallRecord(
                                 tool_name=tool_name,
@@ -627,17 +645,22 @@ async def run_consultant_stream(
                     from agents.items import ToolCallOutputItem
 
                     if isinstance(event.item, ToolCallOutputItem):
-                        raw = getattr(event.item, "raw_item", None)
-                        call_id = getattr(raw, "call_id", "") if raw else ""
+                        raw = _safe_get(event.item, "raw_item", None)
+                        call_id = _safe_get(raw, "call_id", "") if raw else ""
                         status_val = "ok"
-                        output = getattr(event.item, "output", None)
+                        output = _safe_get(event.item, "output", None)
                         if isinstance(output, str) and "error" in output.lower():
                             status_val = "error"
+                        matched_tc: ToolCallRecord | None = None
                         for tool_call in reversed(result.tool_calls):
                             if tool_call.call_id == (call_id or None):
                                 tool_call.status = "success" if status_val == "ok" else "failed"
                                 tool_call.summary = f"{tool_call.tool_name} completed" if status_val == "ok" else f"{tool_call.tool_name} failed"
+                                matched_tc = tool_call
                                 break
+                        # Collect Tavily web citations from agent-invoked tool output
+                        if matched_tc and matched_tc.tool_name == "tavily_web_search" and output:
+                            _collect_tavily_citations(output, pending_web_citations)
                         # Only status streamed, no args/raw content
                         yield (
                             ConsultantEvent(
@@ -658,6 +681,13 @@ async def run_consultant_stream(
             evidence_items_map=evidence_items_map,
             evidence_bundle=evidence_bundle,
         )
+
+        # Append agent-invoked Tavily web citations with correct ordinals
+        if pending_web_citations:
+            start_ordinal = _next_ordinal(result.citations)
+            for i, cit in enumerate(pending_web_citations):
+                cit.ordinal = start_ordinal + i
+                result.citations.append(cit)
 
     except Exception as e:
         logger.exception("Agent run failed, using fallback")
@@ -958,6 +988,46 @@ def persist_web_citations(
     if records:
         db.flush()
     return records
+
+
+def _collect_tavily_citations(
+    output: str | None,
+    pending: list[CitationRecord],
+) -> None:
+    """Parse Tavily tool output JSON and append web citation records to *pending*.
+
+    Ordinals are set to 0 here; the caller assigns correct ordinals after
+    uploaded-source citations are known.
+    """
+    if not output:
+        return
+    try:
+        data = json.loads(output)
+    except (json.JSONDecodeError, TypeError):
+        return
+
+    results = data.get("results", [])
+    request_id = data.get("request_id")
+
+    for r in results:
+        url = r.get("url", "")
+        if not url:
+            continue
+        pending.append(
+            CitationRecord(
+                citation_type=CitationType.WEB,
+                ordinal=0,  # reassigned after _extract_citations
+                url=url,
+                title=r.get("title"),
+                domain=_extract_domain(url),
+                provider="tavily",
+                provider_request_id=request_id,
+                snippet=r.get("content"),
+                relevance_score=r.get("score"),
+                citation_status=CitationStatus.AVAILABLE,
+                retrieved_at=datetime.utcnow(),
+            )
+        )
 
 
 def _extract_domain(url: str) -> str | None:

@@ -1,32 +1,55 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { AlertTriangle, CalendarDays, CircleHelp, FileText, Lightbulb, RefreshCw, Sparkles } from 'lucide-react'
-import type { ReactNode } from 'react'
-import { useEffect, useId, useMemo, useState } from 'react'
+import { AlertTriangle, CalendarDays, CircleHelp, Lightbulb, RefreshCw, Sparkles, TrendingUp } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
-import { Input } from '../components/ui/input'
+import {
+  ChartModule,
+  EmptyInline,
+  EmptyState,
+  ErrorState,
+  InsightMiniCard,
+  KpiCard,
+  LoadingState,
+  MonthInput,
+  PdfInsightCard,
+  SectionHeader,
+  SnapshotStatusBadge,
+} from '../features/visualization-data/components'
 import { useRefreshVisualizationSnapshot, useVisualizationSnapshot } from '../features/visualization-data/hooks'
+import {
+  buildChartSeries,
+  confidenceColorClass,
+  formatConfidence,
+  formatLabel,
+  formatMonthRange,
+  formatTimestamp,
+  getDefaultMonthRange,
+  itemKey,
+} from '../features/visualization-data/utils'
 import { useActiveWorkspace } from '../features/workspaces/hooks/use-active-workspace'
-import type { VisualizationEvidenceRef, VisualizationSnapshotListItem, VisualizationSourceCard } from '../types/visualization'
 
 export const Route = createFileRoute('/visualization-data')({
   component: VisualizationDataPage,
 })
 
+function ConfidenceLabel({ value }: { value: string }) {
+  const colorClass = confidenceColorClass(value)
+  if (colorClass) {
+    return (
+      <span className={`inline-block rounded border px-1.5 py-0.5 text-[11px] font-semibold uppercase ${colorClass}`}>{value.toUpperCase()}</span>
+    )
+  }
+  return <span className="text-xs text-muted-foreground">{value}</span>
+}
+
 function VisualizationDataPage() {
   const { activeWorkspace } = useActiveWorkspace()
   const workspaceId = activeWorkspace?.id ?? 0
+  const defaultMonthRange = useMemo(() => getDefaultMonthRange(), [])
 
-  const [periodStartMonth, setPeriodStartMonth] = useState('')
-  const [periodEndMonth, setPeriodEndMonth] = useState('')
-
-  useEffect(() => {
-    const now = new Date()
-    const defaultEnd = toMonthInputValue(now)
-    const defaultStart = toMonthInputValue(new Date(now.getFullYear(), now.getMonth() - 5, 1))
-    setPeriodStartMonth((value) => value || defaultStart)
-    setPeriodEndMonth((value) => value || defaultEnd)
-  }, [])
+  const [periodStartMonth, setPeriodStartMonth] = useState(() => defaultMonthRange.start)
+  const [periodEndMonth, setPeriodEndMonth] = useState(() => defaultMonthRange.end)
 
   const hasValidRange = periodStartMonth.length > 0 && periodEndMonth.length > 0 && periodStartMonth <= periodEndMonth
   const queryParams = useMemo(
@@ -41,6 +64,37 @@ function VisualizationDataPage() {
   const { data: snapshot, isLoading, error, isFetching } = useVisualizationSnapshot(queryParams)
   const refreshSnapshot = useRefreshVisualizationSnapshot()
 
+  const content = snapshot?.contentJson
+  const coverage = content?.coverage
+  const executiveSummary = content?.executive_summary
+  const confidenceAssessment = content?.confidence_assessment
+  const crossSourcePatterns = content?.cross_source_patterns ?? []
+  const sourceCards = content?.source_cards ?? []
+  const keyFindings = content?.key_findings ?? []
+  const risksAssumptions = content?.risks_assumptions ?? []
+  const opportunities = content?.opportunities ?? []
+  const gaps = content?.gaps ?? []
+  const totalSourceCount = sourceCards.length || snapshot?.sourceIds?.length || coverage?.totalSources || 0
+
+  const readyCoveragePct = coverage?.totalSources ? Math.round(((coverage?.readySources ?? 0) / coverage.totalSources) * 100) : null
+  const crossSourceCount = crossSourcePatterns.length
+  const riskCount = risksAssumptions.length + gaps.length
+  const chartSeries = useMemo(
+    () =>
+      buildChartSeries(periodStartMonth, periodEndMonth, {
+        sourceCount: totalSourceCount,
+        patternCount: crossSourceCount,
+        gapCount: riskCount,
+        expanded: false,
+      }),
+    [crossSourceCount, periodEndMonth, periodStartMonth, riskCount, totalSourceCount],
+  )
+
+  const topInsight =
+    executiveSummary ?? crossSourcePatterns[0]?.text ?? keyFindings[0]?.text ?? coverage?.summary ?? 'No executive summary has been generated yet.'
+
+  const refreshPending = refreshSnapshot.isPending || isFetching
+
   if (!activeWorkspace) {
     return (
       <div className="h-full overflow-auto p-8">
@@ -54,7 +108,7 @@ function VisualizationDataPage() {
       <div className="h-full overflow-auto p-8">
         <EmptyState
           title="Pick a valid month range"
-          description="Visualization Data now loads a cached snapshot for one Workspace and one month range."
+          description="Visualization Data loads one cached snapshot for one Workspace and one month range."
         />
       </div>
     )
@@ -76,84 +130,193 @@ function VisualizationDataPage() {
     )
   }
 
-  const content = snapshot?.contentJson
-  const coverage = content?.coverage
-  const sourceCards = content?.source_cards ?? []
-  const keyFindings = content?.key_findings ?? []
-  const risksAssumptions = content?.risks_assumptions ?? []
-  const opportunities = content?.opportunities ?? []
-  const gaps = content?.gaps ?? []
-  const sourceCount = sourceCards.length || snapshot?.sourceIds?.length || coverage?.readySources || 0
-  const refreshPending = refreshSnapshot.isPending || isFetching
-
   return (
-    <div className="h-full overflow-auto p-8 text-foreground">
-      <div className="mb-8 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-        <div className="max-w-2xl space-y-3">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            <CalendarDays className="h-4 w-4" />
-            Visualization Snapshot
+    <div className="h-full min-w-0 overflow-auto bg-white px-6 py-7 text-foreground lg:px-8 lg:py-8">
+      <div className="space-y-7">
+        <header className="flex flex-col gap-5 border-b border-border/70 pb-5 xl:flex-row xl:items-start xl:justify-between">
+          <div className="w-full space-y-3">
+            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-[11px] font-medium text-indigo-700">
+              <CalendarDays className="h-3.5 w-3.5" />
+              Visualization Snapshot
+            </div>
+            <div className="space-y-2">
+              <h1 className="font-heading text-3xl font-semibold tracking-tight text-foreground">AI-Curated Insight Board</h1>
+              <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+                Synthesized intelligence from connected CSV and PDF data sources for {formatMonthRange(periodStartMonth, periodEndMonth)}.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {snapshot?.status && <SnapshotStatusBadge status={snapshot.status} />}
+              <Badge variant="outline" className="border-border bg-surface-subtle text-[11px] text-muted-foreground">
+                {activeWorkspace.name}
+              </Badge>
+              <Badge variant="secondary" className="bg-primary/10 text-primary">
+                {sourceCards.length || totalSourceCount} sources
+              </Badge>
+            </div>
           </div>
-          <div>
-            <h1 className="font-heading text-2xl font-semibold tracking-tight text-foreground">AI-Curated Insight Board</h1>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Cached intelligence for {formatMonthRange(periodStartMonth, periodEndMonth)} across the active Workspace.
-            </p>
-          </div>
-          {snapshot?.status && (
-            <Badge variant="outline" className="w-fit border-border bg-surface-subtle text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-              {snapshot.status}
-            </Badge>
-          )}
-        </div>
 
-        <div className="flex flex-col gap-3 lg:items-end">
-          <div className="flex flex-wrap items-end gap-3">
-            <MonthInput label="Start month" value={periodStartMonth} onChange={setPeriodStartMonth} />
-            <MonthInput label="End month" value={periodEndMonth} onChange={setPeriodEndMonth} />
-            <Button
-              variant="outline"
-              onClick={() => refreshSnapshot.mutate(queryParams)}
-              disabled={!hasValidRange || refreshPending}
-              className="border-border bg-background"
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshPending ? 'animate-spin' : ''}`} />
-              {refreshPending ? 'Refreshing' : 'Refresh'}
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {snapshot?.generatedAt
-              ? `Updated ${formatTimestamp(snapshot.generatedAt)}`
-              : 'Snapshot regenerates on demand for the selected month range.'}
-          </p>
-        </div>
-      </div>
+          <div className="w-full align-self-end">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <MonthInput label="Period start" value={periodStartMonth} onChange={setPeriodStartMonth} />
+              <MonthInput label="Period end" value={periodEndMonth} onChange={setPeriodEndMonth} />
+              <div className="flex flex-col justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => refreshSnapshot.mutate(queryParams)}
+                  disabled={!hasValidRange || refreshPending}
+                  className="border-border bg-white transition hover:bg-surface-subtle w-fit"
+                >
+                  <RefreshCw className={`h-4 w-4 ${refreshPending ? 'animate-spin' : ''}`} />
+                  {refreshPending ? 'Refreshing' : 'Refresh'}
+                </Button>
+              </div>
+            </div>
 
-      <div className="space-y-6">
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard
-            label="Coverage"
-            value={String(coverage?.totalSources ?? sourceCount)}
-            helper={coverage?.summary ?? 'Ready sources only'}
+            <div className="mt-3 flex flex-col gap-1 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+              <p>Workspace-scoped snapshot for the selected period.</p>
+              <p>{snapshot?.generatedAt ? `Updated ${formatTimestamp(snapshot.generatedAt)}` : 'Snapshot regenerates on demand.'}</p>
+            </div>
+          </div>
+        </header>
+
+        <section className="grid gap-4 lg:grid-cols-3">
+          <KpiCard
+            label="Ready coverage"
+            value={readyCoveragePct != null ? `${readyCoveragePct}%` : String(coverage?.readySources ?? totalSourceCount)}
+            detail={`${coverage?.readySources ?? totalSourceCount} ready source${(coverage?.readySources ?? totalSourceCount) === 1 ? '' : 's'} in the snapshot`}
             accent="indigo"
           />
-          <MetricCard
-            label="Ready Sources"
-            value={String(coverage?.readySources ?? sourceCount)}
-            helper="Composed into the snapshot"
+          <KpiCard
+            label="Cross-source signals"
+            value={String(crossSourceCount)}
+            detail="Repeated or conflicting patterns synthesized across teams and labels"
             accent="emerald"
           />
-          <MetricCard label="Excluded" value={String(coverage?.excludedSources ?? 0)} helper="Filtered out by scope or readiness" accent="amber" />
-          <MetricCard label="Range" value={formatMonthRange(periodStartMonth, periodEndMonth)} helper="Workspace-scoped and cached" accent="slate" />
+          <KpiCard
+            label="Open gaps"
+            value={String(riskCount)}
+            detail="Risks, assumptions, and missing evidence that still need follow-up"
+            accent="amber"
+          />
         </section>
 
-        <section className="rounded-2xl border border-border bg-background p-6 shadow-sm">
+        <section className="overflow-hidden rounded-[24px] border border-border bg-white shadow-sm">
+          <div className="flex flex-col gap-4 border-b border-border/70 px-6 py-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-2xl space-y-2">
+              <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                <TrendingUp className="h-4 w-4" />
+                Snapshot trajectory
+              </div>
+              <h2 className="font-heading text-xl font-semibold text-foreground">Monthly composition trajectory</h2>
+              <p className="text-sm leading-6 text-muted-foreground">
+                Monthly composition across ready Source Artifacts for the selected Workspace and period range.
+              </p>
+            </div>
+          </div>
+
+          <div className="px-6 pb-6 pt-5">
+            <ChartModule series={chartSeries} />
+
+            <div className="mt-5 flex flex-col gap-4 rounded-2xl border border-border bg-surface-subtle p-4 md:flex-row md:items-start md:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 rounded-full bg-primary/10 p-2 text-primary">
+                  <Sparkles className="h-4 w-4" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">Key insight</p>
+                  <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{topInsight}</p>
+                  {confidenceAssessment && <ConfidenceLabel value={confidenceAssessment} />}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-[24px] border border-border bg-white p-6 shadow-sm">
+          <SectionHeader
+            eyebrow="Insight cards"
+            title="Strategic synthesis"
+            description="Snapshot-level conclusions grounded in the selected period, not per-file noise."
+            icon={<Sparkles className="h-4 w-4" />}
+          />
+
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <InsightMiniCard
+              title="Key findings"
+              icon={<TrendingUp className="h-4 w-4" />}
+              items={keyFindings}
+              tone="indigo"
+              emptyTitle="No findings"
+            />
+            <InsightMiniCard
+              title="Risks & assumptions"
+              icon={<AlertTriangle className="h-4 w-4" />}
+              items={risksAssumptions}
+              tone="amber"
+              emptyTitle="No risks or assumptions"
+            />
+            <InsightMiniCard
+              title="Opportunities"
+              icon={<Lightbulb className="h-4 w-4" />}
+              items={opportunities}
+              tone="emerald"
+              emptyTitle="No opportunities"
+            />
+            <InsightMiniCard title="Gaps" icon={<CircleHelp className="h-4 w-4" />} items={gaps} tone="rose" emptyTitle="No gaps" />
+          </div>
+        </section>
+
+        <section className="rounded-[24px] border border-border bg-white p-6 shadow-sm">
+          <SectionHeader
+            eyebrow="Cross-source patterns"
+            title="Signals across teams and labels"
+            description="Patterns synthesized across multiple Source Artifacts, not listed per file."
+            icon={<Sparkles className="h-4 w-4" />}
+          />
+          {crossSourcePatterns.length > 0 ? (
+            <div className="mt-5 space-y-3">
+              {crossSourcePatterns.map((item) => (
+                <div key={itemKey(item)} className="rounded-2xl border border-border bg-surface-subtle p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {item.kind && (
+                          <Badge variant="outline" className="border-border bg-white text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                            {item.kind}
+                          </Badge>
+                        )}
+                        {item.theme && (
+                          <Badge variant="secondary" className="bg-primary/10 text-primary">
+                            {formatLabel(item.theme)}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm leading-6 text-foreground">
+                        {item.title ?? item.text ?? item.detail ?? item.description ?? 'Untitled item'}
+                      </p>
+                    </div>
+                    {item.confidence != null && <ConfidenceLabel value={formatConfidence(item.confidence)} />}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyInline
+              className="mt-5"
+              title="No cross-source patterns"
+              description="The snapshot did not find repeated or conflicting signals across sources."
+            />
+          )}
+        </section>
+
+        <section className="rounded-[24px] border border-border bg-white p-6 shadow-sm">
           <SectionHeader
             eyebrow="Coverage overview"
             title="What this snapshot includes"
             description={coverage?.summary ?? 'Ready sources overlapping the selected month range are composed into one cached intelligence view.'}
           />
-          {coverage?.notes && coverage.notes.length > 0 && (
+          {coverage?.notes && coverage.notes.length > 0 ? (
             <ul className="mt-4 space-y-2 text-sm leading-6 text-muted-foreground">
               {coverage.notes.map((note) => (
                 <li key={note} className="flex gap-3">
@@ -162,10 +325,12 @@ function VisualizationDataPage() {
                 </li>
               ))}
             </ul>
+          ) : (
+            <EmptyInline className="mt-5" title="No coverage notes" description="The snapshot did not include coverage notes for this range." />
           )}
         </section>
 
-        <section className="rounded-2xl border border-border bg-background p-6 shadow-sm">
+        <section className="rounded-[24px] border border-border bg-white p-6 shadow-sm">
           <SectionHeader
             eyebrow="Source cards"
             title="Ready sources in range"
@@ -174,295 +339,14 @@ function VisualizationDataPage() {
           {sourceCards.length > 0 ? (
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
               {sourceCards.map((card) => (
-                <SourceCard key={card.sourceId} card={card} />
+                <PdfInsightCard key={card.sourceId ?? card.title} card={card} />
               ))}
             </div>
           ) : (
-            <EmptyInline title="No source cards" description="The selected range did not return any ready overlapping sources." />
+            <EmptyInline className="mt-5" title="No source cards" description="The selected range did not return any ready overlapping sources." />
           )}
         </section>
-
-        <section className="grid gap-6 xl:grid-cols-2">
-          <section className="rounded-2xl border border-border bg-background p-6 shadow-sm">
-            <SectionHeader
-              eyebrow="Key findings"
-              title="Most important takeaways"
-              description="Snapshot-level conclusions grounded in the underlying sources."
-              icon={<Sparkles className="h-4 w-4" />}
-            />
-            <ItemList
-              items={keyFindings}
-              emptyTitle="No key findings"
-              emptyDescription="The snapshot did not surface any key findings for this range."
-              className="mt-5"
-            />
-          </section>
-
-          <section className="rounded-2xl border border-border bg-background p-6 shadow-sm">
-            <SectionHeader
-              eyebrow="Risks / assumptions"
-              title="What could be wrong"
-              description="Risks and assumptions are shown together so gaps stay visible in context."
-              icon={<AlertTriangle className="h-4 w-4" />}
-            />
-            <ItemList
-              items={risksAssumptions}
-              emptyTitle="No risks or assumptions"
-              emptyDescription="The snapshot did not include explicit risks or assumptions."
-              className="mt-5"
-            />
-          </section>
-        </section>
-
-        <section className="grid gap-6 xl:grid-cols-2">
-          <section className="rounded-2xl border border-border bg-background p-6 shadow-sm">
-            <SectionHeader
-              eyebrow="Opportunities"
-              title="Potential moves"
-              description="Concrete opportunities highlighted by the snapshot."
-              icon={<Lightbulb className="h-4 w-4" />}
-            />
-            <ItemList
-              items={opportunities}
-              emptyTitle="No opportunities"
-              emptyDescription="The snapshot did not include opportunity items for this range."
-              className="mt-5"
-            />
-          </section>
-
-          <section className="rounded-2xl border border-border bg-background p-6 shadow-sm">
-            <SectionHeader
-              eyebrow="Gaps"
-              title="Missing evidence"
-              description="Explicit gaps help show where the current snapshot is incomplete."
-              icon={<CircleHelp className="h-4 w-4" />}
-            />
-            <ItemList
-              items={gaps}
-              emptyTitle="No gaps"
-              emptyDescription="The snapshot did not surface missing evidence or unresolved questions."
-              className="mt-5"
-            />
-          </section>
-        </section>
       </div>
     </div>
   )
-}
-
-function SectionHeader({ eyebrow, title, description, icon }: { eyebrow: string; title: string; description: string; icon?: ReactNode }) {
-  return (
-    <div className="flex items-start gap-3">
-      {icon ? <div className="mt-0.5 text-muted-foreground">{icon}</div> : null}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{eyebrow}</p>
-        <h2 className="mt-1 font-heading text-lg font-semibold text-foreground">{title}</h2>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>
-      </div>
-    </div>
-  )
-}
-
-function MetricCard({
-  label,
-  value,
-  helper,
-  accent,
-}: {
-  label: string
-  value: string
-  helper: string
-  accent: 'indigo' | 'emerald' | 'amber' | 'slate'
-}) {
-  const accentMap = {
-    indigo: 'border-l-primary bg-primary/5',
-    emerald: 'border-l-emerald-500 bg-emerald-500/5',
-    amber: 'border-l-amber-500 bg-amber-500/5',
-    slate: 'border-l-slate-400 bg-slate-400/5',
-  }
-
-  return (
-    <div className={`rounded-2xl border border-border border-l-4 p-5 shadow-sm ${accentMap[accent]}`}>
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-      <p className="mt-3 font-heading text-2xl font-semibold text-foreground">{value}</p>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">{helper}</p>
-    </div>
-  )
-}
-
-function MonthInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  const inputId = useId()
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={inputId} className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-        {label}
-      </label>
-      <Input id={inputId} type="month" value={value} onChange={(event) => onChange(event.target.value)} className="w-[170px] bg-background" />
-    </div>
-  )
-}
-
-function SourceCard({ card }: { card: VisualizationSourceCard }) {
-  return (
-    <article className="rounded-2xl border border-border bg-surface-subtle p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className="border-border bg-background text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-              {card.sourceFileType ?? 'source'}
-            </Badge>
-            {card.periodLabel && (
-              <Badge variant="outline" className="border-border bg-background text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-                {card.periodLabel}
-              </Badge>
-            )}
-          </div>
-          <h3 className="font-heading text-base font-semibold text-foreground">{card.title}</h3>
-        </div>
-        <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
-      </div>
-
-      <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
-        {card.teamLabel && (
-          <Badge variant="secondary" className="bg-primary/10 text-primary">
-            {formatLabel(card.teamLabel)}
-          </Badge>
-        )}
-        {card.categoryLabels?.map((category) => (
-          <Badge key={category} variant="outline" className="border-border bg-background text-muted-foreground">
-            {formatLabel(category)}
-          </Badge>
-        ))}
-      </div>
-
-      {card.summary && <p className="mt-4 text-sm leading-6 text-muted-foreground">{card.summary}</p>}
-
-      {card.evidenceRefs && card.evidenceRefs.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {card.evidenceRefs.map((ref) => (
-            <EvidenceBadge key={evidenceRefKey(ref)} refItem={ref} />
-          ))}
-        </div>
-      )}
-    </article>
-  )
-}
-
-function ItemList({
-  items,
-  emptyTitle,
-  emptyDescription,
-  className,
-}: {
-  items: VisualizationSnapshotListItem[]
-  emptyTitle: string
-  emptyDescription: string
-  className?: string
-}) {
-  if (items.length === 0) {
-    return <EmptyInline className={className} title={emptyTitle} description={emptyDescription} />
-  }
-
-  return (
-    <div className={`space-y-3 ${className ?? ''}`}>
-      {items.map((item) => (
-        <div key={itemKey(item)} className="rounded-xl border border-border bg-surface-subtle p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-1">
-              {item.kind && (
-                <Badge variant="outline" className="border-border bg-background text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-                  {item.kind}
-                </Badge>
-              )}
-              <p className="text-sm leading-6 text-foreground">{item.title ?? item.text ?? item.detail ?? item.description ?? 'Untitled item'}</p>
-            </div>
-            {typeof item.confidence === 'number' && <span className="text-xs text-muted-foreground">{Math.round(item.confidence * 100)}%</span>}
-          </div>
-          {item.evidenceRefs && item.evidenceRefs.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {item.evidenceRefs.map((ref) => (
-                <EvidenceBadge key={evidenceRefKey(ref)} refItem={ref} />
-              ))}
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function EvidenceBadge({ refItem }: { refItem: VisualizationEvidenceRef }) {
-  const label =
-    refItem.quote ?? (refItem.pageNumber != null ? `p.${refItem.pageNumber}` : (refItem.sourceTitle ?? `Source ${refItem.sourceId ?? 'ref'}`))
-  return (
-    <Badge variant="outline" className="max-w-full border-border bg-background text-[11px] font-normal text-muted-foreground">
-      <span className="truncate">{label}</span>
-    </Badge>
-  )
-}
-
-function EmptyInline({ title, description, className }: { title: string; description: string; className?: string }) {
-  return (
-    <div className={`rounded-xl border border-dashed border-border p-5 text-center ${className ?? ''}`}>
-      <p className="text-sm font-medium text-foreground">{title}</p>
-      <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>
-    </div>
-  )
-}
-
-function EmptyState({ title, description }: { title: string; description: string }) {
-  return (
-    <section className="rounded-2xl border border-dashed border-border bg-background p-10 text-center shadow-sm">
-      <h3 className="font-heading text-lg font-semibold text-foreground">{title}</h3>
-      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">{description}</p>
-    </section>
-  )
-}
-
-function LoadingState() {
-  return (
-    <section className="rounded-2xl border border-border bg-background p-8 text-sm text-muted-foreground shadow-sm">
-      Loading visualizations...
-    </section>
-  )
-}
-
-function ErrorState({ message }: { message: string }) {
-  return (
-    <section className="rounded-2xl border border-status-failed bg-status-failed-light p-8 text-sm text-status-failed shadow-sm">{message}</section>
-  )
-}
-
-function toMonthInputValue(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-}
-
-function formatMonthRange(startMonth: string, endMonth: string) {
-  return startMonth && endMonth ? `${startMonth} → ${endMonth}` : 'Select a month range'
-}
-
-function formatTimestamp(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-
-  return new Intl.DateTimeFormat('en', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date)
-}
-
-function formatLabel(value: string) {
-  return value
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
-}
-
-function itemKey(item: VisualizationSnapshotListItem) {
-  return [item.kind, item.title ?? item.text ?? item.detail ?? item.description ?? 'item', item.confidence ?? ''].join('|')
-}
-
-function evidenceRefKey(ref: VisualizationEvidenceRef) {
-  return [ref.sourceId ?? '', ref.sourceTitle ?? '', ref.pageNumber ?? '', ref.quote ?? ''].join('|')
 }

@@ -39,10 +39,10 @@ function SourceDataPage() {
   const failedCount = sources.filter((s) => s.processingStatus === 'failed').length
 
   // Mock numbers when no real data
-  const displayTotal = totalSources > 0 ? totalSources : 1248
-  const displayReady = readyCount > 0 ? readyCount : 1192
-  const displayProcessing = processingCount > 0 ? processingCount : 45
-  const displayFailed = failedCount > 0 ? failedCount : 11
+  const displayTotal = totalSources > 0 ? totalSources : 0
+  const displayReady = readyCount > 0 ? readyCount : 0
+  const displayProcessing = processingCount > 0 ? processingCount : 0
+  const displayFailed = failedCount > 0 ? failedCount : 0
 
   return (
     <div className="h-full overflow-auto p-8">

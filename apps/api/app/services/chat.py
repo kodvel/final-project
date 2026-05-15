@@ -15,6 +15,7 @@ from sqlmodel import Session, select
 from app.agents.consultant import (
     ConsultantResult,
     ToolCallRecord,
+    _next_ordinal,
     classify_needs_retrieval,
     parse_source_scope,
     persist_citations,
@@ -560,7 +561,7 @@ async def stream_chat(
         if web_results and final_result:
             from app.agents.consultant import persist_web_citations
 
-            start_ordinal = (len(final_result.citations) + 1) if final_result.citations else 1
+            start_ordinal = _next_ordinal(final_result.citations)
             persist_web_citations(db, assistant_msg.id, web_results, start_ordinal=start_ordinal)
 
         chat_session.last_message_at = completed_at
@@ -744,5 +745,6 @@ async def _stream_decision_brief(
         "sequence_number": result.sequence_number,
         "recommendation_status": str(result.recommendation_status),
         "approval_status": str(result.approval_status),
+        "title": result.title,
     })
     yield _sse_event("[DONE]")

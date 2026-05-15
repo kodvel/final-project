@@ -48,6 +48,7 @@ export type ChatMessage = {
   traceId?: string | null
   traceUrl?: string | null
   decisionBriefId?: number | null
+  decisionBriefTitle?: string | null
   createdAt: IsoDateTime
   updatedAt: IsoDateTime
   completedAt?: IsoDateTime | null
@@ -65,6 +66,7 @@ export type ChatMessageApi = {
   trace_id?: string | null
   trace_url?: string | null
   decision_brief_id?: number | null
+  decision_brief_title?: string | null
   created_at: IsoDateTime
   updated_at: IsoDateTime
   completed_at?: IsoDateTime | null
@@ -122,6 +124,7 @@ export type DecisionBriefEvent = {
   sequence_number: number
   recommendation_status: string
   approval_status: string
+  title?: string | null
 }
 
 export type CommandResultEvent = {
