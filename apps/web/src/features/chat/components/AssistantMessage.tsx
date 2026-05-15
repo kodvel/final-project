@@ -1,10 +1,10 @@
-import { Bot } from 'lucide-react'
+import { Bot, ExternalLink } from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { AgentToolCall, MessageSourceCitation } from '../../../types/chat'
 import { EvidenceChip } from './EvidenceChip'
 import { ProcessPill } from './ProcessPill'
-import type { DisplayMessage, StreamingToolCall } from './types'
+import { isOptimistic, type DisplayMessage, type StreamingToolCall } from './types'
 import { processLabelForTool } from './utils'
 
 export function AssistantMessage({
@@ -68,8 +68,28 @@ export function AssistantMessage({
               </div>
             </section>
           )}
+
+          <TraceLink message={message} />
         </div>
       </div>
     </article>
+  )
+}
+
+function TraceLink({ message }: { message: DisplayMessage }) {
+  if (isOptimistic(message)) return null
+  const url = message.traceUrl
+  if (!url) return null
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-4 inline-flex items-center gap-1.5 text-xs text-text-hint hover:text-primary transition-colors"
+      title="Open trace in Langfuse"
+    >
+      <ExternalLink className="h-3.5 w-3.5" />
+      View trace
+    </a>
   )
 }
