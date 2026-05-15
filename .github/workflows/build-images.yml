@@ -1,0 +1,91 @@
+name: Build & Push Docker Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag (defaults to commit SHA + 'latest')"
+        required: false
+        default: ""
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAMESPACE: skandareverest
+
+jobs:
+  build-api:
+    name: Build & push API image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        run: |
+          INPUT="${{ inputs.tag }}"
+          SHA="${GITHUB_SHA::7}"
+          TAGS="${{ env.IMAGE_NAMESPACE }}/company-intelligence-copilot-api:latest,${{ env.IMAGE_NAMESPACE }}/company-intelligence-copilot-api:${SHA}"
+          if [ -n "$INPUT" ]; then
+            TAGS="${TAGS},${{ env.IMAGE_NAMESPACE }}/company-intelligence-copilot-api:${INPUT}"
+          fi
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push API
+        uses: docker/build-push-action@v6
+        with:
+          context: ./apps/api
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+  build-web:
+    name: Build & push web image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        run: |
+          INPUT="${{ inputs.tag }}"
+          SHA="${GITHUB_SHA::7}"
+          TAGS="${{ env.IMAGE_NAMESPACE }}/company-intelligence-copilot-web:latest,${{ env.IMAGE_NAMESPACE }}/company-intelligence-copilot-web:${SHA}"
+          if [ -n "$INPUT" ]; then
+            TAGS="${TAGS},${{ env.IMAGE_NAMESPACE }}/company-intelligence-copilot-web:${INPUT}"
+          fi
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./apps/web/Dockerfile
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            VITE_API_BASE_URL=https://api.skandareverest.tech
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web

@@ -15,10 +15,11 @@ services:
 
   web:
     build:
-      context: ./apps/web
+      context: .
+      dockerfile: ./apps/web/Dockerfile
       args:
         VITE_API_BASE_URL: https://api.skandareverest.tech
-    image: final-project-web:latest
+    image: skandareverest/company-intelligence-copilot-web:latest
     restart: unless-stopped
     expose:
       - "3000"
@@ -27,7 +28,7 @@ services:
 
   migrate:
     build: ./apps/api
-    image: final-project-api:latest
+    image: skandareverest/company-intelligence-copilot-api:latest
     command: alembic upgrade head
     restart: "no"
     env_file: ./apps/api/.env
@@ -36,7 +37,7 @@ services:
         condition: service_healthy
 
   api:
-    image: final-project-api:latest
+    image: skandareverest/company-intelligence-copilot-api:latest
     restart: unless-stopped
     expose:
       - "8000"
@@ -55,7 +56,7 @@ services:
         condition: service_healthy
 
   worker:
-    image: final-project-api:latest
+    image: skandareverest/company-intelligence-copilot-api:latest
     restart: unless-stopped
     command: celery -A app.jobs.celery_app worker --loglevel=info --concurrency=2
     env_file: ./apps/api/.env
