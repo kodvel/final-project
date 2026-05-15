@@ -1,7 +1,5 @@
-import { Link } from '@tanstack/react-router'
-import { ArrowRight, FileText } from 'lucide-react'
+import { FileText } from 'lucide-react'
 import { Badge } from '../../../components/ui/badge'
-import { Button } from '../../../components/ui/button'
 import type { VisualizationEvidenceRef, VisualizationSourceCard } from '../../../types/visualization'
 import { evidenceRefKey, formatLabel } from '../utils'
 
@@ -50,14 +48,8 @@ export function PdfInsightCard({ card }: { card: VisualizationSourceCard }) {
           </div>
         )}
 
-        <div className="mt-4 flex items-center justify-between border-t border-border/70 pt-4">
+        <div className="mt-4 border-t border-border/70 pt-4">
           <p className="text-xs text-muted-foreground">Source ready for analysis</p>
-          <Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:bg-surface-subtle hover:text-foreground">
-            <Link to="/chat">
-              Ask Chat
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </Button>
         </div>
       </div>
     </article>

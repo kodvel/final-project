@@ -1,7 +1,19 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import type { VisualizationSnapshotListItem } from '../../../types/visualization'
-import { formatConfidence, itemKey } from '../utils'
+import { formatConfidence, itemKey, confidenceColorClass } from '../utils'
+
+function ConfidenceInline({ value }: { value: string }) {
+  const colorClass = confidenceColorClass(value)
+  if (colorClass) {
+    return (
+      <span className={`mt-1 inline-block rounded border px-1.5 py-0.5 text-[11px] font-semibold uppercase ${colorClass}`}>
+        {value.toUpperCase()}
+      </span>
+    )
+  }
+  return <p className="mt-1 text-xs text-muted-foreground">{value}</p>
+}
 
 export function InsightMiniCard({
   title,
@@ -36,8 +48,10 @@ export function InsightMiniCard({
         <div className="mt-4 space-y-2">
           {items.slice(0, 3).map((item) => (
             <div key={itemKey(item)} className="rounded-xl border border-border bg-surface-subtle px-3 py-2.5">
-              <p className="text-sm leading-6 text-foreground">{item.title ?? item.text ?? item.detail ?? item.description ?? 'Untitled item'}</p>
-              {item.confidence != null && <p className="mt-1 text-xs text-muted-foreground">{formatConfidence(item.confidence)}</p>}
+              <p className="text-sm text-muted-foreground leading-6">{item.title ?? item.text ?? item.detail ?? item.description ?? 'Untitled item'}</p>
+              {item.confidence != null && (
+                <ConfidenceInline value={formatConfidence(item.confidence)} />
+              )}
             </div>
           ))}
         </div>

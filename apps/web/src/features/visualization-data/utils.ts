@@ -34,7 +34,15 @@ export function formatLabel(value: string) {
 
 export function formatConfidence(value: import('../../types/visualization').VisualizationSnapshotListItem['confidence']) {
   if (typeof value === 'number') return `${Math.round(value * 100)}%`
-  return String(value)
+  return String(value).toUpperCase()
+}
+
+export function confidenceColorClass(value: string): string {
+  const upper = value.toUpperCase()
+  if (upper === 'HIGH') return 'border-emerald-200 bg-emerald-50 text-emerald-500'
+  if (upper === 'MEDIUM') return 'border-amber-200 bg-amber-50 text-amber-500'
+  if (upper === 'LOW') return 'border-rose-200 bg-rose-50 text-rose-500'
+  return ''
 }
 
 export function itemKey(item: import('../../types/visualization').VisualizationSnapshotListItem) {

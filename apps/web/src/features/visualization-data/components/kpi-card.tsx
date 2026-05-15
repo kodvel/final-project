@@ -1,6 +1,4 @@
-import { Link } from '@tanstack/react-router'
 import { Badge } from '../../../components/ui/badge'
-import { Button } from '../../../components/ui/button'
 
 export function KpiCard({ label, value, detail, accent }: { label: string; value: string; detail: string; accent: 'indigo' | 'emerald' | 'amber' }) {
   const accentClass = {
@@ -21,14 +19,6 @@ export function KpiCard({ label, value, detail, accent }: { label: string; value
           </Badge>
         </div>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">{detail}</p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:bg-surface-subtle hover:text-foreground">
-            <a href="#pdf-insight-cards">Sources</a>
-          </Button>
-          <Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:bg-surface-subtle hover:text-foreground">
-            <Link to="/chat">Ask Chat</Link>
-          </Button>
-        </div>
       </div>
     </article>
   )

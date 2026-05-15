@@ -1,18 +1,6 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
-import {
-  AlertTriangle,
-  ArrowRight,
-  CalendarDays,
-  CircleHelp,
-  Download,
-  Lightbulb,
-  Maximize2,
-  RefreshCw,
-  Sparkles,
-  TrendingUp,
-} from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
-import { cn } from '@/lib/utils'
+import { createFileRoute } from '@tanstack/react-router'
+import { AlertTriangle, CalendarDays, CircleHelp, Lightbulb, RefreshCw, Sparkles, TrendingUp } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import {
@@ -20,7 +8,6 @@ import {
   EmptyInline,
   EmptyState,
   ErrorState,
-  FilterSelect,
   InsightMiniCard,
   KpiCard,
   LoadingState,
@@ -30,12 +17,31 @@ import {
   SnapshotStatusBadge,
 } from '../features/visualization-data/components'
 import { useRefreshVisualizationSnapshot, useVisualizationSnapshot } from '../features/visualization-data/hooks'
-import { buildChartSeries, formatConfidence, formatLabel, formatMonthRange, formatTimestamp, getDefaultMonthRange, itemKey, uniqueLabels } from '../features/visualization-data/utils'
+import {
+  buildChartSeries,
+  confidenceColorClass,
+  formatConfidence,
+  formatLabel,
+  formatMonthRange,
+  formatTimestamp,
+  getDefaultMonthRange,
+  itemKey,
+} from '../features/visualization-data/utils'
 import { useActiveWorkspace } from '../features/workspaces/hooks/use-active-workspace'
 
 export const Route = createFileRoute('/visualization-data')({
   component: VisualizationDataPage,
 })
+
+function ConfidenceLabel({ value }: { value: string }) {
+  const colorClass = confidenceColorClass(value)
+  if (colorClass) {
+    return (
+      <span className={`inline-block rounded border px-1.5 py-0.5 text-[11px] font-semibold uppercase ${colorClass}`}>{value.toUpperCase()}</span>
+    )
+  }
+  return <span className="text-xs text-muted-foreground">{value}</span>
+}
 
 function VisualizationDataPage() {
   const { activeWorkspace } = useActiveWorkspace()
@@ -44,9 +50,6 @@ function VisualizationDataPage() {
 
   const [periodStartMonth, setPeriodStartMonth] = useState(() => defaultMonthRange.start)
   const [periodEndMonth, setPeriodEndMonth] = useState(() => defaultMonthRange.end)
-  const [selectedTeam, setSelectedTeam] = useState('all')
-  const [selectedCategory, setSelectedCategory] = useState('all')
-  const [chartExpanded, setChartExpanded] = useState(false)
 
   const hasValidRange = periodStartMonth.length > 0 && periodEndMonth.length > 0 && periodStartMonth <= periodEndMonth
   const queryParams = useMemo(
@@ -73,28 +76,6 @@ function VisualizationDataPage() {
   const gaps = content?.gaps ?? []
   const totalSourceCount = sourceCards.length || snapshot?.sourceIds?.length || coverage?.totalSources || 0
 
-  const teamOptions = useMemo(() => uniqueLabels(sourceCards.flatMap((card) => (card.teamLabel ? [card.teamLabel] : []))), [sourceCards])
-  const categoryOptions = useMemo(() => uniqueLabels(sourceCards.flatMap((card) => card.categoryLabels ?? [])), [sourceCards])
-
-  useEffect(() => {
-    if (selectedTeam !== 'all' && !teamOptions.includes(selectedTeam)) setSelectedTeam('all')
-  }, [selectedTeam, teamOptions])
-
-  useEffect(() => {
-    if (selectedCategory !== 'all' && !categoryOptions.includes(selectedCategory)) setSelectedCategory('all')
-  }, [categoryOptions, selectedCategory])
-
-  const visibleSourceCards = useMemo(
-    () =>
-      sourceCards.filter((card) => {
-        const teamMatches = selectedTeam === 'all' || card.teamLabel === selectedTeam
-        const categoryMatches = selectedCategory === 'all' || Boolean(card.categoryLabels?.some((category) => category === selectedCategory))
-        return teamMatches && categoryMatches
-      }),
-    [selectedCategory, selectedTeam, sourceCards],
-  )
-
-  const filteredSourceCount = visibleSourceCards.length
   const readyCoveragePct = coverage?.totalSources ? Math.round(((coverage?.readySources ?? 0) / coverage.totalSources) * 100) : null
   const crossSourceCount = crossSourcePatterns.length
   const riskCount = risksAssumptions.length + gaps.length
@@ -104,9 +85,9 @@ function VisualizationDataPage() {
         sourceCount: totalSourceCount,
         patternCount: crossSourceCount,
         gapCount: riskCount,
-        expanded: chartExpanded,
+        expanded: false,
       }),
-    [chartExpanded, crossSourceCount, periodEndMonth, periodStartMonth, riskCount, totalSourceCount],
+    [crossSourceCount, periodEndMonth, periodStartMonth, riskCount, totalSourceCount],
   )
 
   const topInsight =
@@ -170,42 +151,30 @@ function VisualizationDataPage() {
                 {activeWorkspace.name}
               </Badge>
               <Badge variant="secondary" className="bg-primary/10 text-primary">
-                {filteredSourceCount} of {sourceCards.length || totalSourceCount} sources in focus
+                {sourceCards.length || totalSourceCount} sources
               </Badge>
             </div>
           </div>
 
           <div className="w-full xl:max-w-[760px]">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <FilterSelect label="Team" value={selectedTeam} onChange={setSelectedTeam} options={teamOptions} placeholder="All teams" />
-              <FilterSelect
-                label="Category"
-                value={selectedCategory}
-                onChange={setSelectedCategory}
-                options={categoryOptions}
-                placeholder="All categories"
-              />
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <MonthInput label="Period start" value={periodStartMonth} onChange={setPeriodStartMonth} />
               <MonthInput label="Period end" value={periodEndMonth} onChange={setPeriodEndMonth} />
-              <Button
-                variant="outline"
-                onClick={() => refreshSnapshot.mutate(queryParams)}
-                disabled={!hasValidRange || refreshPending}
-                className="w-full border-border bg-white transition hover:bg-surface-subtle sm:col-span-2 xl:col-span-1"
-              >
-                <RefreshCw className={`h-4 w-4 ${refreshPending ? 'animate-spin' : ''}`} />
-                {refreshPending ? 'Refreshing' : 'Refresh'}
-              </Button>
+              <div className="flex flex-col justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => refreshSnapshot.mutate(queryParams)}
+                  disabled={!hasValidRange || refreshPending}
+                  className="w-full border-border bg-white transition hover:bg-surface-subtle"
+                >
+                  <RefreshCw className={`h-4 w-4 ${refreshPending ? 'animate-spin' : ''}`} />
+                  {refreshPending ? 'Refreshing' : 'Refresh'}
+                </Button>
+              </div>
             </div>
 
             <div className="mt-3 flex flex-col gap-1 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-              <p>
-                {selectedTeam !== 'all' || selectedCategory !== 'all'
-                  ? `Focused on ${selectedTeam === 'all' ? 'all teams' : formatLabel(selectedTeam)} · ${
-                      selectedCategory === 'all' ? 'all categories' : formatLabel(selectedCategory)
-                    }`
-                  : 'Workspace-scoped snapshot with quick-focus filters.'}
-              </p>
+              <p>Workspace-scoped snapshot for the selected period.</p>
               <p>{snapshot?.generatedAt ? `Updated ${formatTimestamp(snapshot.generatedAt)}` : 'Snapshot regenerates on demand.'}</p>
             </div>
           </div>
@@ -232,38 +201,17 @@ function VisualizationDataPage() {
           />
         </section>
 
-        <section
-          className={cn(
-            'overflow-hidden rounded-[24px] border border-border bg-white shadow-sm transition-all duration-200',
-            chartExpanded ? 'min-h-[520px]' : 'min-h-[430px]',
-          )}
-        >
+        <section className="overflow-hidden rounded-[24px] border border-border bg-white shadow-sm">
           <div className="flex flex-col gap-4 border-b border-border/70 px-6 py-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-2xl space-y-2">
               <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                 <TrendingUp className="h-4 w-4" />
                 Snapshot trajectory
               </div>
-              <h2 className="font-heading text-xl font-semibold text-foreground">Signal density vs projected baseline</h2>
+              <h2 className="font-heading text-xl font-semibold text-foreground">Monthly composition trajectory</h2>
               <p className="text-sm leading-6 text-muted-foreground">
                 Monthly composition across ready Source Artifacts for the selected Workspace and period range.
               </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:bg-surface-subtle hover:text-foreground">
-                <Download className="h-4 w-4" />
-                Download
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setChartExpanded((value) => !value)}
-                className="text-muted-foreground hover:bg-surface-subtle hover:text-foreground"
-              >
-                <Maximize2 className="h-4 w-4" />
-                {chartExpanded ? 'Collapse' : 'Expand'}
-              </Button>
             </div>
           </div>
 
@@ -278,16 +226,9 @@ function VisualizationDataPage() {
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">Key insight</p>
                   <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{topInsight}</p>
-                  {confidenceAssessment && <p className="text-xs text-muted-foreground">Confidence: {confidenceAssessment}</p>}
+                  {confidenceAssessment && <ConfidenceLabel value={confidenceAssessment} />}
                 </div>
               </div>
-
-              <Button asChild size="sm" className="self-start bg-primary text-primary-foreground shadow-sm hover:bg-primary/90">
-                <Link to="/chat">
-                  Ask in Chat
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
             </div>
           </div>
         </section>
@@ -299,14 +240,6 @@ function VisualizationDataPage() {
             description="Snapshot-level conclusions grounded in the selected period, not per-file noise."
             icon={<Sparkles className="h-4 w-4" />}
           />
-
-          {executiveSummary ? (
-            <div className="mt-5 rounded-2xl border border-border bg-surface-subtle p-5">
-              <p className="text-sm leading-7 text-foreground">{executiveSummary}</p>
-            </div>
-          ) : (
-            <EmptyInline className="mt-5" title="No executive summary" description="The snapshot did not include a cross-artifact summary yet." />
-          )}
 
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             <InsightMiniCard
@@ -359,9 +292,11 @@ function VisualizationDataPage() {
                           </Badge>
                         )}
                       </div>
-                      <p className="text-sm leading-6 text-foreground">{item.title ?? item.text ?? item.detail ?? item.description ?? 'Untitled item'}</p>
+                      <p className="text-sm leading-6 text-foreground">
+                        {item.title ?? item.text ?? item.detail ?? item.description ?? 'Untitled item'}
+                      </p>
                     </div>
-                    {item.confidence != null && <span className="text-xs capitalize text-muted-foreground">{formatConfidence(item.confidence)}</span>}
+                    {item.confidence != null && <ConfidenceLabel value={formatConfidence(item.confidence)} />}
                   </div>
                 </div>
               ))}
@@ -401,18 +336,14 @@ function VisualizationDataPage() {
             title="Ready sources in range"
             description="Each card summarizes one source used to build the snapshot."
           />
-          {visibleSourceCards.length > 0 ? (
+          {sourceCards.length > 0 ? (
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              {visibleSourceCards.map((card) => (
+              {sourceCards.map((card) => (
                 <PdfInsightCard key={card.sourceId ?? card.title} card={card} />
               ))}
             </div>
           ) : (
-            <EmptyInline
-              className="mt-5"
-              title="No source cards"
-              description="The selected range did not return any ready overlapping sources."
-            />
+            <EmptyInline className="mt-5" title="No source cards" description="The selected range did not return any ready overlapping sources." />
           )}
         </section>
       </div>
