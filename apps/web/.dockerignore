@@ -1,0 +1,11 @@
+node_modules
+dist
+.output
+.env
+.env.*
+.vite
+.cache
+.turbo
+coverage
+Dockerfile
+.dockerignore
