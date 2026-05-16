@@ -15,6 +15,7 @@ import {
   TEAM_LABEL_OPTIONS,
 } from '../constants/source-options'
 import { useCreateSource, useDeleteSource, useRetrySource, useSources } from '../features/source-data/hooks'
+import { MonthInput } from '../features/visualization-data/components'
 import { useActiveWorkspace } from '../features/workspaces/hooks/use-active-workspace'
 import type { CategoryLabel, TeamLabel } from '../types/common'
 import type { CreateSourceInput, SourceData } from '../types/source'
@@ -375,8 +376,6 @@ function AddSourceDialog({
   const [isCategoryOpen, setIsCategoryOpen] = useState(false)
   const titleId = useId()
   const fileId = useId()
-  const periodStartMonthId = useId()
-  const periodEndMonthId = useId()
   const teamLabelId = useId()
   const categoryLabelId = useId()
 
@@ -423,29 +422,11 @@ function AddSourceDialog({
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor={periodStartMonthId} className="text-sm font-medium text-foreground">
-                Period Start Month
-              </label>
-              <Input
-                id={periodStartMonthId}
-                type="month"
-                value={periodStartMonth}
-                onChange={(event) => setPeriodStartMonth(event.target.value)}
-                placeholder="YYYY-MM"
-              />
+              <MonthInput label="Period Start Month" value={periodStartMonth} onChange={setPeriodStartMonth} />
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor={periodEndMonthId} className="text-sm font-medium text-foreground">
-                Period End Month
-              </label>
-              <Input
-                id={periodEndMonthId}
-                type="month"
-                value={periodEndMonth}
-                onChange={(event) => setPeriodEndMonth(event.target.value)}
-                placeholder="YYYY-MM"
-              />
+              <MonthInput label="Period End Month" value={periodEndMonth} onChange={setPeriodEndMonth} />
             </div>
 
             <div className="space-y-1.5">
