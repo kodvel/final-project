@@ -5,7 +5,7 @@ from app.db.session import get_session
 from app.models.enums import CategoryLabel, SourceFileType, TeamLabel
 from app.schemas.source import SourceCreate, SourceRead
 from app.services import sources as source_service
-from app.services.periods import derive_period_label
+from app.helpers.periods import derive_period_label
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 

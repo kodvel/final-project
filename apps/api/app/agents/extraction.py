@@ -9,10 +9,19 @@ control client lifecycle and tests can inject mocks without touching settings.
 
 import json
 import logging
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from openai import OpenAI as OpenAIClient
 from pydantic import BaseModel, Field
+
+from app.agents.prompt_registry import load_prompt
+from app.agents.prompts import (
+    AGGREGATE_SYSTEM_PROMPT,
+    CHUNK_LABEL_SYSTEM_PROMPT,
+    CSV_CONTENT_SYSTEM_PROMPT,
+    CSV_INSIGHT_SYSTEM_PROMPT,
+    VISUALIZATION_SNAPSHOT_SYSTEM_PROMPT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +42,7 @@ def extract_structured(
     retries: int = 1,
     name: str | None = None,
     metadata: dict | None = None,
+    langfuse_prompt: Any | None = None,
 ) -> T:
     """Extract structured data via ``client.chat.completions.parse()``.
 
@@ -46,6 +56,9 @@ def extract_structured(
         retries: Extra attempts after the first failure.
         name: Optional Langfuse observation name for this call.
         metadata: Optional Langfuse metadata dict for this call.
+        langfuse_prompt: Optional Langfuse prompt object to link with the
+            generation (so the UI shows which prompt version produced this
+            output). Forwarded only when the langfuse OpenAI wrapper is used.
 
     Returns:
         Validated Pydantic model instance.
@@ -59,6 +72,8 @@ def extract_structured(
         extra_kwargs["name"] = name
     if metadata is not None:
         extra_kwargs["metadata"] = metadata
+    if langfuse_prompt is not None:
+        extra_kwargs["langfuse_prompt"] = langfuse_prompt
     for attempt in range(retries + 1):
         try:
             response = client.chat.completions.parse(
@@ -232,87 +247,6 @@ class VisualizationSnapshotExtract(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Prompt templates
-# ---------------------------------------------------------------------------
-
-CHUNK_LABEL_SYSTEM_PROMPT = """\
-You are a document analysis assistant. Label the following text chunk with metadata.
-
-Allowed document_section labels:
-executive_summary, market_context, customer_insight, competitor_analysis,
-financials, product_feature, risks, opportunities, recommendation,
-methodology, appendix, unknown.
-
-Allowed content_type labels:
-narrative, table, metric, quote, assumption, risk, opportunity,
-recommendation, raw_text.
-
-Provide confidence scores between 0.0 and 1.0.
-List relevant topics, entities, and time_periods.
-Include any notable quotes with page numbers if present."""
-
-AGGREGATE_SYSTEM_PROMPT = """\
-You are a document intelligence analyst. Given chunk metadata from a document, \
-produce a source_summary and source_insight.
-
-For source_summary: provide an overall document summary, page count, and any warnings.
-
-For source_insight: provide up to 5 key findings, up to 3 assumptions, up to 5 risks, \
-up to 5 opportunities, and up to 5 source quotes. Each item should include text, \
-page_number (if known), and quote (verbatim if available).
-
-Do NOT include a document_summary field in source_insight."""
-
-CSV_CONTENT_SYSTEM_PROMPT = """\
-You are a data analysis assistant. Given CSV profiling data (column types, \
-statistics, row counts), generate searchable content chunks.
-
-Each chunk should be a factual, retrieval-friendly text snippet describing a \
-specific aspect of the dataset.
-Use these content_type values: metric, metadata, narrative.
-Use these document_section values: data_profile, data_summary, data_overview, data_quality.
-
-For each chunk include a columns list with the column names that chunk describes.
-
-Ensure chunks cover:
-- Individual column profiles (type, stats, ranges)
-- Overall dataset summary (row/column counts, key metrics)
-- Data quality observations
-
-Use stable chunk_id values like csv-llm-0, csv-llm-1, etc."""
-
-CSV_INSIGHT_SYSTEM_PROMPT = """\
-You are a data analysis assistant. Given CSV profiling data, identify insights, \
-risks, opportunities, and assumptions.
-
-Focus on:
-- Key statistical findings (ranges, averages, distributions)
-- Data quality risks (high null rates, outliers, limited coverage)
-- Opportunities (strong metrics, useful segmentations, trends)
-- Assumptions about the data
-
-Keep findings factual and grounded in the provided statistics. \
-Each item should include a confidence level (high, medium, low)."""
-
-VISUALIZATION_SNAPSHOT_SYSTEM_PROMPT = """\
-You are a senior strategy analyst creating a cross-source company intelligence snapshot.
-
-You receive multiple Source Artifacts from one Workspace and one selected period.
-
-Rules:
-- Synthesize across sources, teams, labels, and artifact types.
-- Do not list each source one by one.
-- Deduplicate repeated insights.
-- Identify cross-source patterns, contradictions, risks, opportunities, and gaps.
-- Every claim must cite evidence using source_id and artifact_id from the input.
-- Every claim must cite evidence using source_id and artifact_id from the input.
-- risks_assumptions items must set kind to either risk or assumption.
-- If evidence is weak or missing, put it in gaps instead of inventing certainty.
-- Confidence values must be one of: high, medium, low.
-- Keep output concise and board-ready."""
-
-
-# ---------------------------------------------------------------------------
 # High-level extraction functions
 # ---------------------------------------------------------------------------
 
@@ -327,15 +261,17 @@ def extract_chunk_label(
     metadata: dict = {"stage": "pdf.label_chunk"}
     if chunk_index is not None:
         metadata["chunk_index"] = chunk_index
+    prompt = load_prompt("pdf-chunk-label-system", CHUNK_LABEL_SYSTEM_PROMPT)
     return extract_structured(
         client=client,
         model=model,
-        system_prompt=CHUNK_LABEL_SYSTEM_PROMPT,
+        system_prompt=prompt.text,
         user_content=chunk_text,
         response_format=ChunkLabelResponse,
         retries=1,
         name="pdf.label_chunk",
         metadata=metadata,
+        langfuse_prompt=prompt.langfuse_prompt,
     )
 
 
@@ -361,15 +297,17 @@ def extract_aggregate(
             "chunk_metadata_path": chunks_path,
         }
     )
+    prompt = load_prompt("pdf-aggregate-system", AGGREGATE_SYSTEM_PROMPT)
     result = extract_structured(
         client=client,
         model=model,
-        system_prompt=AGGREGATE_SYSTEM_PROMPT,
+        system_prompt=prompt.text,
         user_content=aggregate_input,
         response_format=AggregateResponse,
         retries=1,
         name="pdf.aggregate",
         metadata={"stage": "pdf.aggregate", "page_count": page_count, "chunk_count": len(chunk_metadata)},
+        langfuse_prompt=prompt.langfuse_prompt,
     )
     if not result.source_summary.summary.strip():
         raise ValueError("Aggregate extraction returned empty source_summary — unusable")
@@ -381,15 +319,17 @@ def extract_csv_content(client: OpenAIClient, model: str, profile_data: dict) ->
 
     Raises ``ValueError`` if the LLM returns no usable chunks or empty text.
     """
+    prompt = load_prompt("csv-content-system", CSV_CONTENT_SYSTEM_PROMPT)
     result = extract_structured(
         client=client,
         model=model,
-        system_prompt=CSV_CONTENT_SYSTEM_PROMPT,
+        system_prompt=prompt.text,
         user_content=json.dumps(profile_data),
         response_format=CSVContentResponse,
         retries=1,
         name="csv.extract_content",
         metadata={"stage": "csv.extract_content"},
+        langfuse_prompt=prompt.langfuse_prompt,
     )
     if not result.chunks:
         raise ValueError("CSV content extraction returned no chunks — unusable source_content")
@@ -401,15 +341,17 @@ def extract_csv_content(client: OpenAIClient, model: str, profile_data: dict) ->
 
 def extract_csv_insight(client: OpenAIClient, model: str, profile_data: dict) -> CSVInsightResponse:
     """Extract source_insight for a CSV using structured extraction."""
+    prompt = load_prompt("csv-insight-system", CSV_INSIGHT_SYSTEM_PROMPT)
     return extract_structured(
         client=client,
         model=model,
-        system_prompt=CSV_INSIGHT_SYSTEM_PROMPT,
+        system_prompt=prompt.text,
         user_content=json.dumps(profile_data),
         response_format=CSVInsightResponse,
         retries=1,
         name="csv.extract_insight",
         metadata={"stage": "csv.extract_insight"},
+        langfuse_prompt=prompt.langfuse_prompt,
     )
 
 
@@ -419,10 +361,11 @@ def extract_visualization_snapshot(
     artifact_payload: dict,
 ) -> VisualizationSnapshotExtract:
     """Compose a cross-artifact Visualization Snapshot using structured extraction."""
+    prompt = load_prompt("visualization-snapshot-system", VISUALIZATION_SNAPSHOT_SYSTEM_PROMPT)
     result = extract_structured(
         client=client,
         model=model,
-        system_prompt=VISUALIZATION_SNAPSHOT_SYSTEM_PROMPT,
+        system_prompt=prompt.text,
         user_content=json.dumps(artifact_payload, ensure_ascii=False),
         response_format=VisualizationSnapshotExtract,
         temperature=0.2,
@@ -433,6 +376,7 @@ def extract_visualization_snapshot(
             "source_count": len(artifact_payload.get("sources", [])),
             "period_label": artifact_payload.get("period", {}).get("label"),
         },
+        langfuse_prompt=prompt.langfuse_prompt,
     )
     claim_groups = [
         *result.key_findings,

@@ -8,10 +8,11 @@ from pathlib import Path
 from openai import OpenAI as OpenAIClient
 from sqlmodel import Session
 
+from app.agents import extraction as llm_extraction
 from app.core.config import get_settings
 from app.models.enums import ArtifactType, ProcessingStatus, SourceFileType
 from app.models.source import SourceData
-from app.services import csv_profiler, llm_extraction
+from app.helpers import csv_profiler
 from app.services.artifacts import (
     list_source_artifacts,
     replace_source_artifacts,
@@ -156,7 +157,7 @@ def _process_csv(session: Session, source: SourceData) -> None:
     # Create OpenAI client from RAG settings — if key is missing this raises,
     # which bubbles up to process_source and marks the source as Failed.
     settings = get_settings()
-    from app.services.langfuse_openai import create_openai_client
+    from app.core.openai_client import create_openai_client
 
     client = create_openai_client(
         api_key=settings.rag_openai_api_key,

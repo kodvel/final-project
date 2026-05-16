@@ -805,7 +805,7 @@ def test_tavily_returns_error_without_api_key(monkeypatch) -> None:
 
 def test_system_prompt_states_summary_is_not_evidence() -> None:
     """System prompt instructs that conversation summary is not evidence."""
-    from app.agents.prompts import SYSTEM_PROMPT
+    from app.agents.prompts import CONSULTANT_SYSTEM_PROMPT as SYSTEM_PROMPT
 
     lower = SYSTEM_PROMPT.lower()
     assert "conversation summary" in lower
@@ -814,7 +814,7 @@ def test_system_prompt_states_summary_is_not_evidence() -> None:
 
 def test_system_prompt_encourages_natural_style() -> None:
     """System prompt does NOT force rigid Direct Answer/Evidence headers."""
-    from app.agents.prompts import SYSTEM_PROMPT
+    from app.agents.prompts import CONSULTANT_SYSTEM_PROMPT as SYSTEM_PROMPT
 
     # Should say "naturally" or "conversational" somewhere
     lower = SYSTEM_PROMPT.lower()

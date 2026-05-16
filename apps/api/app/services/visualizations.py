@@ -9,13 +9,13 @@ from typing import Any
 
 from sqlmodel import Session, select
 
+from app.agents.extraction import extract_visualization_snapshot
 from app.core.config import get_settings
 from app.models.source import SourceArtifact, SourceCategory, SourceData
 from app.models.visualization_snapshot import VisualizationSnapshot
 from app.schemas.visualization import VisualizationSnapshotRead
-from app.services.langfuse_openai import create_openai_client
-from app.services.llm_extraction import extract_visualization_snapshot
-from app.services.periods import (
+from app.core.openai_client import create_openai_client
+from app.helpers.periods import (
     derive_period_label,
     ranges_overlap,
     validate_month,

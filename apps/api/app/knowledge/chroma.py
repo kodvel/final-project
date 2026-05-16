@@ -33,7 +33,7 @@ class _OpenAIEmbeddingFunction:
         if not input:
             return []
 
-        from app.services.langfuse_openai import create_openai_client
+        from app.core.openai_client import create_openai_client
 
         client = create_openai_client(base_url=self._api_base_url, api_key=self._api_key)
         response = client.embeddings.create(model=self._model, input=input)
