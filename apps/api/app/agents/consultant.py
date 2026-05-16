@@ -571,6 +571,7 @@ async def run_consultant_stream(
     try:
         from agents import Agent, Runner, function_tool
         from agents.extensions.models.litellm_model import LitellmModel
+        from agents.mcp import MCPServerStreamableHttp
 
         model_name = _normalize_litellm_model(
             settings.rag_chat_model,
@@ -598,105 +599,120 @@ async def run_consultant_stream(
         from app.agents.prompt_registry import load_prompt
 
         system = load_prompt("consultant-system", CONSULTANT_SYSTEM_PROMPT)
-        agent = Agent(
-            name="CompanyStrategyConsultant",
-            instructions=system.text,
-            model=model,
-            tools=[retrieve_tool, tavily_tool],
+        instructions = (
+            f"{system.text}\n\n"
+            f"You are operating in workspace_id={workspace_id}. "
+            f"Whenever you call an MCP tool that requires workspace_id, "
+            f"always pass this exact value."
         )
 
-        stream_result = Runner.run_streamed(
-            starting_agent=agent,
-            input=history,
+        mcp_server = MCPServerStreamableHttp(
+            params={"url": f"{settings.mcp_base_url}/mcp/"},
+            name="consultant-mcp",
+            cache_tools_list=True,
         )
 
-        # Stream events as they arrive from the model
-        accumulated_text = ""
-        async for event in stream_result.stream_events():
-            if event.type == "raw_response_event":
-                from openai.types.responses import ResponseTextDeltaEvent
+        async with mcp_server:
+            agent = Agent(
+                name="CompanyStrategyConsultant",
+                instructions=instructions,
+                model=model,
+                tools=[retrieve_tool, tavily_tool],
+                mcp_servers=[mcp_server],
+            )
 
-                if isinstance(event.data, ResponseTextDeltaEvent):
-                    delta = event.data.delta
-                    accumulated_text += delta
-                    result.content = accumulated_text
-                    yield (
-                        ConsultantEvent(type="text_delta", data={"delta": delta}),
-                        result,
-                    )
+            stream_result = Runner.run_streamed(
+                starting_agent=agent,
+                input=history,
+            )
 
-            elif event.type == "run_item_stream_event":
-                if event.name == "tool_called":
-                    from agents.items import ToolCallItem
+            # Stream events as they arrive from the model
+            accumulated_text = ""
+            async for event in stream_result.stream_events():
+                if event.type == "raw_response_event":
+                    from openai.types.responses import ResponseTextDeltaEvent
 
-                    if isinstance(event.item, ToolCallItem):
-                        raw = event.item.raw_item
-                        tool_name = _safe_get(raw, "name", "unknown")
-                        call_id = _safe_get(raw, "call_id", "")
-                        result.tool_calls.append(
-                            ToolCallRecord(
-                                tool_name=tool_name,
-                                status="running",
-                                summary=f"Started {tool_name}",
-                                call_id=call_id or None,
+                    if isinstance(event.data, ResponseTextDeltaEvent):
+                        delta = event.data.delta
+                        accumulated_text += delta
+                        result.content = accumulated_text
+                        yield (
+                            ConsultantEvent(type="text_delta", data={"delta": delta}),
+                            result,
+                        )
+
+                elif event.type == "run_item_stream_event":
+                    if event.name == "tool_called":
+                        from agents.items import ToolCallItem
+
+                        if isinstance(event.item, ToolCallItem):
+                            raw = event.item.raw_item
+                            tool_name = _safe_get(raw, "name", "unknown")
+                            call_id = _safe_get(raw, "call_id", "")
+                            result.tool_calls.append(
+                                ToolCallRecord(
+                                    tool_name=tool_name,
+                                    status="running",
+                                    summary=f"Started {tool_name}",
+                                    call_id=call_id or None,
+                                )
                             )
-                        )
-                        # Only tool_name and call_id streamed, no args/raw/reasoning
-                        yield (
-                            ConsultantEvent(
-                                type="tool_call",
-                                data={"tool_name": tool_name, "call_id": call_id},
-                            ),
-                            result,
-                        )
+                            # Only tool_name and call_id streamed, no args/raw/reasoning
+                            yield (
+                                ConsultantEvent(
+                                    type="tool_call",
+                                    data={"tool_name": tool_name, "call_id": call_id},
+                                ),
+                                result,
+                            )
 
-                elif event.name == "tool_output":
-                    from agents.items import ToolCallOutputItem
+                    elif event.name == "tool_output":
+                        from agents.items import ToolCallOutputItem
 
-                    if isinstance(event.item, ToolCallOutputItem):
-                        raw = _safe_get(event.item, "raw_item", None)
-                        call_id = _safe_get(raw, "call_id", "") if raw else ""
-                        status_val = "ok"
-                        output = _safe_get(event.item, "output", None)
-                        if isinstance(output, str) and "error" in output.lower():
-                            status_val = "error"
-                        matched_tc: ToolCallRecord | None = None
-                        for tool_call in reversed(result.tool_calls):
-                            if tool_call.call_id == (call_id or None):
-                                tool_call.status = "success" if status_val == "ok" else "failed"
-                                tool_call.summary = f"{tool_call.tool_name} completed" if status_val == "ok" else f"{tool_call.tool_name} failed"
-                                matched_tc = tool_call
-                                break
-                        # Collect Tavily web citations from agent-invoked tool output
-                        if matched_tc and matched_tc.tool_name == "tavily_web_search" and output:
-                            _collect_tavily_citations(output, pending_web_citations)
-                        # Only status streamed, no args/raw content
-                        yield (
-                            ConsultantEvent(
-                                type="tool_result",
-                                data={"call_id": call_id, "ok": status_val == "ok"},
-                            ),
-                            result,
-                        )
+                        if isinstance(event.item, ToolCallOutputItem):
+                            raw = _safe_get(event.item, "raw_item", None)
+                            call_id = _safe_get(raw, "call_id", "") if raw else ""
+                            status_val = "ok"
+                            output = _safe_get(event.item, "output", None)
+                            if isinstance(output, str) and "error" in output.lower():
+                                status_val = "error"
+                            matched_tc: ToolCallRecord | None = None
+                            for tool_call in reversed(result.tool_calls):
+                                if tool_call.call_id == (call_id or None):
+                                    tool_call.status = "success" if status_val == "ok" else "failed"
+                                    tool_call.summary = f"{tool_call.tool_name} completed" if status_val == "ok" else f"{tool_call.tool_name} failed"
+                                    matched_tc = tool_call
+                                    break
+                            # Collect Tavily web citations from agent-invoked tool output
+                            if matched_tc and matched_tc.tool_name == "tavily_web_search" and output:
+                                _collect_tavily_citations(output, pending_web_citations)
+                            # Only status streamed, no args/raw content
+                            yield (
+                                ConsultantEvent(
+                                    type="tool_result",
+                                    data={"call_id": call_id, "ok": status_val == "ok"},
+                                ),
+                                result,
+                            )
 
-        # Use final_output as authoritative full text, fallback to accumulated
-        full_text = stream_result.final_output or accumulated_text or ""
-        result.content = full_text
+            # Use final_output as authoritative full text, fallback to accumulated
+            full_text = stream_result.final_output or accumulated_text or ""
+            result.content = full_text
 
-        # Extract citations from the response
-        _extract_citations(
-            result=result,
-            full_text=full_text,
-            evidence_items_map=evidence_items_map,
-            evidence_bundle=evidence_bundle,
-        )
+            # Extract citations from the response
+            _extract_citations(
+                result=result,
+                full_text=full_text,
+                evidence_items_map=evidence_items_map,
+                evidence_bundle=evidence_bundle,
+            )
 
-        # Append agent-invoked Tavily web citations with correct ordinals
-        if pending_web_citations:
-            start_ordinal = _next_ordinal(result.citations)
-            for i, cit in enumerate(pending_web_citations):
-                cit.ordinal = start_ordinal + i
-                result.citations.append(cit)
+            # Append agent-invoked Tavily web citations with correct ordinals
+            if pending_web_citations:
+                start_ordinal = _next_ordinal(result.citations)
+                for i, cit in enumerate(pending_web_citations):
+                    cit.ordinal = start_ordinal + i
+                    result.citations.append(cit)
 
     except Exception as e:
         logger.exception("Agent run failed, using fallback")

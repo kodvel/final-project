@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     chat_max_output_tokens: int = 2000
     tavily_api_key: str | None = None
 
+    # MCP / code execution configuration
+    e2b_api_key: str | None = None
+    mcp_base_url: str = "http://localhost:8000"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @model_validator(mode="after")

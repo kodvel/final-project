@@ -13,6 +13,8 @@ export function formatDate(value: string) {
 export function processLabelForTool(toolName: string) {
   if (toolName === 'retrieve_company_knowledge') return 'Searching company Sources…'
   if (toolName === 'tavily_web_search') return 'Searching web…'
+  if (toolName === 'list_sources') return 'Listing data sources…'
+  if (toolName === 'execute_python') return 'Running code analysis…'
   return 'Using tool…'
 }
 

@@ -1,5 +1,5 @@
-from contextlib import asynccontextmanager
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +8,7 @@ from sqlmodel import Session
 
 from app.core.config import get_settings
 from app.db.session import engine
+from app.mcp.server import mcp_app as fastmcp_app
 from app.routes import chat, decision_briefs, sources, visualizations, workspaces
 from app.services.workspaces import seed_default_workspaces
 
@@ -24,6 +25,9 @@ def _configure_langfuse() -> bool:
     return True
 
 
+mcp_streamable_app = fastmcp_app.streamable_http_app()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     langfuse_client = None
@@ -36,7 +40,10 @@ async def lifespan(app: FastAPI):
 
     with Session(engine) as session:
         seed_default_workspaces(session)
-    yield
+
+    async with fastmcp_app.session_manager.run():
+        yield
+
     if langfuse_client:
         langfuse_client.shutdown()
 
@@ -56,6 +63,8 @@ app.include_router(sources.router)
 app.include_router(visualizations.router)
 app.include_router(chat.router)
 app.include_router(decision_briefs.router)
+
+app.mount("/mcp", mcp_streamable_app)
 
 
 @app.get("/health")
