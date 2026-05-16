@@ -21,7 +21,7 @@ def _mock_settings(**overrides):
     settings.rag_mistral_api_key = "test-mistral-key"
     settings.rag_openai_api_base_url = "https://api.openai.com/v1"
     settings.rag_openai_api_key = "test-openai-key"
-    settings.rag_openai_model = "google/gemini-3.1-flash-lite-preview"
+    settings.rag_extraction_model = "google/gemini-3.1-flash-lite-preview"
     settings.rag_max_file_size_mb = 30
     for k, v in overrides.items():
         setattr(settings, k, v)
@@ -129,8 +129,8 @@ def _upload_pdf_source(client, workspace_id: int, pdf_content: bytes = b"%PDF-1.
     return response.json()
 
 
-@patch("app.services.llm_extraction.extract_aggregate")
-@patch("app.services.llm_extraction.extract_chunk_label")
+@patch("app.agents.extraction.extract_aggregate")
+@patch("app.agents.extraction.extract_chunk_label")
 @patch("app.services.pdf_extractor._chunk_markdown")
 @patch("app.services.pdf_extractor._run_mistral_ocr")
 @patch("app.services.pdf_extractor.get_settings")
@@ -172,7 +172,7 @@ def test_pdf_creates_source_summary_and_insight_artifacts(
     mock_chunk.return_value = ["chunk one text about financials", "chunk two text about market analysis"]
 
     # Mock structured extraction: chunk labels and aggregate
-    from app.services.llm_extraction import (
+    from app.agents.extraction import (
         AggregateResponse,
         ChunkLabelResponse,
         CitationItem,
@@ -338,8 +338,8 @@ def test_missing_openai_key_marks_source_failed(mock_settings_fn, client):
     assert "RAG_OPENAI_API_KEY" in source["processing_error"]
 
 
-@patch("app.services.llm_extraction.extract_aggregate")
-@patch("app.services.llm_extraction.extract_chunk_label")
+@patch("app.agents.extraction.extract_aggregate")
+@patch("app.agents.extraction.extract_chunk_label")
 @patch("app.services.pdf_extractor._chunk_markdown")
 @patch("app.services.pdf_extractor._run_mistral_ocr")
 @patch("app.services.pdf_extractor.get_settings")
@@ -370,7 +370,7 @@ def test_ocr_handles_page_objects_with_attributes(
 
     mock_chunk.return_value = ["chunk text about financials and revenue analysis"]
 
-    from app.services.llm_extraction import (
+    from app.agents.extraction import (
         AggregateResponse,
         ChunkLabelResponse,
         SourceInsightExtract,

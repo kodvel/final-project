@@ -13,10 +13,11 @@ from typing import Any
 from openai import OpenAI as OpenAIClient
 from sqlmodel import Session
 
+from app.agents import extraction as llm_extraction
 from app.core.config import get_settings
+from app.knowledge.chunking import chunk_markdown
 from app.models.enums import ArtifactType
 from app.models.source import SourceData
-from app.services import llm_extraction
 from app.services.artifacts import get_source_artifact, upsert_source_artifact
 
 logger = logging.getLogger(__name__)
@@ -104,20 +105,6 @@ def _count_meaningful_text(markdown: str) -> int:
     # Remove whitespace
     cleaned = re.sub(r"\s+", "", cleaned)
     return len(cleaned)
-
-
-# ---------------------------------------------------------------------------
-# Chunking helpers (mockable)
-# ---------------------------------------------------------------------------
-
-
-def _chunk_markdown(markdown: str, chunk_size: int = 3000, min_chars: int = 300) -> list[str]:
-    """Chunk markdown text using Chonkie RecursiveChunker."""
-    from chonkie import RecursiveChunker
-
-    chunker = RecursiveChunker(tokenizer="character", chunk_size=chunk_size, min_characters_per_chunk=min_chars)
-    chunks = chunker.chunk(markdown)
-    return [chunk.text for chunk in chunks]
 
 
 # ---------------------------------------------------------------------------
@@ -212,13 +199,13 @@ def process_pdf(session: Session, source: SourceData) -> None:
         raise ValueError("RAG_OPENAI_API_KEY is not configured. PDF processing requires an LLM for labeling.")
 
     # Create OpenAI client for structured extraction
-    from app.services.langfuse_openai import create_openai_client
+    from app.core.openai_client import create_openai_client
 
     client = create_openai_client(
         api_key=settings.rag_openai_api_key,
         base_url=settings.rag_openai_api_base_url,
     )
-    model = settings.rag_openai_model
+    model = settings.rag_extraction_model
 
     # Read and validate file
     pdf_bytes = _read_pdf_bytes(source.storage_path)
@@ -265,7 +252,7 @@ def process_pdf(session: Session, source: SourceData) -> None:
                 "summary": markdown[:2000] if markdown else "(no extractable text)",
                 "page_count": page_count,
                 "ocr_model": "mistral-ocr-latest",
-                "structuring_model": settings.rag_openai_model,
+                "structuring_model": settings.rag_extraction_model,
                 "extracted_markdown_path": str(ocr_md_path),
                 "chunk_metadata_path": str(chunks_path),
                 "warnings": warnings,
@@ -303,7 +290,7 @@ def process_pdf(session: Session, source: SourceData) -> None:
         return
 
     # Chunk markdown
-    chunks = _chunk_markdown(markdown)
+    chunks = chunk_markdown(markdown)
 
     # Label each chunk
     chunk_metadata = _label_all_chunks(chunks, client, model)
@@ -369,7 +356,7 @@ def process_pdf(session: Session, source: SourceData) -> None:
             "warnings": [],
             "metadata": {
                 "ocr_model": "mistral-ocr-latest",
-                "structuring_model": settings.rag_openai_model,
+                "structuring_model": settings.rag_extraction_model,
                 "extracted_markdown_path": str(ocr_md_path),
                 "chunk_metadata_path": str(chunks_path),
             },

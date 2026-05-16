@@ -18,7 +18,7 @@ def client(tmp_path, monkeypatch):
     SQLModel.metadata.create_all(test_engine)
 
     # Patch storage path
-    monkeypatch.setattr("app.storage.local.UPLOADS_ROOT", tmp_path / "uploads")
+    monkeypatch.setattr("app.services.storage.UPLOADS_ROOT", tmp_path / "uploads")
     (tmp_path / "uploads").mkdir(parents=True, exist_ok=True)
 
     # Patch get_settings to return test db URL
@@ -68,7 +68,7 @@ def _install_csv_llm_mocks(monkeypatch):
     satisfy existing Task 2 / Task 1 test assertions (column references,
     finding texts, stable chunk IDs, etc.).
     """
-    from app.services import llm_extraction
+    from app.agents import extraction as llm_extraction
 
     def _fake_csv_content(client, model, profile_data):
         columns = profile_data.get("columns", [])

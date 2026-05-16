@@ -18,7 +18,7 @@ from typing import Any, AsyncGenerator, Generator
 from pydantic import BaseModel, Field
 from sqlmodel import Session
 
-from app.agents.prompts import PRE_RETRIEVAL_CLASSIFIER_PROMPT, SYSTEM_PROMPT
+from app.agents.prompts import CONSULTANT_SYSTEM_PROMPT, PRE_RETRIEVAL_CLASSIFIER_PROMPT
 from app.core.config import get_settings
 from app.knowledge.retrieval import EvidenceBundle, SourceScope, retrieve_company_knowledge
 from app.models.chat import AgentToolCall, MessageSourceCitation
@@ -290,28 +290,34 @@ def classify_needs_retrieval(
         for msg in context.recent_messages[-3:]:
             recent_text += f"{msg.get('role', 'user')}: {msg.get('content', '')}\n"
 
-        prompt = PRE_RETRIEVAL_CLASSIFIER_PROMPT.format(
+        from app.agents.prompt_registry import load_prompt
+        from app.core.openai_client import create_openai_client
+
+        classifier_prompt = load_prompt(
+            "consultant-pre-retrieval-classifier",
+            PRE_RETRIEVAL_CLASSIFIER_PROMPT,
             conversation_summary=context.conversation_summary or "(no summary yet)",
             recent_messages=recent_text.strip() or "(no recent messages)",
             current_message=current_message,
         )
-
-        from app.services.langfuse_openai import create_openai_client
 
         client = create_openai_client(
             base_url=settings.rag_openai_api_base_url,
             api_key=settings.rag_openai_api_key,
         )
 
-        response = client.chat.completions.parse(
-            model=settings.rag_openai_model,
-            messages=[{"role": "user", "content": prompt}],
-            response_format=RetrievalClassification,
-            max_tokens=100,
-            temperature=0.0,
-            name="chat.classify_needs_retrieval",
-            metadata={"stage": "chat.classify_needs_retrieval"},
-        )
+        parse_kwargs: dict[str, Any] = {
+            "model": settings.rag_classification_model,
+            "messages": [{"role": "user", "content": classifier_prompt.text}],
+            "response_format": RetrievalClassification,
+            "max_tokens": 100,
+            "temperature": 0.0,
+            "name": "chat.classify_needs_retrieval",
+            "metadata": {"stage": "chat.classify_needs_retrieval"},
+        }
+        if classifier_prompt.langfuse_prompt is not None:
+            parse_kwargs["langfuse_prompt"] = classifier_prompt.langfuse_prompt
+        response = client.chat.completions.parse(**parse_kwargs)
 
         parsed: RetrievalClassification | None = response.choices[0].message.parsed
         if parsed is None:
@@ -332,7 +338,7 @@ def classify_needs_retrieval(
             "check RAG_OPENAI_API_BASE_URL / RAG_OPENAI_API_KEY. Defaulting to retrieval.",
             exc.status_code,
             settings.rag_openai_api_base_url,
-            settings.rag_openai_model,
+            settings.rag_classification_model,
         )
         return True
     except Exception:
@@ -552,7 +558,7 @@ async def run_consultant_stream(
     history = _build_model_history(context, evidence_text)
 
     # --- Check if chat model key is available ---
-    if not settings.chat_openai_api_key:
+    if not settings.rag_openai_api_key:
         async for event_tuple in _fallback_run_async(
             current_message=current_message,
             evidence_bundle=evidence_bundle,
@@ -567,13 +573,13 @@ async def run_consultant_stream(
         from agents.extensions.models.litellm_model import LitellmModel
 
         model_name = _normalize_litellm_model(
-            settings.chat_openai_model,
-            settings.chat_openai_api_base_url,
+            settings.rag_chat_model,
+            settings.rag_openai_api_base_url,
         )
         model = LitellmModel(
             model=model_name,
-            base_url=settings.chat_openai_api_base_url,
-            api_key=settings.chat_openai_api_key,
+            base_url=settings.rag_openai_api_base_url,
+            api_key=settings.rag_openai_api_key,
         )
 
         # Build function tools closed over db/workspace
@@ -589,9 +595,12 @@ async def run_consultant_stream(
             name_override="tavily_web_search",
         )
 
+        from app.agents.prompt_registry import load_prompt
+
+        system = load_prompt("consultant-system", CONSULTANT_SYSTEM_PROMPT)
         agent = Agent(
             name="CompanyStrategyConsultant",
-            instructions=SYSTEM_PROMPT,
+            instructions=system.text,
             model=model,
             tools=[retrieve_tool, tavily_tool],
         )
