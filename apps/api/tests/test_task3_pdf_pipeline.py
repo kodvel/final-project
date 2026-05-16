@@ -21,7 +21,7 @@ def _mock_settings(**overrides):
     settings.rag_mistral_api_key = "test-mistral-key"
     settings.rag_openai_api_base_url = "https://api.openai.com/v1"
     settings.rag_openai_api_key = "test-openai-key"
-    settings.rag_openai_model = "google/gemini-3.1-flash-lite-preview"
+    settings.rag_extraction_model = "google/gemini-3.1-flash-lite-preview"
     settings.rag_max_file_size_mb = 30
     for k, v in overrides.items():
         setattr(settings, k, v)

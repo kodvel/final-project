@@ -218,7 +218,7 @@ def process_pdf(session: Session, source: SourceData) -> None:
         api_key=settings.rag_openai_api_key,
         base_url=settings.rag_openai_api_base_url,
     )
-    model = settings.rag_openai_model
+    model = settings.rag_extraction_model
 
     # Read and validate file
     pdf_bytes = _read_pdf_bytes(source.storage_path)
@@ -265,7 +265,7 @@ def process_pdf(session: Session, source: SourceData) -> None:
                 "summary": markdown[:2000] if markdown else "(no extractable text)",
                 "page_count": page_count,
                 "ocr_model": "mistral-ocr-latest",
-                "structuring_model": settings.rag_openai_model,
+                "structuring_model": settings.rag_extraction_model,
                 "extracted_markdown_path": str(ocr_md_path),
                 "chunk_metadata_path": str(chunks_path),
                 "warnings": warnings,
@@ -369,7 +369,7 @@ def process_pdf(session: Session, source: SourceData) -> None:
             "warnings": [],
             "metadata": {
                 "ocr_model": "mistral-ocr-latest",
-                "structuring_model": settings.rag_openai_model,
+                "structuring_model": settings.rag_extraction_model,
                 "extracted_markdown_path": str(ocr_md_path),
                 "chunk_metadata_path": str(chunks_path),
             },

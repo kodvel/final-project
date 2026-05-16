@@ -229,7 +229,7 @@ def generate_decision_brief(
         try:
             content = extract_structured(
                 client=client,
-                model=settings.rag_openai_model,
+                model=settings.rag_generation_model,
                 system_prompt=SYSTEM_PROMPT,
                 user_content=prompt,
                 response_format=DecisionBriefContent,

@@ -162,7 +162,7 @@ def _process_csv(session: Session, source: SourceData) -> None:
         api_key=settings.rag_openai_api_key,
         base_url=settings.rag_openai_api_base_url,
     )
-    model = settings.rag_openai_model
+    model = settings.rag_extraction_model
 
     # Compact profile data for LLM (no raw rows, no file_path)
     profile_data = csv_profiler.build_csv_llm_profile(profile)

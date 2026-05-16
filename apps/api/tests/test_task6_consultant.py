@@ -57,7 +57,7 @@ def parse_sse_events(response) -> list[dict]:
 
 
 def test_stream_uses_consultant_fallback_without_api_key(client) -> None:
-    """When CHAT_OPENAI_API_KEY is not set, fallback response is streamed."""
+    """When RAG_OPENAI_API_KEY is not set, fallback response is streamed."""
     workspace = create_workspace(client)
 
     response = client.post(

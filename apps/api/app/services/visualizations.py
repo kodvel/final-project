@@ -416,7 +416,7 @@ def _compose_content_with_llm(
     )
     result = extract_visualization_snapshot(
         client=client,
-        model=settings.rag_openai_model,
+        model=settings.rag_generation_model,
         artifact_payload=payload,
     )
 

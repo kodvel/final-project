@@ -304,7 +304,7 @@ def classify_needs_retrieval(
         )
 
         response = client.chat.completions.parse(
-            model=settings.rag_openai_model,
+            model=settings.rag_classification_model,
             messages=[{"role": "user", "content": prompt}],
             response_format=RetrievalClassification,
             max_tokens=100,
@@ -332,7 +332,7 @@ def classify_needs_retrieval(
             "check RAG_OPENAI_API_BASE_URL / RAG_OPENAI_API_KEY. Defaulting to retrieval.",
             exc.status_code,
             settings.rag_openai_api_base_url,
-            settings.rag_openai_model,
+            settings.rag_classification_model,
         )
         return True
     except Exception:
@@ -552,7 +552,7 @@ async def run_consultant_stream(
     history = _build_model_history(context, evidence_text)
 
     # --- Check if chat model key is available ---
-    if not settings.chat_openai_api_key:
+    if not settings.rag_openai_api_key:
         async for event_tuple in _fallback_run_async(
             current_message=current_message,
             evidence_bundle=evidence_bundle,
@@ -567,13 +567,13 @@ async def run_consultant_stream(
         from agents.extensions.models.litellm_model import LitellmModel
 
         model_name = _normalize_litellm_model(
-            settings.chat_openai_model,
-            settings.chat_openai_api_base_url,
+            settings.rag_chat_model,
+            settings.rag_openai_api_base_url,
         )
         model = LitellmModel(
             model=model_name,
-            base_url=settings.chat_openai_api_base_url,
-            api_key=settings.chat_openai_api_key,
+            base_url=settings.rag_openai_api_base_url,
+            api_key=settings.rag_openai_api_key,
         )
 
         # Build function tools closed over db/workspace
