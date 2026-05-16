@@ -1,5 +1,5 @@
 import { Link, useLocation } from '@tanstack/react-router'
-import { BarChart3, ChevronLeft, ChevronsUpDown, ClipboardList, FolderOpen, MessageSquare, Plus } from 'lucide-react'
+import { BarChart3, ChevronLeft, ChevronsUpDown, ClipboardList, FolderOpen, MessageSquare, Plus, Settings } from 'lucide-react'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useCreateWorkspace, useWorkspaces } from '../../features/workspaces/hooks'
@@ -128,25 +128,40 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
 
   return (
     <div className="relative" ref={containerRef}>
-      {/* Trigger */}
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
-          'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-white/5',
-          collapsed && 'justify-center px-2',
-        )}
-      >
-        <div className="grid h-7 w-7 shrink-0 place-items-center rounded bg-white/10">
-          <ChevronsUpDown className="h-4 w-4 text-sidebar-foreground" />
-        </div>
-        {!collapsed && (
-          <div className="min-w-0 text-left">
-            <p className="truncate text-sm text-white leading-tight">{activeWorkspace?.name ?? 'Select workspace'}</p>
-            <p className="text-xs text-sidebar-foreground leading-tight">Switch workspace</p>
+      {/* Trigger row: switcher + settings */}
+      <div className={cn('flex items-center gap-1', collapsed && 'flex-col')}>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className={cn(
+            'flex flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-white/5',
+            collapsed && 'w-full justify-center px-2',
+          )}
+        >
+          <div className="grid h-7 w-7 shrink-0 place-items-center rounded bg-white/10">
+            <ChevronsUpDown className="h-4 w-4 text-sidebar-foreground" />
           </div>
+          {!collapsed && (
+            <div className="min-w-0 text-left">
+              <p className="truncate text-sm text-white leading-tight">{activeWorkspace?.name ?? 'Select workspace'}</p>
+              <p className="text-xs text-sidebar-foreground leading-tight">Switch workspace</p>
+            </div>
+          )}
+        </button>
+        {activeWorkspace && (
+          <Link
+            to="/workspace-settings"
+            title="Workspace settings"
+            aria-label="Workspace settings"
+            className={cn(
+              'grid h-9 w-9 shrink-0 place-items-center rounded-lg text-sidebar-foreground transition-colors hover:bg-white/5 hover:text-white',
+              collapsed && 'h-8 w-8',
+            )}
+          >
+            <Settings className="h-4 w-4" />
+          </Link>
         )}
-      </button>
+      </div>
 
       {/* Popover */}
       {open && (

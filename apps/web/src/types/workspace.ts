@@ -13,6 +13,11 @@ export type CreateWorkspaceInput = {
   description?: string
 }
 
+export type UpdateWorkspaceInput = {
+  name?: string
+  description?: string | null
+}
+
 export type WorkspaceListItem = Pick<Workspace, 'id' | 'name' | 'description'>
 
 export type WorkspaceApi = {

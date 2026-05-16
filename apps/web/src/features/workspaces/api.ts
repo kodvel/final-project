@@ -1,5 +1,5 @@
 import { apiFetch } from '../../lib/api-client'
-import type { CreateWorkspaceInput, Workspace, WorkspaceApi } from '../../types/workspace'
+import type { CreateWorkspaceInput, UpdateWorkspaceInput, Workspace, WorkspaceApi } from '../../types/workspace'
 
 function fromApi(workspace: WorkspaceApi): Workspace {
   return {
@@ -27,4 +27,17 @@ export async function createWorkspace(input: CreateWorkspaceInput): Promise<Work
       body: JSON.stringify(input),
     }),
   )
+}
+
+export async function updateWorkspace(workspaceId: number, input: UpdateWorkspaceInput): Promise<Workspace> {
+  return fromApi(
+    await apiFetch<WorkspaceApi>(`/workspaces/${workspaceId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
+  )
+}
+
+export async function deleteWorkspace(workspaceId: number): Promise<void> {
+  await apiFetch<void>(`/workspaces/${workspaceId}`, { method: 'DELETE' })
 }

@@ -9,12 +9,18 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WorkspaceSettingsRouteImport } from './routes/workspace-settings'
 import { Route as VisualizationDataRouteImport } from './routes/visualization-data'
 import { Route as SourceDataRouteImport } from './routes/source-data'
 import { Route as DecisionBriefsRouteImport } from './routes/decision-briefs'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as IndexRouteImport } from './routes/index'
 
+const WorkspaceSettingsRoute = WorkspaceSettingsRouteImport.update({
+  id: '/workspace-settings',
+  path: '/workspace-settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VisualizationDataRoute = VisualizationDataRouteImport.update({
   id: '/visualization-data',
   path: '/visualization-data',
@@ -47,6 +53,7 @@ export interface FileRoutesByFullPath {
   '/decision-briefs': typeof DecisionBriefsRoute
   '/source-data': typeof SourceDataRoute
   '/visualization-data': typeof VisualizationDataRoute
+  '/workspace-settings': typeof WorkspaceSettingsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +61,7 @@ export interface FileRoutesByTo {
   '/decision-briefs': typeof DecisionBriefsRoute
   '/source-data': typeof SourceDataRoute
   '/visualization-data': typeof VisualizationDataRoute
+  '/workspace-settings': typeof WorkspaceSettingsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,6 +70,7 @@ export interface FileRoutesById {
   '/decision-briefs': typeof DecisionBriefsRoute
   '/source-data': typeof SourceDataRoute
   '/visualization-data': typeof VisualizationDataRoute
+  '/workspace-settings': typeof WorkspaceSettingsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -71,6 +80,7 @@ export interface FileRouteTypes {
     | '/decision-briefs'
     | '/source-data'
     | '/visualization-data'
+    | '/workspace-settings'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -78,6 +88,7 @@ export interface FileRouteTypes {
     | '/decision-briefs'
     | '/source-data'
     | '/visualization-data'
+    | '/workspace-settings'
   id:
     | '__root__'
     | '/'
@@ -85,6 +96,7 @@ export interface FileRouteTypes {
     | '/decision-briefs'
     | '/source-data'
     | '/visualization-data'
+    | '/workspace-settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -93,10 +105,18 @@ export interface RootRouteChildren {
   DecisionBriefsRoute: typeof DecisionBriefsRoute
   SourceDataRoute: typeof SourceDataRoute
   VisualizationDataRoute: typeof VisualizationDataRoute
+  WorkspaceSettingsRoute: typeof WorkspaceSettingsRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/workspace-settings': {
+      id: '/workspace-settings'
+      path: '/workspace-settings'
+      fullPath: '/workspace-settings'
+      preLoaderRoute: typeof WorkspaceSettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/visualization-data': {
       id: '/visualization-data'
       path: '/visualization-data'
@@ -141,6 +161,7 @@ const rootRouteChildren: RootRouteChildren = {
   DecisionBriefsRoute: DecisionBriefsRoute,
   SourceDataRoute: SourceDataRoute,
   VisualizationDataRoute: VisualizationDataRoute,
+  WorkspaceSettingsRoute: WorkspaceSettingsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

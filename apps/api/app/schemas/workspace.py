@@ -8,6 +8,11 @@ class WorkspaceCreate(BaseModel):
     description: str | None = None
 
 
+class WorkspaceUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+
+
 class WorkspaceRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
