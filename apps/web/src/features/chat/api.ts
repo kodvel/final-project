@@ -158,6 +158,49 @@ export async function streamChatMessage(input: StreamChatMessageInput, handlers:
   let buffer = ''
   let completed = false
 
+  // Returns true when [DONE] was seen, so the caller can stop reading.
+  const processPart = (part: string): boolean => {
+    for (const line of part.split('\n')) {
+      if (!line.startsWith('data: ')) continue
+      const payload = line.slice(6).trim()
+      if (payload === '[DONE]') {
+        completed = true
+        handlers.onDone?.()
+        return true
+      }
+
+      try {
+        const event = JSON.parse(payload) as { type: string }
+        switch (event.type) {
+          case 'metadata':
+            handlers.onMetadata?.(event as MetadataEvent)
+            break
+          case 'text_delta':
+            handlers.onTextDelta?.(event as TextDeltaEvent)
+            break
+          case 'tool_call':
+            handlers.onToolCall?.(event as ToolCallEvent)
+            break
+          case 'tool_result':
+            handlers.onToolResult?.(event as ToolResultEvent)
+            break
+          case 'decision_brief':
+            handlers.onDecisionBrief?.(event as DecisionBriefEvent)
+            break
+          case 'command_result':
+            handlers.onCommandResult?.(event as CommandResultEvent)
+            break
+          case 'error':
+            handlers.onError?.(event as StreamErrorEvent)
+            break
+        }
+      } catch {
+        // Ignore malformed JSON lines
+      }
+    }
+    return false
+  }
+
   try {
     while (true) {
       const { done, value } = await reader.read()
@@ -171,47 +214,17 @@ export async function streamChatMessage(input: StreamChatMessageInput, handlers:
       buffer = parts.pop() ?? ''
 
       for (const part of parts) {
-        const lines = part.split('\n')
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const payload = line.slice(6).trim()
-          if (payload === '[DONE]') {
-            completed = true
-            handlers.onDone?.()
-            return
-          }
-
-          try {
-            const event = JSON.parse(payload) as { type: string }
-            switch (event.type) {
-              case 'metadata':
-                handlers.onMetadata?.(event as MetadataEvent)
-                break
-              case 'text_delta':
-                handlers.onTextDelta?.(event as TextDeltaEvent)
-                break
-              case 'tool_call':
-                handlers.onToolCall?.(event as ToolCallEvent)
-                break
-              case 'tool_result':
-                handlers.onToolResult?.(event as ToolResultEvent)
-                break
-              case 'decision_brief':
-                handlers.onDecisionBrief?.(event as DecisionBriefEvent)
-                break
-              case 'command_result':
-                handlers.onCommandResult?.(event as CommandResultEvent)
-                break
-              case 'error':
-                handlers.onError?.(event as StreamErrorEvent)
-                break
-            }
-          } catch {
-            // Ignore malformed JSON lines
-          }
-        }
+        if (processPart(part)) return
       }
     }
+
+    // Flush any remaining buffered content (e.g. final `data: [DONE]` that
+    // didn't arrive with a trailing \n\n before EOF).
+    if (buffer.length > 0) {
+      processPart(buffer)
+      buffer = ''
+    }
+
     if (!completed) {
       handlers.onError?.({ type: 'error', error: 'Stream closed before completion' })
     }

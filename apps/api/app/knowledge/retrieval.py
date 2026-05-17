@@ -239,18 +239,48 @@ def retrieve_company_knowledge(
     # Build Chroma where filter: uploaded source chunks OR approved decision briefs
     chroma_where = _build_chroma_where(eligible_ids, approved_brief_ids, workspace_id)
 
+    # Clamp n_results by collection size — the Rust-backed Chroma backend
+    # errors out (rather than returning fewer results) when n_results exceeds
+    # the available document count. This hits brand-new workspaces hardest
+    # because they may only have a handful of chunks indexed.
     try:
-        chroma_results = collection.query(
-            query_texts=[query],
-            n_results=min(max_results * 3, 50),  # fetch extra for post-filtering
-            where=chroma_where,
-            include=["metadatas", "distances", "documents"],
-        )
+        collection_count = collection.count()
     except Exception:
-        logger.warning("ChromaDB query failed", exc_info=True)
+        collection_count = 0
+    if collection_count == 0:
         return EvidenceBundle(
             insufficient_evidence=True,
-            reason="ChromaDB query error",
+            reason="ChromaDB collection is empty",
+        )
+    requested = min(max_results * 3, 50, collection_count)
+
+    chroma_results = None
+    last_error: Exception | None = None
+    # Retry once at a smaller n_results in case the Rust backend's per-filter
+    # cap is even tighter than the collection-wide count.
+    for n in (requested, max(1, min(requested, 5))):
+        try:
+            chroma_results = collection.query(
+                query_texts=[query],
+                n_results=n,
+                where=chroma_where,
+                include=["metadatas", "distances", "documents"],
+            )
+            break
+        except Exception as exc:
+            last_error = exc
+            logger.warning(
+                "ChromaDB query failed (n_results=%d, collection_count=%d): %s",
+                n,
+                collection_count,
+                exc,
+                exc_info=True,
+            )
+
+    if chroma_results is None:
+        return EvidenceBundle(
+            insufficient_evidence=True,
+            reason=f"ChromaDB query error: {last_error}",
         )
 
     # Unpack Chroma result lists (single query ⇒ first element of each)
