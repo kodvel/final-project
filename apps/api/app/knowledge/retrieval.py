@@ -256,13 +256,19 @@ def retrieve_company_knowledge(
 
     chroma_results = None
     last_error: Exception | None = None
-    # Retry once at a smaller n_results in case the Rust backend's per-filter
-    # cap is even tighter than the collection-wide count.
-    for n in (requested, max(1, min(requested, 5))):
+    # Chroma 1.x Rust-backend can raise transient "Error finding id" right
+    # after a write commits to the WAL but before the HNSW index ingests it.
+    # Retry with backoff — usually resolves within 1–2s as compaction catches up.
+    import time as _time
+
+    backoff_seconds = (0.0, 0.5, 1.5, 3.0)
+    for attempt, delay in enumerate(backoff_seconds):
+        if delay > 0:
+            _time.sleep(delay)
         try:
             chroma_results = collection.query(
                 query_texts=[query],
-                n_results=n,
+                n_results=requested,
                 where=chroma_where,
                 include=["metadatas", "distances", "documents"],
             )
@@ -270,14 +276,15 @@ def retrieve_company_knowledge(
         except Exception as exc:
             last_error = exc
             logger.warning(
-                "ChromaDB query failed (n_results=%d, collection_count=%d): %s",
-                n,
-                collection_count,
+                "ChromaDB query failed (attempt %d/%d, n_results=%d): %s",
+                attempt + 1,
+                len(backoff_seconds),
+                requested,
                 exc,
-                exc_info=True,
             )
 
     if chroma_results is None:
+        logger.error("ChromaDB query exhausted retries; giving up", exc_info=last_error)
         return EvidenceBundle(
             insufficient_evidence=True,
             reason=f"ChromaDB query error: {last_error}",
