@@ -48,10 +48,15 @@ function VisualizationDataPage() {
   const workspaceId = activeWorkspace?.id ?? 0
   const defaultMonthRange = useMemo(() => getDefaultMonthRange(), [])
 
+  const [draftPeriodStartMonth, setDraftPeriodStartMonth] = useState(() => defaultMonthRange.start)
+  const [draftPeriodEndMonth, setDraftPeriodEndMonth] = useState(() => defaultMonthRange.end)
   const [periodStartMonth, setPeriodStartMonth] = useState(() => defaultMonthRange.start)
   const [periodEndMonth, setPeriodEndMonth] = useState(() => defaultMonthRange.end)
 
-  const hasValidRange = periodStartMonth.length > 0 && periodEndMonth.length > 0 && periodStartMonth <= periodEndMonth
+  const hasValidAppliedRange = periodStartMonth.length > 0 && periodEndMonth.length > 0 && periodStartMonth <= periodEndMonth
+  const hasValidDraftRange = draftPeriodStartMonth.length > 0 && draftPeriodEndMonth.length > 0 && draftPeriodStartMonth <= draftPeriodEndMonth
+  const isDirty = draftPeriodStartMonth !== periodStartMonth || draftPeriodEndMonth !== periodEndMonth
+  const canApplyDraftRange = hasValidDraftRange && isDirty
   const queryParams = useMemo(
     () => ({
       workspaceId,
@@ -61,7 +66,7 @@ function VisualizationDataPage() {
     [periodEndMonth, periodStartMonth, workspaceId],
   )
 
-  const { data: snapshot, isLoading, error, isFetching } = useVisualizationSnapshot(queryParams)
+  const { data: snapshot, isLoading, error } = useVisualizationSnapshot(queryParams)
   const refreshSnapshot = useRefreshVisualizationSnapshot()
 
   const content = snapshot?.contentJson
@@ -93,7 +98,14 @@ function VisualizationDataPage() {
   const topInsight =
     executiveSummary ?? crossSourcePatterns[0]?.text ?? keyFindings[0]?.text ?? coverage?.summary ?? 'No executive summary has been generated yet.'
 
-  const refreshPending = refreshSnapshot.isPending || isFetching
+  const refreshPending = refreshSnapshot.isPending
+
+  function handleApplyDraftRange() {
+    if (!canApplyDraftRange) return
+
+    setPeriodStartMonth(draftPeriodStartMonth)
+    setPeriodEndMonth(draftPeriodEndMonth)
+  }
 
   if (!activeWorkspace) {
     return (
@@ -103,7 +115,7 @@ function VisualizationDataPage() {
     )
   }
 
-  if (!hasValidRange) {
+  if (!hasValidAppliedRange) {
     return (
       <div className="h-full overflow-auto p-8">
         <EmptyState
@@ -133,7 +145,7 @@ function VisualizationDataPage() {
   return (
     <div className="h-full min-w-0 overflow-auto bg-white px-6 py-7 text-foreground lg:px-8 lg:py-8">
       <div className="space-y-7">
-        <header className="flex flex-col gap-5 border-b border-border/70 pb-5 xl:flex-row xl:items-start xl:justify-between">
+        <header className="flex flex-col gap-5 border-b border-border/70 pb-5">
           <div className="w-full space-y-3">
             <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-[11px] font-medium text-indigo-700">
               <CalendarDays className="h-3.5 w-3.5" />
@@ -156,19 +168,34 @@ function VisualizationDataPage() {
             </div>
           </div>
 
-          <div className="w-full align-self-end">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              <MonthInput label="Period start" value={periodStartMonth} onChange={setPeriodStartMonth} />
-              <MonthInput label="Period end" value={periodEndMonth} onChange={setPeriodEndMonth} />
-              <div className="flex flex-col justify-end">
+          <div className="w-full">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="shrink-0">
+                <MonthInput label="Period start" value={draftPeriodStartMonth} onChange={setDraftPeriodStartMonth} />
+              </div>
+              <div className="shrink-0">
+                <MonthInput label="Period end" value={draftPeriodEndMonth} onChange={setDraftPeriodEndMonth} />
+              </div>
+              <div className="flex shrink-0 items-end gap-2">
                 <Button
+                  type="button"
+                  onClick={handleApplyDraftRange}
+                  disabled={!canApplyDraftRange}
+                  className="h-9 border-border bg-primary px-4 transition hover:bg-primary/90"
+                >
+                  Apply
+                </Button>
+                <Button
+                  type="button"
                   variant="outline"
                   onClick={() => refreshSnapshot.mutate(queryParams)}
-                  disabled={!hasValidRange || refreshPending}
-                  className="border-border bg-white transition hover:bg-surface-subtle w-fit"
+                  disabled={!hasValidAppliedRange || refreshPending}
+                  className="h-9 w-9 border-border bg-white p-0 transition hover:bg-surface-subtle"
+                  size="icon-sm"
+                  aria-label="Refresh snapshot"
+                  title="Refresh snapshot"
                 >
                   <RefreshCw className={`h-4 w-4 ${refreshPending ? 'animate-spin' : ''}`} />
-                  {refreshPending ? 'Refreshing' : 'Refresh'}
                 </Button>
               </div>
             </div>
