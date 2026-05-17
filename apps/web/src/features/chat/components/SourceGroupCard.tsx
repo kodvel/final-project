@@ -30,7 +30,6 @@ function CollapsibleContent({ id, open, className, children }: { id: string; ope
 }
 
 export function SourceGroupCard({ group, type }: { group: CitationGroup; type: 'pdf' | 'csv' | 'web' }) {
-  const firstCitation = group.citations[0]
   const Icon = type === 'pdf' ? FileText : type === 'web' ? Globe : FileSpreadsheet
   const color = type === 'pdf' ? 'text-status-failed-foreground' : type === 'web' ? 'text-primary' : 'text-status-ready-foreground'
   const hasWarning = group.citations.some((citation) => citation.citationStatus !== 'available')
@@ -70,23 +69,25 @@ export function SourceGroupCard({ group, type }: { group: CitationGroup; type: '
               key={citation.id}
               className="rounded-md border-l border-border/60 bg-transparent pl-3 text-sm italic leading-6 text-muted-foreground"
             >
-              "{citation.quote || citation.snippet || citation.url || 'Citation available without quote.'}"
-              <span className="mt-2 block font-mono text-[11px] not-italic uppercase tracking-[0.12em] text-text-hint">
-                [{citation.ordinal ?? citation.id}]{citation.pageNumber != null ? ` p.${citation.pageNumber}` : ''}
-                {citation.domain ? ` · ${citation.domain}` : ''}
-              </span>
+              "{citation.quote || citation.snippet || (citation.url ? citation.domain || 'Web source' : 'Citation available without quote.')}"
+              {citation.url ? (
+                <a
+                  href={citation.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 block font-mono text-[11px] not-italic uppercase tracking-[0.12em] text-text-hint transition-colors duration-200 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+                >
+                  [{citation.ordinal ?? citation.id}]{citation.pageNumber != null ? ` p.${citation.pageNumber}` : ''}
+                  {citation.domain ? `${citation.domain}` : ''}
+                </a>
+              ) : (
+                <span className="mt-2 block font-mono text-[11px] not-italic uppercase tracking-[0.12em] text-text-hint">
+                  [{citation.ordinal ?? citation.id}]{citation.pageNumber != null ? ` p.${citation.pageNumber}` : ''}
+                  {citation.domain ? ` · ${citation.domain}` : ''}
+                </span>
+              )}
             </blockquote>
           ))}
-          {firstCitation?.url && (
-            <a
-              href={firstCitation.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block truncate font-mono text-xs text-primary transition-colors duration-200 hover:text-primary-hover hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
-            >
-              {firstCitation.url}
-            </a>
-          )}
         </div>
       </CollapsibleContent>
     </div>
