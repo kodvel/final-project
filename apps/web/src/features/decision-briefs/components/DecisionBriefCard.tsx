@@ -182,10 +182,24 @@ function EvidenceRefRow({
     : citation.title || `Source #${citation.sourceId ?? 'unknown'}`
   const quote = citation.quote || citation.snippet
 
+  const ordinalBadge = citation.url ? (
+    <a
+      href={citation.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="rounded-md bg-chip-gray px-1.5 py-0.5 font-mono text-[11px] text-text-hint no-underline transition-colors duration-200 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+      title={citation.url}
+    >
+      [{ordinal}]
+    </a>
+  ) : (
+    <span className="rounded-md bg-chip-gray px-1.5 py-0.5 font-mono text-[11px] text-text-hint">[{ordinal}]</span>
+  )
+
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2">
-        <span className="rounded-md bg-chip-gray px-1.5 py-0.5 font-mono text-[11px] text-text-hint">[{ordinal}]</span>
+        {ordinalBadge}
         <Icon className={`h-3.5 w-3.5 shrink-0 ${iconTone}`} />
         <span className="truncate text-xs font-semibold text-foreground">{title}</span>
         {citation.pageNumber != null && (
@@ -194,16 +208,6 @@ function EvidenceRefRow({
       </div>
       {quote && <blockquote className="border-l border-border/60 pl-3 text-xs italic leading-5 text-muted-foreground">"{quote}"</blockquote>}
       {note && <p className="text-xs leading-5 text-muted-foreground">{note}</p>}
-      {citation.url && (
-        <a
-          href={citation.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block truncate font-mono text-[11px] text-primary transition-colors duration-200 hover:underline"
-        >
-          {citation.url}
-        </a>
-      )}
     </div>
   )
 }

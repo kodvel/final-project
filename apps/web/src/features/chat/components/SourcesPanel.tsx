@@ -116,7 +116,7 @@ export function SourcesPanel({
           </div>
         </section>
 
-        <div className="shrink-0 flex flex-col divide-y divide-border/60 border-t border-border/50">
+        <div className="shrink-0 flex flex-col divide-y divide-border/60 border-t border-border/50 overflow-y-auto max-h-[50vh]">
           {/* Sources (combined uploaded + web) */}
           {hasSources && (
             <section>

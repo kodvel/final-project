@@ -22,12 +22,11 @@ export function Sidebar() {
       {/* Brand */}
       <div className={cn('flex items-center gap-3 px-5 pt-6 pb-4', collapsed && 'justify-center px-3')}>
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary">
-          <span className="text-xs font-bold text-primary-foreground">IC</span>
+          <span className="text-xs font-bold text-primary-foreground">D</span>
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-white leading-tight">Intelligence</p>
-            <p className="truncate text-xs text-sidebar-foreground leading-tight">Copilot</p>
+            <p className="truncate text-sm font-semibold text-white leading-tight">Decisio</p>
           </div>
         )}
       </div>
