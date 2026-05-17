@@ -167,6 +167,39 @@ def _build_coverage(
     }
 
 
+def _card_display_summary(
+    *,
+    file_type: str,
+    summary_data: dict,
+    insight_data: dict,
+) -> str:
+    """Pick the text shown on a source card.
+
+    For CSV sources the source_summary text is just the profiler blurb
+    ("Dataset with N rows and M columns…"), so prefer the insight artifact's
+    findings when present. PDFs already have a substantive LLM-generated
+    source_summary, so fall through to that.
+    """
+    fallback = summary_data.get("summary", "") or ""
+    if (file_type or "").lower() != "csv":
+        return fallback
+
+    findings = insight_data.get("findings") or []
+    texts: list[str] = []
+    for item in findings:
+        if isinstance(item, dict):
+            text = item.get("text")
+        else:
+            text = item
+        if isinstance(text, str) and text.strip():
+            texts.append(text.strip())
+        if len(texts) >= 4:
+            break
+    if not texts:
+        return fallback
+    return " ".join(texts)
+
+
 def _build_source_cards(
     sources: list[SourceData],
     artifacts: list[SourceArtifact],
@@ -182,6 +215,7 @@ def _build_source_cards(
         insight_art = _latest_artifact(by_type.get("source_insight", []))
         summary_data = _artifact_data(summary_art)
         content_data = _artifact_data(content_art)
+        insight_data = _artifact_data(insight_art)
         chunk_count = len(content_data.get("chunks", [])) if isinstance(content_data.get("chunks"), list) else 0
         stats = dict(summary_data.get("statistics", {})) if isinstance(summary_data.get("statistics"), dict) else {}
         if "page_count" in summary_data:
@@ -198,11 +232,17 @@ def _build_source_cards(
                     "artifactId": artifact.id,
                 })
 
+        display_summary = _card_display_summary(
+            file_type=_plain_value(source.file_type),
+            summary_data=summary_data,
+            insight_data=insight_data,
+        )
+
         card = {
             "sourceId": source_id,
             "source_id": source_id,
             "title": source.title,
-            "summary": summary_data.get("summary", ""),
+            "summary": display_summary,
             "sourceFileType": _plain_value(source.file_type),
             "file_type": _plain_value(source.file_type),
             "teamLabel": _plain_value(source.team_label),

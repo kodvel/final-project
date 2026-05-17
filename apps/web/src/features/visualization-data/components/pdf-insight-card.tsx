@@ -3,7 +3,24 @@ import { Badge } from '../../../components/ui/badge'
 import type { VisualizationEvidenceRef, VisualizationSourceCard } from '../../../types/visualization'
 import { evidenceRefKey, formatLabel } from '../utils'
 
+function evidenceBadgeLabel(ref: VisualizationEvidenceRef) {
+  return ref.quote ?? (ref.pageNumber != null ? `p.${ref.pageNumber}` : (ref.sourceTitle ?? `Source ${ref.sourceId ?? 'ref'}`))
+}
+
+function dedupeEvidenceRefs(refs: VisualizationEvidenceRef[]): VisualizationEvidenceRef[] {
+  const seen = new Set<string>()
+  const out: VisualizationEvidenceRef[] = []
+  for (const ref of refs) {
+    const label = evidenceBadgeLabel(ref)
+    if (seen.has(label)) continue
+    seen.add(label)
+    out.push(ref)
+  }
+  return out
+}
+
 export function PdfInsightCard({ card }: { card: VisualizationSourceCard }) {
+  const evidenceRefs = card.evidenceRefs ? dedupeEvidenceRefs(card.evidenceRefs) : []
   return (
     <article className="group relative overflow-hidden rounded-2xl border border-border bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
       <div className="absolute inset-y-0 left-0 w-1.5 bg-primary" />
@@ -40,9 +57,9 @@ export function PdfInsightCard({ card }: { card: VisualizationSourceCard }) {
 
         {card.summary && <p className="mt-4 text-sm leading-6 text-muted-foreground">{card.summary}</p>}
 
-        {card.evidenceRefs && card.evidenceRefs.length > 0 && (
+        {evidenceRefs.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-2">
-            {card.evidenceRefs.map((ref) => (
+            {evidenceRefs.map((ref) => (
               <EvidenceBadge key={evidenceRefKey(ref)} refItem={ref} />
             ))}
           </div>
@@ -57,8 +74,7 @@ export function PdfInsightCard({ card }: { card: VisualizationSourceCard }) {
 }
 
 function EvidenceBadge({ refItem }: { refItem: VisualizationEvidenceRef }) {
-  const label =
-    refItem.quote ?? (refItem.pageNumber != null ? `p.${refItem.pageNumber}` : (refItem.sourceTitle ?? `Source ${refItem.sourceId ?? 'ref'}`))
+  const label = evidenceBadgeLabel(refItem)
   return (
     <Badge variant="outline" className="max-w-full border-border bg-white text-[11px] font-normal text-muted-foreground">
       <span className="truncate">{label}</span>
